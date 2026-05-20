@@ -1,11 +1,22 @@
 import { posApi } from "@/services/api/posApi";
-import { Staff, CreateStaffPayload } from "./staffTypes";
+import { Staff } from "./staffTypes";
+
+export interface CreateStaffPayload {
+  username: string;
+  email?: string;
+  name: string;
+  password?: string;
+  role: string;
+  permissions: string[];
+  isActive?: boolean;
+  storeId?: string;
+}
 
 export const staffApi = posApi.injectEndpoints({
   overrideExisting: false,
   endpoints: (builder) => ({
-    getStaff: builder.query<Staff[], void>({
-      query: () => "/staff",
+    getStaff: builder.query<Staff[], string | undefined>({
+      query: (storeId) => `/staff${storeId ? `?storeId=${storeId}` : ""}`,
       providesTags: ["Staff"],
     }),
 

@@ -6,10 +6,18 @@ import {
   Modal,
   StyleSheet,
   Dimensions,
-  Animated,
+  Animated as BaseAnimated,
   Platform,
 } from "react-native";
-import { CameraView, useCameraPermissions, BarcodeScanningResult } from "expo-camera";
+import {
+  CameraView,
+  useCameraPermissions,
+  BarcodeScanningResult,
+} from "expo-camera";
+import { Audio } from "expo-av";
+import * as Haptics from "expo-haptics";
+import Animated, { FadeInDown, FadeOutUp } from "react-native-reanimated";
+import { MaterialIcons } from "@expo/vector-icons";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.7;
@@ -17,8 +25,10 @@ const SCAN_AREA_SIZE = SCREEN_WIDTH * 0.7;
 interface BarcodeScannerModalProps {
   visible: boolean;
   onClose: () => void;
-  onScanned: (barcode: string, type: string) => void;
+  onScanned: (barcode: string, type: string, continuous?: boolean) => void;
   title?: string;
+  isContinuousScan?: boolean;
+  lastScannedItem?: { name: string; price: number } | null;
 }
 
 export default function BarcodeScannerModal({
@@ -26,45 +36,94 @@ export default function BarcodeScannerModal({
   onClose,
   onScanned,
   title = "Scan Barcode",
+  isContinuousScan = false,
+  lastScannedItem = null,
 }: BarcodeScannerModalProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [scanned, setScanned] = useState(false);
-  const scanLineAnim = useRef(new Animated.Value(0)).current;
+  const [isContinuous, setIsContinuous] = useState(false);
+  const [recentItems, setRecentItems] = useState<any[]>([]);
+  const scanLineAnim = useRef(new BaseAnimated.Value(0)).current;
+
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+  // Load sound using the stable expo-av
+  React.useEffect(() => {
+    async function loadSound() {
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          {
+            uri: "https://raw.githubusercontent.com/freeCodeCamp/cdn/master/build/testable-projects-fcc/audio/BeepSound.wav",
+          },
+          { shouldPlay: false, volume: 1.0 },
+        );
+        soundRef.current = sound;
+      } catch (e) {
+        console.log("Sound load error", e);
+      }
+    }
+    loadSound();
+    return () => {
+      soundRef.current?.unloadAsync();
+    };
+  }, []);
+
+  const playBeep = async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.replayAsync();
+      }
+    } catch (e) {
+      console.log("Playback error", e);
+    }
+  };
+
+  // Sync recent items when parent passes a new scanned item
+  React.useEffect(() => {
+    if (lastScannedItem) {
+      setRecentItems((prev) => [lastScannedItem, ...prev].slice(0, 3));
+      playBeep();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  }, [lastScannedItem]);
 
   // Animate scan line
   React.useEffect(() => {
     if (visible) {
       setScanned(false);
-      const animation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(scanLineAnim, {
+      setIsContinuous(isContinuousScan); // Sync with global setting when opening
+      const animation = BaseAnimated.loop(
+        BaseAnimated.sequence([
+          BaseAnimated.timing(scanLineAnim, {
             toValue: 1,
             duration: 2000,
             useNativeDriver: true,
           }),
-          Animated.timing(scanLineAnim, {
+          BaseAnimated.timing(scanLineAnim, {
             toValue: 0,
             duration: 2000,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       );
       animation.start();
       return () => animation.stop();
     }
-  }, [visible]);
+  }, [visible, isContinuousScan]);
 
   const handleBarCodeScanned = useCallback(
     (result: BarcodeScanningResult) => {
       if (scanned) return;
       setScanned(true);
-      onScanned(result.data, result.type);
+      onScanned(result.data, result.type, isContinuous);
 
-      // Reset after 2 seconds to allow scanning again
-      setTimeout(() => setScanned(false), 2000);
+      if (isContinuous) {
+        // Reduced cooldown from 1000ms to 400ms for lightning-fast scanning
+        setTimeout(() => setScanned(false), 400);
+      }
     },
-    [scanned, onScanned]
+    [scanned, onScanned, isContinuous],
   );
 
   const scanLineTranslate = scanLineAnim.interpolate({
@@ -86,17 +145,29 @@ export default function BarcodeScannerModal({
           /* Permission Request Screen */
           <View style={styles.permissionContainer}>
             <View style={styles.permissionCard}>
-              <Text style={styles.permissionIcon}>📷</Text>
+              {/* <Text style={styles.permissionIcon}>📷</Text> */}
+              <View className="flex-row justify-center items-center mb-6">
+                <View className="w-20 h-20 bg-[#121420] rounded-2xl items-center justify-center">
+                  <MaterialIcons
+                    name="photo-camera"
+                    size={40}
+                    color="#9333ea"
+                  />
+                </View>
+              </View>
               <Text style={styles.permissionTitle}>Camera Access Required</Text>
               <Text style={styles.permissionText}>
-                We need camera access to scan barcodes and QR codes for your products.
+                We need camera access to scan barcodes and QR codes for your
+                products.
               </Text>
               <TouchableOpacity
                 style={styles.permissionButton}
                 onPress={requestPermission}
                 activeOpacity={0.8}
               >
-                <Text style={styles.permissionButtonText}>Grant Camera Access</Text>
+                <Text style={styles.permissionButtonText}>
+                  Grant Camera Access
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={onClose} style={styles.cancelLink}>
                 <Text style={styles.cancelLinkText}>Cancel</Text>
@@ -118,10 +189,7 @@ export default function BarcodeScannerModal({
                   "upc_a",
                   "code128",
                   "code39",
-                  "codabar",
-                  "itf14",
-                  "upc_e",
-                ],
+                ], // Removed less common formats to speed up processing
               }}
               onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
             />
@@ -134,7 +202,7 @@ export default function BarcodeScannerModal({
               {/* Middle row */}
               <View style={styles.overlayMiddle}>
                 <View style={styles.overlaySide} />
-                
+
                 {/* Scan area */}
                 <View style={styles.scanArea}>
                   {/* Corner markers */}
@@ -144,7 +212,7 @@ export default function BarcodeScannerModal({
                   <View style={[styles.corner, styles.cornerBR]} />
 
                   {/* Animated scan line */}
-                  <Animated.View
+                  <BaseAnimated.View
                     style={[
                       styles.scanLine,
                       { transform: [{ translateY: scanLineTranslate }] },
@@ -158,8 +226,36 @@ export default function BarcodeScannerModal({
               {/* Bottom overlay */}
               <View style={styles.overlayBottom}>
                 <Text style={styles.instructionText}>
-                  {scanned ? "✅ Barcode Scanned!" : "Position barcode within the frame"}
+                  {scanned
+                    ? "✅ Scanned!"
+                    : "Position barcode within the frame"}
                 </Text>
+
+                {/* RECENT SCANS LIST */}
+                {isContinuous && recentItems.length > 0 && (
+                  <View style={styles.recentListContainer}>
+                    {recentItems.map((item, idx) => (
+                      <Animated.View
+                        key={`${idx}-${item.name}`}
+                        entering={FadeInDown.duration(300)}
+                        exiting={FadeOutUp.duration(300)}
+                        style={styles.recentItem}
+                      >
+                        <View style={styles.recentItemIcon}>
+                          <Text style={{ fontSize: 14 }}>🛍️</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.recentItemName} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={styles.recentItemPrice}>
+                            ${Number(item.price).toFixed(2)}
+                          </Text>
+                        </View>
+                      </Animated.View>
+                    ))}
+                  </View>
+                )}
               </View>
             </View>
 
@@ -168,12 +264,30 @@ export default function BarcodeScannerModal({
               <TouchableOpacity onPress={onClose} style={styles.headerButton}>
                 <Text style={styles.headerButtonText}>✕</Text>
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>{title}</Text>
+              <View style={styles.headerTitleContainer}>
+                <Text style={styles.headerTitle}>{title}</Text>
+                <TouchableOpacity
+                  onPress={() => setIsContinuous(!isContinuous)}
+                  style={[
+                    styles.modeToggle,
+                    isContinuous && styles.modeToggleActive,
+                  ]}
+                >
+                  <Text style={styles.modeToggleText}>
+                    {isContinuous ? "Continuous" : "Single Scan"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 onPress={() => setTorch(!torch)}
-                style={[styles.headerButton, torch && styles.headerButtonActive]}
+                style={[
+                  styles.headerButton,
+                  torch && styles.headerButtonActive,
+                ]}
               >
-                <Text style={styles.headerButtonText}>{torch ? "🔦" : "💡"}</Text>
+                <Text style={styles.headerButtonText}>
+                  {torch ? "🔦" : "💡"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -187,6 +301,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  headerTitleContainer: {
+    alignItems: "center",
+  },
+  modeToggle: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  modeToggleActive: {
+    backgroundColor: "rgba(99,102,241,0.3)",
+    borderColor: "rgba(99,102,241,0.5)",
+  },
+  modeToggleText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
   // Permission styles
   permissionContainer: {
@@ -366,5 +503,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     textAlign: "center",
+  },
+  recentListContainer: {
+    width: SCREEN_WIDTH * 0.85,
+    marginTop: 30,
+    gap: 12,
+  },
+  recentItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(30, 41, 59, 0.9)",
+    padding: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  recentItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(99, 102, 241, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  recentItemName: {
+    color: "#f8fafc",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  recentItemPrice: {
+    color: "#6366f1",
+    fontSize: 12,
+    fontWeight: "900",
   },
 });

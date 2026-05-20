@@ -1,7 +1,7 @@
 import { configureStore, combineReducers } from "@reduxjs/toolkit";
 import { setupListeners } from "@reduxjs/toolkit/query";
-import { 
-  persistStore, 
+import {
+  persistStore,
   persistReducer,
   FLUSH,
   REHYDRATE,
@@ -9,23 +9,25 @@ import {
   PERSIST,
   PURGE,
   REGISTER,
-} from 'redux-persist';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+} from "redux-persist";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import authReducer from "@/services/features/auth/authSlice";
 import cartReducer from "@/services/features/cart/cartSlice";
+import settingsReducer from "@/services/features/settings/settingsSlice";
 import { posApi } from "@/services/api/posApi";
 
 const persistConfig = {
-  key: 'root',
+  key: "root",
   version: 1,
   storage: AsyncStorage,
-  whitelist: ['auth'], // Only persist auth slice
+  whitelist: ["auth", "settings"], // Persist auth and settings
 };
 
 const rootReducer = combineReducers({
   auth: authReducer,
   cart: cartReducer,
+  settings: settingsReducer,
   [posApi.reducerPath]: posApi.reducer,
 });
 

@@ -9,6 +9,10 @@ export interface Product {
   sellingPrice: number;
   stockQuantity: number;
   categoryId: string;
+  category?: {
+    id: string;
+    name: string;
+  };
   supplierId?: string;
   createdAt: string;
 }

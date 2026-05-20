@@ -1,8 +1,11 @@
 export interface User {
-  id: string; // Changed from number to string (cuid)
+  id: string; 
   name: string;
   email: string;
   token: string;
+  role: "ADMIN" | "MANAGER" | "CASHIER" | "ACCOUNTANT";
+  permissions: string[];
+  stores: any[];
 }
 
 export interface LoginPayload {

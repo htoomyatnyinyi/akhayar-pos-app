@@ -1,73 +1,93 @@
 import { Tabs } from "expo-router";
-import React from "react";
-import { Platform } from "react-native";
-
+import { Platform, View, Text } from "react-native";
 import { HapticTab } from "@/components/haptic-tab";
-import { IconSymbol } from "@/components/ui/icon-symbol";
-import { Colors } from "@/constants/theme";
-import { useColorScheme } from "@/hooks/use-color-scheme";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colorScheme === 'dark' ? '#fff' : '#0f172a',
-        tabBarInactiveTintColor: '#94a3b8',
         headerShown: false,
         tabBarButton: HapticTab,
+        tabBarActiveTintColor: "#8b5cf6", // Neon Indigo
+        tabBarInactiveTintColor: "#64748b", // Slate Gray
         tabBarStyle: {
-          backgroundColor: colorScheme === 'dark' ? '#000' : '#fff',
+          backgroundColor: "#161925", // Aero Slate
           borderTopWidth: 1,
-          borderTopColor: colorScheme === 'dark' ? '#1e293b' : '#f1f5f9',
-          height: Platform.OS === 'ios' ? 88 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+          borderTopColor: "#1f2232",
+          height: Platform.OS === "ios" ? 90 : 70,
+          paddingBottom: Platform.OS === "ios" ? 28 : 12,
           paddingTop: 12,
+          elevation: 0,
         },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-        },
+        tabBarShowLabel: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Checkout",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="cart.fill" color={color} />
+          title: "Terminal",
+          tabBarIcon: ({ color, focused }) => (
+            <View className={`items-center justify-center w-14 h-10 rounded-[14px] transition-colors ${focused ? 'bg-indigo-500/10 border border-indigo-500/20' : 'bg-transparent border border-transparent'}`}>
+              {/* <Text className="text-xl mb-0.5" style={{ color: focused ? '#8b5cf6' : '#64748b', opacity: focused ? 1 : 0.7 }}>⌨️</Text> */}
+              <MaterialIcons name="keyboard-hide" size={20} color="#9333ea" />
+              {focused && <View className="absolute -bottom-1.5 w-1 h-1 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(139,92,246,0.8)]" />}
+            </View>
           ),
         }}
       />
       <Tabs.Screen
         name="orders"
         options={{
-          title: "History",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="clock.fill" color={color} />
+          title: "Sales",
+          tabBarIcon: ({ color, focused }) => (
+            <View className={`items-center justify-center w-14 h-10 rounded-[14px] transition-colors ${focused ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-transparent border border-transparent'}`}>
+              {/* <Text className="text-xl mb-0.5" style={{ color: focused ? '#10b981' : '#64748b', opacity: focused ? 1 : 0.7 }}>🧾</Text> */}
+              <MaterialIcons name="receipt-long" size={20} color="#10b981" />
+              {focused && <View className="absolute -bottom-1.5 w-1 h-1 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />}
+            </View>
           ),
         }}
       />
       <Tabs.Screen
         name="inventory"
         options={{
-          title: "Products",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="square.grid.2x2.fill" color={color} />
+          title: "Catalog",
+          tabBarIcon: ({ color, focused }) => (
+            <View className={`items-center justify-center w-14 h-10 rounded-[14px] transition-colors ${focused ? 'bg-amber-500/10 border border-amber-500/20' : 'bg-transparent border border-transparent'}`}>
+              {/* <Text className="text-xl mb-0.5" style={{ color: focused ? '#f59e0b' : '#64748b', opacity: focused ? 1 : 0.7 }}>📦</Text> */}
+              <MaterialIcons name="inventory" size={20} color="#f59e0b" />
+              {focused && <View className="absolute -bottom-1.5 w-1 h-1 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />}
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: "Dashboard",
+          tabBarIcon: ({ color, focused }) => (
+            <View className={`items-center justify-center w-14 h-10 rounded-[14px] transition-colors ${focused ? 'bg-purple-500/10 border border-purple-500/20' : 'bg-transparent border border-transparent'}`}>
+              {/* <Text className="text-xl mb-0.5" style={{ color: focused ? '#a855f7' : '#64748b', opacity: focused ? 1 : 0.7 }}>📊</Text> */}
+              <MaterialIcons name="dashboard" size={20} color="#a855f7" />
+              {focused && <View className="absolute -bottom-1.5 w-1 h-1 rounded-full bg-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.8)]" />}
+            </View>
           ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: "Settings",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="gearshape.fill" color={color} />
+          title: "Admin",
+          tabBarIcon: ({ color, focused }) => (
+            <View className={`items-center justify-center w-14 h-10 rounded-[14px] transition-colors ${focused ? 'bg-rose-500/10 border border-rose-500/20' : 'bg-transparent border border-transparent'}`}>
+              {/* <Text className="text-xl mb-0.5" style={{ color: focused ? '#f43f5e' : '#64748b', opacity: focused ? 1 : 0.7 }}>⚙️</Text> */}
+              <MaterialIcons name="admin-panel-settings" size={20} color="#f43f5e" />
+              {focused && <View className="absolute -bottom-1.5 w-1 h-1 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.8)]" />}
+            </View>
           ),
         }}
       />
     </Tabs>
   );
 }
-

@@ -4,8 +4,11 @@ import { Category, CreateCategoryPayload } from "./categoryTypes";
 export const categoryApi = posApi.injectEndpoints({
   overrideExisting: false,
   endpoints: (builder) => ({
-    getCategories: builder.query<Category[], void>({
-      query: () => "/categories",
+    getCategories: builder.query<Category[], string | undefined>({
+      query: (storeId) => ({
+        url: "/categories",
+        params: storeId ? { storeId } : {},
+      }),
       providesTags: ["Categories"],
     }),
 
@@ -14,7 +17,7 @@ export const categoryApi = posApi.injectEndpoints({
       providesTags: ["Categories"],
     }),
 
-    createCategory: builder.mutation<Category, CreateCategoryPayload>({
+    createCategory: builder.mutation<Category, CreateCategoryPayload & { storeId?: string }>({
       query: (body) => ({
         url: "/categories",
         method: "POST",

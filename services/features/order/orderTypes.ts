@@ -2,8 +2,8 @@ import { CartItem } from "../cart/cartTypes";
 
 export interface Order {
   id: string; // Changed from number to string (cuid)
-  totalAmount: number; // Changed from total to totalAmount
-  status: string; // Added status
+  grandTotal: number;
+  status: string;
   items: OrderItem[];
   createdAt: string;
 }
