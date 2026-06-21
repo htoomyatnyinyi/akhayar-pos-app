@@ -1,31 +1,29 @@
 import { useState } from "react";
 import {
-  View,
-  TextInput,
-  Text,
-  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
-  Alert,
-  ActivityIndicator,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { router } from "expo-router";
-import { useLoginMutation } from "@/services/features/auth/authApi";
-import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
-import { setUser } from "@/services/features/auth/authSlice";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { MaterialIcons } from "@expo/vector-icons";
+import { useLoginMutation } from "@/services/features/auth/authApi";
+import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
+import { setUser } from "@/services/features/auth/authSlice";
 
 export default function LoginScreen() {
   const dispatch = useAppDispatch();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [activeInput, setActiveInput] = useState<string | null>(null);
-
   const [login, { isLoading }] = useLoginMutation();
 
   const handleLogin = async () => {
@@ -35,145 +33,69 @@ export default function LoginScreen() {
       dispatch(setUser(user));
       router.replace("/");
     } catch (error: any) {
-      console.error("Login failed:", error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        "Login Failed",
-        error?.data?.message ||
-          error?.message ||
-          "Invalid credentials. Please try again.",
-      );
+      Alert.alert("Login failed", error?.data?.message || "Check your credentials and try again.");
     }
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#0b0c10" }}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
+    <SafeAreaView className="flex-1 bg-slate-950">
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: "center",
-            paddingHorizontal: 32,
-            paddingBottom: 40,
-          }}
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24, paddingBottom: 36 }}
           keyboardShouldPersistTaps="handled"
         >
-          <Animated.View
-            entering={FadeInDown.duration(800).springify()}
-            className="items-center mb-16 relative"
-          >
-            <View className="absolute w-32 h-32 bg-indigo-600/20 rounded-full blur-3xl" />
-            <View className="w-24 h-24 bg-[#1f2232] rounded-[32px] items-center justify-center shadow-2xl border border-[#2a2e43] mb-8 relative z-10">
-              <MaterialIcons name="store" size={48} color="#60a5fa" />
+          <Animated.View entering={FadeInDown.duration(600).springify()} className="mb-10">
+            <View className="mb-4 h-16 w-16 items-center justify-center rounded-[24px] bg-sky-500/15 border border-sky-400/20">
+              <MaterialIcons name="point-of-sale" size={32} color="#7dd3fc" />
             </View>
-            <Text className="text-4xl font-extrabold text-slate-100 tracking-tight mb-3">
-              Welcome to mini_POS
+            <Text className="text-4xl font-black text-white">Welcome back</Text>
+            <Text className="mt-3 max-w-[320px] text-sm leading-5 text-slate-300">
+              Sign in to manage sales, stock, and operations from a single dashboard.
             </Text>
-            <View className="bg-indigo-500/10 px-4 py-1.5 rounded-full border border-indigo-500/20">
-              <Text className="text-indigo-400 font-black tracking-[4px] uppercase text-[9px]">
-                Security Gateway
-              </Text>
-            </View>
           </Animated.View>
 
-          <Animated.View
-            entering={FadeInDown.duration(800).delay(200).springify()}
-            className="bg-[#1f2232] p-8 rounded-[40px] border border-[#2a2e43] shadow-2xl"
-          >
-            <View className="mb-6">
-              <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-3 ml-2">
-                Email Address
-              </Text>
-              <TextInput
-                placeholder="name@example.com"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholderTextColor="#475569"
-                onFocus={() => setActiveInput("email")}
-                onBlur={() => setActiveInput(null)}
-                className={`bg-[#121420] px-6 py-5 rounded-[20px] text-slate-100 font-bold border transition-colors ${activeInput === "email" ? "border-indigo-500/50 bg-[#161826]" : "border-[#222736]"}`}
-              />
-            </View>
+          <Animated.View entering={FadeInDown.duration(600).delay(120).springify()} className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5">
+            <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">Email</Text>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="name@company.com"
+              placeholderTextColor="#64748b"
+              className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-white"
+            />
 
-            <View className="mb-8 relative">
-              <Text className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-3 ml-2">
-                Password
-              </Text>
+            <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">Password</Text>
+            <View className="mb-6 flex-row items-center rounded-2xl border border-white/10 bg-white/5 px-4">
               <TextInput
-                placeholder="••••••••"
-                secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
-                placeholderTextColor="#475569"
-                onFocus={() => setActiveInput("password")}
-                onBlur={() => setActiveInput(null)}
-                className={`bg-[#121420] px-6 py-5 rounded-[20px] text-slate-100 font-bold border pr-14 transition-colors ${activeInput === "password" ? "border-indigo-500/50 bg-[#161826]" : "border-[#222736]"}`}
+                secureTextEntry={!showPassword}
+                placeholder="••••••••"
+                placeholderTextColor="#64748b"
+                className="flex-1 py-4 text-base text-white"
               />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                className="absolute right-5 top-[44px]"
-              >
-                <Text className="text-xl opacity-60">
-                  {/* {showPassword ? "🙈" : "👁️"} */}
-                  {showPassword ? (
-                    <MaterialIcons
-                      name="visibility-off"
-                      size={24}
-                      color="#ffffff"
-                    />
-                  ) : (
-                    <MaterialIcons
-                      name="visibility"
-                      size={24}
-                      color="#ffffff"
-                    />
-                  )}
-                </Text>
-              </TouchableOpacity>
+              <Pressable onPress={() => setShowPassword((value) => !value)} className="pl-3">
+                <MaterialIcons name={showPassword ? "visibility-off" : "visibility"} size={22} color="#cbd5e1" />
+              </Pressable>
             </View>
 
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={handleLogin}
-              disabled={isLoading}
-              className={`py-5 rounded-[24px] items-center shadow-2xl border border-white/10 ${isLoading ? "bg-slate-800" : "bg-indigo-600 shadow-indigo-600/30"}`}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text className="font-black text-lg text-white tracking-wide">
-                  Sign In
-                </Text>
-              )}
-            </TouchableOpacity>
+            <Pressable onPress={handleLogin} disabled={isLoading} className="items-center rounded-2xl bg-sky-500 px-4 py-4 active:opacity-80">
+              {isLoading ? <ActivityIndicator color="#fff" /> : <Text className="text-base font-bold text-white">Sign in</Text>}
+            </Pressable>
           </Animated.View>
 
-          <Animated.View
-            entering={FadeInDown.duration(800).delay(400).springify()}
-            className="items-center mt-10"
-          >
-            <TouchableOpacity
-              onPress={() => router.push("/register")}
-              className="p-4 flex-row items-center gap-2"
-            >
-              <Text className="text-slate-500 font-bold text-sm tracking-wide">
-                New to the platform?
-              </Text>
-              <View className="bg-indigo-500/10 px-3 py-1.5 rounded-xl border border-indigo-500/20">
-                <Text className="text-indigo-400 font-bold text-xs tracking-wide">
-                  Request Access
-                </Text>
-              </View>
-            </TouchableOpacity>
+          <Animated.View entering={FadeInDown.duration(600).delay(240).springify()} className="mt-8 flex-row items-center justify-center">
+            <Text className="text-sm text-slate-400">Need an account?</Text>
+            <Pressable onPress={() => router.push("/register")} className="ml-2 rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1.5">
+              <Text className="text-xs font-bold uppercase tracking-[2px] text-sky-200">Register</Text>
+            </Pressable>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
