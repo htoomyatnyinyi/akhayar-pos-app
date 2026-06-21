@@ -3,8 +3,12 @@ import { Tabs } from "expo-router";
 import { Platform, View } from "react-native";
 import { OfflineSyncStatus } from "@/components/offline-sync-status";
 import { HapticTab } from "@/components/haptic-tab";
+import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 
 export default function TabLayout() {
+  const role = useAppSelector((state) => state.auth.user?.role);
+  const showManagement = role === "ADMIN" || role === "MANAGER";
+
   return (
     <View className="flex-1 bg-slate-950">
       <Tabs
@@ -69,6 +73,17 @@ export default function TabLayout() {
             ),
           }}
         />
+        {showManagement ? (
+          <Tabs.Screen
+            name="manage"
+            options={{
+              title: "Manage",
+              tabBarIcon: ({ color, focused }) => (
+                <MaterialIcons name="admin-panel-settings" size={22} color={focused ? "#fbbf24" : color} />
+              ),
+            }}
+          />
+        ) : null}
       </Tabs>
       <OfflineSyncStatus />
     </View>

@@ -666,6 +666,7 @@ export async function createOfflineOrder(payload: CreateOrderPayload): Promise<O
         payload.grandTotal,
         payload.paidAmount,
         payload.changeAmount,
+        JSON.stringify(payload.paymentBreakdown ?? []),
         "pending",
         now,
         now,
@@ -722,15 +723,26 @@ export async function createOfflineOrder(payload: CreateOrderPayload): Promise<O
   const [created] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
 
-  return {
-    id: created.id,
-    grandTotal: created.grandTotal,
-    status: created.status,
-    createdAt: created.createdAt,
-    items: items.map((item) => ({
-      id: item.id,
-      productId: item.productId,
-      productName: item.productName ?? "",
+    return {
+      id: created.id,
+      grandTotal: created.grandTotal,
+      status: created.status,
+      createdAt: created.createdAt,
+      subTotal: created.subTotal,
+      taxAmount: created.taxAmount,
+      discountAmount: created.discountAmount,
+      paidAmount: created.paidAmount,
+      changeAmount: created.changeAmount,
+      paymentMethod: created.paymentMethod,
+      paymentStatus: created.paymentStatus,
+      paymentBreakdown: parsePaymentBreakdown(created.paymentBreakdown ?? payload.paymentBreakdown),
+      customerId: created.customerId ?? undefined,
+      storeId: created.storeId ?? undefined,
+      userId: created.userId,
+      items: items.map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName ?? "",
       price: item.unitPrice,
       quantity: item.quantity,
       product: { name: item.productName ?? "", sellingPrice: String(item.unitPrice) },
@@ -762,6 +774,7 @@ export async function upsertOrders(remoteOrders: (Order & Record<string, any>)[]
         grandTotal: Number(order.grandTotal ?? 0),
         paidAmount: Number(order.paidAmount ?? 0),
         changeAmount: Number(order.changeAmount ?? 0),
+        paymentBreakdown: order.paymentBreakdown ?? null,
         syncStatus: "synced",
         createdAt: order.createdAt ?? now,
         updatedAt: order.updatedAt ?? now,
@@ -1009,6 +1022,20 @@ export async function getQueuedCount() {
   return Number(result[0]?.count ?? 0);
 }
 
+function parsePaymentBreakdown(value: unknown) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value as Order["paymentBreakdown"];
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 function toProduct(product: LocalProduct): Product {
   return {
     id: product.id,
@@ -1036,6 +1063,17 @@ async function toOrder(order: LocalOrder): Promise<Order> {
     grandTotal: order.grandTotal,
     status: order.status,
     createdAt: order.createdAt,
+    subTotal: order.subTotal,
+    taxAmount: order.taxAmount,
+    discountAmount: order.discountAmount,
+    paidAmount: order.paidAmount,
+    changeAmount: order.changeAmount,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    paymentBreakdown: parsePaymentBreakdown(order.paymentBreakdown),
+    customerId: order.customerId ?? undefined,
+    storeId: order.storeId ?? undefined,
+    userId: order.userId,
     items: items.map((item) => ({
       id: item.id,
       productId: item.productId,

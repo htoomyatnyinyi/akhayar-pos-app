@@ -138,6 +138,7 @@ export const orders = sqliteTable("orders", {
   grandTotal: real("grand_total").notNull(),
   paidAmount: real("paid_amount").notNull().default(0),
   changeAmount: real("change_amount").notNull().default(0),
+  paymentBreakdown: text("payment_breakdown", { mode: "json" }),
   syncStatus: text("sync_status").notNull().default("pending"),
   syncError: text("sync_error"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

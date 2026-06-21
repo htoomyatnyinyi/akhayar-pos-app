@@ -8,28 +8,8 @@ import {
   upsertOrders,
 } from "@/services/offline/repository";
 import { isOnline } from "@/services/offline/network";
-export interface CreateOrderPayload {
-  subTotal: number;
-  taxAmount?: number;
-  discountAmount?: number;
-  grandTotal: number;
-  paymentMethod: string;
-  paidAmount: number;
-  changeAmount: number;
-  paymentStatus?: string;
-  userId: string;
-  customerId?: string;
-  sessionId?: string;
-  storeId?: string;
-  items: Array<{
-    productId: string;
-    quantity: number;
-    unitPrice: number;
-    discountAmount?: number;
-    subTotal: number;
-  }>;
-}
 import { Order } from "./orderTypes";
+export type { CreateOrderPayload } from "./orderTypes";
 
 export const orderApi = posApi.injectEndpoints({
   overrideExisting: false,
@@ -64,7 +44,16 @@ export const orderApi = posApi.injectEndpoints({
           });
 
           if (!result.error) {
-            return { data: result.data as Order };
+            const data = result.data as Order;
+            await upsertOrders([
+              {
+                ...data,
+                ...body,
+                id: data.id,
+                items: data.items ?? [],
+              } as Order & Record<string, any>,
+            ]);
+            return { data };
           }
 
           if (

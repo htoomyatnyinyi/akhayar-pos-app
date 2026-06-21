@@ -1,11 +1,25 @@
-import { CartItem } from "../cart/cartTypes";
-
 export interface Order {
-  id: string; // Changed from number to string (cuid)
+  id: string;
   grandTotal: number;
   status: string;
   items: OrderItem[];
   createdAt: string;
+  subTotal?: number;
+  taxAmount?: number;
+  discountAmount?: number;
+  paidAmount?: number;
+  changeAmount?: number;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  paymentBreakdown?: PaymentBreakdownItem[];
+  customerId?: string;
+  storeId?: string;
+  userId?: string;
+}
+
+export interface PaymentBreakdownItem {
+  method: "CASH" | "KBZ_PAY" | "CB_PAY" | "WAVE_PAY" | "CARD";
+  amount: number;
 }
 
 export interface OrderItem {
@@ -29,8 +43,11 @@ export interface CreateOrderPayload {
   paidAmount: number;
   changeAmount: number;
   paymentStatus?: string;
+  paymentBreakdown?: PaymentBreakdownItem[];
   userId: string;
   customerId?: string;
+  sessionId?: string;
+  storeId?: string;
   items: {
     productId: string;
     quantity: number;
