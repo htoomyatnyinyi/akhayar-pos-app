@@ -5,6 +5,7 @@ import {
   getLocalOrderById,
   getLocalOrders,
   updateOfflineOrderStatus,
+  upsertOrders,
 } from "@/services/offline/repository";
 import { isOnline } from "@/services/offline/network";
 export interface CreateOrderPayload {
@@ -40,7 +41,11 @@ export const orderApi = posApi.injectEndpoints({
           const result = await baseQuery(
             `/tenant/orders${storeId ? `?storeId=${storeId}` : ""}`,
           );
-          if (!result.error) return { data: result.data as Order[] };
+          if (!result.error) {
+            const data = result.data as Order[];
+            if (Array.isArray(data)) await upsertOrders(data);
+            return { data };
+          }
         }
 
         return { data: await getLocalOrders(storeId) };

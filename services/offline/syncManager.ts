@@ -8,6 +8,7 @@ import {
   markOrderSynced,
   markEntitySyncFailed,
   markEntitySynced,
+  markOutboxDead,
   markOutboxFailed,
   markOutboxSynced,
 } from "./repository";
@@ -25,7 +26,7 @@ let syncInFlight = false;
 let unsubscribeNetwork: (() => void) | undefined;
 
 export async function initializeOfflineSystem(dispatch: AppDispatch, getState: () => RootState) {
-  migrateOfflineDatabase();
+  await migrateOfflineDatabase();
   dispatch(setInitialized(true));
   dispatch(setQueuedCount(await getQueuedCount()));
 
@@ -53,7 +54,7 @@ export async function syncNow(dispatch: AppDispatch, getState: () => RootState) 
 
   try {
     await pushOutbox(getState);
-    dispatch(posApi.util.invalidateTags(["Products", "Orders", "Inventory"]));
+    dispatch(posApi.util.invalidateTags(["Products", "Orders", "Inventory", "Customers", "Sessions", "Categories", "Staff", "Stores"]));
     dispatch(setQueuedCount(await getQueuedCount()));
     dispatch(setSyncComplete());
   } catch (error) {
@@ -68,6 +69,12 @@ async function pushOutbox(getState: () => RootState) {
   const items = await getDueOutboxItems();
 
   for (const item of items) {
+    // Dead-letter: stop retrying after 10 attempts
+    if (item.attempts >= 10) {
+      await markOutboxDead(item.id);
+      continue;
+    }
+
     try {
       const response = await fetch(`${POS_API_URL}${item.endpoint}`, {
         method: item.method,
@@ -75,7 +82,8 @@ async function pushOutbox(getState: () => RootState) {
           "content-type": "application/json",
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(item.payload),
+        // Don't send body for DELETE requests
+        ...(item.method !== "DELETE" ? { body: JSON.stringify(item.payload) } : {}),
       });
 
       const data = await response.json().catch(() => undefined);

@@ -309,7 +309,7 @@ export async function createOfflineProduct(payload: Partial<Product> & { categor
     updatedAt: now,
   } as typeof products.$inferInsert);
 
-  await enqueueMutation("products", id, "create", "/products", "POST", payload);
+  await enqueueMutation("products", id, "create", "/tenant/products", "POST", payload);
   return toProduct((await getOfflineDb().select().from(products).where(eq(products.id, id)).limit(1))[0]);
 }
 
@@ -319,7 +319,7 @@ export async function updateOfflineProduct(id: string, data: Partial<Product> & 
     .set({ ...data, updatedAt: new Date().toISOString() } as Partial<typeof products.$inferInsert>)
     .where(eq(products.id, id));
 
-  await enqueueMutation("products", id, "update", `/products/${id}`, "PUT", data);
+  await enqueueMutation("products", id, "update", `/tenant/products/${id}`, "PUT", data);
   const [row] = await getOfflineDb().select().from(products).where(eq(products.id, id)).limit(1);
   return toProduct(row);
 }
@@ -330,7 +330,7 @@ export async function deleteOfflineProduct(id: string) {
     .set({ isActive: false, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
     .where(eq(products.id, id));
 
-  await enqueueMutation("products", id, "delete", `/products/${id}`, "DELETE", {});
+  await enqueueMutation("products", id, "delete", `/tenant/products/${id}`, "DELETE", {});
 }
 
 export async function getLocalCategories(storeId?: string) {
@@ -412,7 +412,7 @@ export async function createOfflineCustomer(payload: CreateCustomerPayload) {
     updatedAt: now,
   });
 
-  await enqueueMutation("customers", id, "create", "/customers", "POST", payload);
+  await enqueueMutation("customers", id, "create", "/tenant/customers", "POST", payload);
   return toCustomer((await getOfflineDb().select().from(customers).where(eq(customers.id, id)).limit(1))[0]);
 }
 
@@ -434,7 +434,7 @@ export async function createOfflineCategory(payload: CreateCategoryPayload & { s
     updatedAt: now,
   });
 
-  await enqueueMutation("categories", id, "create", "/categories", "POST", payload);
+  await enqueueMutation("categories", id, "create", "/tenant/categories", "POST", payload);
   return toCategory((await getOfflineDb().select().from(categories).where(eq(categories.id, id)).limit(1))[0]);
 }
 
@@ -457,7 +457,7 @@ export async function createOfflineStore(payload: CreateStorePayload) {
     updatedAt: now,
   });
 
-  await enqueueMutation("stores", id, "create", "/stores", "POST", { ...payload, code });
+  await enqueueMutation("stores", id, "create", "/tenant/stores", "POST", { ...payload, code });
   return toStore((await getOfflineDb().select().from(stores).where(eq(stores.id, id)).limit(1))[0]);
 }
 
@@ -481,7 +481,7 @@ export async function openOfflineSession(payload: { userId: string; openingBalan
     updatedAt: now,
   });
 
-  await enqueueMutation("sessions", id, "open", "/sessions/open", "POST", payload);
+  await enqueueMutation("sessions", id, "open", "/tenant/sessions/open", "POST", payload);
   return toSession((await getOfflineDb().select().from(sessions).where(eq(sessions.id, id)).limit(1))[0]);
 }
 
@@ -500,7 +500,7 @@ export async function closeOfflineSession(sessionId: string, payload: CloseSessi
     })
     .where(or(eq(sessions.id, sessionId), eq(sessions.remoteId, sessionId)));
 
-  await enqueueMutation("sessions", sessionId, "close", `/sessions/${sessionId}/close`, "POST", payload);
+  await enqueueMutation("sessions", sessionId, "close", `/tenant/sessions/${sessionId}/close`, "POST", payload);
   const [row] = await getOfflineDb()
     .select()
     .from(sessions)
@@ -522,7 +522,7 @@ export async function updateOfflineEntity(
     .set({ ...toSqliteUpdate(data), syncStatus: "pending", updatedAt: now })
     .where(eq(table.id, id));
 
-  await enqueueMutation(entity, id, "update", `/${entity}/${id}`, "PUT", data);
+  await enqueueMutation(entity, id, "update", `/tenant/${entity}/${id}`, "PUT", data);
 }
 
 export async function deleteOfflineEntity(entity: "customers" | "categories" | "stores", id: string) {
@@ -533,7 +533,7 @@ export async function deleteOfflineEntity(entity: "customers" | "categories" | "
     .set({ isActive: false, syncStatus: "pending", updatedAt: now })
     .where(eq(table.id, id));
 
-  await enqueueMutation(entity, id, "delete", `/${entity}/${id}`, "DELETE", {});
+  await enqueueMutation(entity, id, "delete", `/tenant/${entity}/${id}`, "DELETE", {});
 }
 
 export async function upsertGenericRecords<T extends { id: string }>(entity: string, records: T[]) {
@@ -707,7 +707,7 @@ export async function createOfflineOrder(payload: CreateOrderPayload): Promise<O
         "orders",
         orderId,
         "create",
-        "/orders",
+        "/tenant/orders",
         "POST",
         JSON.stringify(payload),
         "pending",
@@ -738,6 +738,78 @@ export async function createOfflineOrder(payload: CreateOrderPayload): Promise<O
   };
 }
 
+export async function upsertOrders(remoteOrders: (Order & Record<string, any>)[]) {
+  if (!remoteOrders.length) return;
+  const now = new Date().toISOString();
+
+  for (const order of remoteOrders) {
+    await getOfflineDb()
+      .insert(orders)
+      .values({
+        id: order.id,
+        remoteId: order.id,
+        storeId: order.storeId,
+        userId: order.userId ?? "",
+        customerId: order.customerId,
+        sessionId: order.sessionId,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus ?? "PAID",
+        paymentMethod: order.paymentMethod ?? "CASH",
+        subTotal: Number(order.subTotal ?? order.grandTotal ?? 0),
+        taxAmount: Number(order.taxAmount ?? 0),
+        discountAmount: Number(order.discountAmount ?? 0),
+        grandTotal: Number(order.grandTotal ?? 0),
+        paidAmount: Number(order.paidAmount ?? 0),
+        changeAmount: Number(order.changeAmount ?? 0),
+        syncStatus: "synced",
+        createdAt: order.createdAt ?? now,
+        updatedAt: order.updatedAt ?? now,
+        lastSyncedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: orders.id,
+        set: {
+          remoteId: order.id,
+          status: order.status,
+          paymentStatus: sql`excluded.payment_status`,
+          grandTotal: sql`excluded.grand_total`,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: sql`excluded.updated_at`,
+          lastSyncedAt: now,
+        },
+      });
+
+    // Upsert order items if present
+    if (Array.isArray(order.items)) {
+      for (const item of order.items as (OrderItem & Record<string, any>)[]) {
+        await getOfflineDb()
+          .insert(orderItems)
+          .values({
+            id: item.id ?? createLocalId("item"),
+            orderId: order.id,
+            productId: item.productId,
+            productName: item.productName ?? item.product?.name ?? null,
+            quantity: item.quantity,
+            unitPrice: Number(item.unitPrice ?? item.price ?? 0),
+            discountAmount: Number(item.discountAmount ?? 0),
+            subTotal: Number(item.subTotal ?? item.quantity * Number(item.unitPrice ?? item.price ?? 0)),
+            createdAt: item.createdAt ?? now,
+          })
+          .onConflictDoUpdate({
+            target: orderItems.id,
+            set: {
+              quantity: sql`excluded.quantity`,
+              unitPrice: sql`excluded.unit_price`,
+              subTotal: sql`excluded.sub_total`,
+            },
+          });
+      }
+    }
+  }
+}
+
 export async function getLocalOrders(storeId?: string) {
   const rows = await getOfflineDb()
     .select()
@@ -764,7 +836,7 @@ export async function updateOfflineOrderStatus(id: string, status: string) {
     .set({ status, syncStatus: "pending", updatedAt: now })
     .where(or(eq(orders.id, id), eq(orders.remoteId, id)));
 
-  await enqueueMutation("orders", id, "updateStatus", `/orders/${id}/status`, "PATCH", { status });
+  await enqueueMutation("orders", id, "updateStatus", `/tenant/orders/${id}/status`, "PATCH", { status });
   const order = await getLocalOrderById(id);
   if (!order) throw new Error("Order not found in offline cache");
   return order;
@@ -777,7 +849,7 @@ export async function deleteOfflineOrder(id: string) {
     .set({ status: "VOIDED", syncStatus: "pending", updatedAt: now })
     .where(or(eq(orders.id, id), eq(orders.remoteId, id)));
 
-  await enqueueMutation("orders", id, "delete", `/orders/${id}`, "DELETE", {});
+  await enqueueMutation("orders", id, "delete", `/tenant/orders/${id}`, "DELETE", {});
 }
 
 export async function markOrderSynced(localId: string, remote: Order & Record<string, any>) {
@@ -841,7 +913,7 @@ export async function markOrderSyncFailed(localId: string, error: string) {
 export async function markEntitySyncFailed(entity: string, localId: string, error: string) {
   const update = { syncStatus: "failed", syncError: error, updatedAt: new Date().toISOString() };
   if (entity === "products") {
-    await getOfflineDb().update(products).set({ updatedAt: new Date().toISOString() }).where(eq(products.id, localId));
+    await getOfflineDb().update(products).set({ syncStatus: "failed", syncError: error, updatedAt: new Date().toISOString() } as any).where(eq(products.id, localId));
   } else if (entity === "customers") {
     await getOfflineDb().update(customers).set(update).where(eq(customers.id, localId));
   } else if (entity === "categories") {
@@ -883,6 +955,16 @@ export async function markOutboxFailed(id: string, attempts: number, error: stri
       attempts,
       lastError: error,
       nextAttemptAt,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(syncOutbox.id, id));
+}
+
+export async function markOutboxDead(id: string) {
+  await getOfflineDb()
+    .update(syncOutbox)
+    .set({
+      status: "dead",
       updatedAt: new Date().toISOString(),
     })
     .where(eq(syncOutbox.id, id));
