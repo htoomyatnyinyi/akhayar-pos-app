@@ -26,7 +26,9 @@ export const staffApi = posApi.injectEndpoints({
     getStaff: builder.query<Staff[], string | undefined>({
       async queryFn(storeId, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery(`/staff${storeId ? `?storeId=${storeId}` : ""}`);
+          const result = await baseQuery(
+            `/tenant/staff${storeId ? `?storeId=${storeId}` : ""}`,
+          );
           if (!result.error && Array.isArray(result.data)) {
             await upsertGenericRecords("staff", result.data as Staff[]);
             return { data: result.data as Staff[] };
@@ -39,32 +41,64 @@ export const staffApi = posApi.injectEndpoints({
     }),
 
     getStaffById: builder.query<Staff, string>({
-      query: (id) => `/staff/${id}`,
+      query: (id) => `/tenant/staff/${id}`,
       providesTags: ["Staff"],
     }),
 
     createStaff: builder.mutation<Staff, CreateStaffPayload>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: "/staff", method: "POST", body });
+          const result = await baseQuery({
+            url: "/tenant/staff",
+            method: "POST",
+            body,
+          });
           if (!result.error) return { data: result.data as Staff };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
-        return { data: (await createOfflineGenericRecord("staff", "/staff", body)) as Staff };
+        return {
+          data: (await createOfflineGenericRecord(
+            "staff",
+            "/tenant/staff",
+            body,
+          )) as Staff,
+        };
       },
       invalidatesTags: ["Staff"],
     }),
 
-    updateStaff: builder.mutation<Staff, { id: string; data: Partial<CreateStaffPayload> }>({
+    updateStaff: builder.mutation<
+      Staff,
+      { id: string; data: Partial<CreateStaffPayload> }
+    >({
       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/staff/${id}`, method: "PUT", body: data });
+          const result = await baseQuery({
+            url: `/tenant/staff/${id}`,
+            method: "PUT",
+            body: data,
+          });
           if (!result.error) return { data: result.data as Staff };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
-        return { data: (await updateOfflineGenericRecord("staff", `/staff/${id}`, id, data)) as unknown as Staff };
+        return {
+          data: (await updateOfflineGenericRecord(
+            "staff",
+            `/tenant/staff/${id}`,
+            id,
+            data,
+          )) as unknown as Staff,
+        };
       },
       invalidatesTags: ["Staff"],
     }),
@@ -72,12 +106,19 @@ export const staffApi = posApi.injectEndpoints({
     deleteStaff: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/staff/${id}`, method: "DELETE" });
+          const result = await baseQuery({
+            url: `/tenant/staff/${id}`,
+            method: "DELETE",
+          });
           if (!result.error) return { data: undefined };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
-        await deleteOfflineGenericRecord("staff", `/staff/${id}`, id);
+        await deleteOfflineGenericRecord("staff", `/tenant/staff/${id}`, id);
         return { data: undefined };
       },
       invalidatesTags: ["Staff"],

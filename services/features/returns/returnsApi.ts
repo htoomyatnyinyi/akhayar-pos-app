@@ -12,7 +12,7 @@ export const returnsApi = posApi.injectEndpoints({
     getReturns: builder.query<any[], void>({
       async queryFn(_arg, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery("/returns");
+          const result = await baseQuery("/tenant/returns");
           if (!result.error && Array.isArray(result.data)) {
             await upsertGenericRecords("returns", result.data as Array<{ id: string }>);
             return { data: result.data as any[] };
@@ -26,12 +26,12 @@ export const returnsApi = posApi.injectEndpoints({
     processReturn: builder.mutation<any, any>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: "/returns", method: "POST", body });
+          const result = await baseQuery({ url: "/tenant/returns", method: "POST", body });
           if (!result.error) return { data: result.data };
           if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
         }
 
-        return { data: await createOfflineGenericRecord("returns", "/returns", body) };
+        return { data: await createOfflineGenericRecord("returns", "/tenant/returns", body) };
       },
       invalidatesTags: ["Orders", "Products"],
     }),

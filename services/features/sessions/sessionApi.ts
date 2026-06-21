@@ -17,26 +17,41 @@ import { Session, CloseSessionPayload } from "./sessionTypes";
 export const sessionApi = posApi.injectEndpoints({
   overrideExisting: false,
   endpoints: (builder) => ({
-    getActiveSession: builder.query<Session, { userId: string; storeId?: string }>({
+    getActiveSession: builder.query<
+      Session,
+      { userId: string; storeId?: string }
+    >({
       async queryFn({ userId, storeId }, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery(`/sessions/active/${userId}${storeId ? `?storeId=${storeId}` : ""}`);
+          const result = await baseQuery(
+            `/tenant/sessions/active/${userId}${storeId ? `?storeId=${storeId}` : ""}`,
+          );
           if (!result.error) {
             const session = result.data as Session;
             if (session?.id) await upsertSessions([session]);
             return { data: session };
           }
 
-          if (typeof result.error.status === "number" && result.error.status < 500) {
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          ) {
             const localSession = await getLocalActiveSession(userId, storeId);
-            return localSession ? { data: localSession } : { error: result.error };
+            return localSession
+              ? { data: localSession }
+              : { error: result.error };
           }
         }
 
         const localSession = await getLocalActiveSession(userId, storeId);
         return localSession
           ? { data: localSession }
-          : { error: { status: "CUSTOM_ERROR", error: "No active offline session" } };
+          : {
+              error: {
+                status: "CUSTOM_ERROR",
+                error: "No active offline session",
+              },
+            };
       },
       providesTags: ["Sessions"],
     }),
@@ -44,9 +59,17 @@ export const sessionApi = posApi.injectEndpoints({
     openSession: builder.mutation<Session, OpenSessionPayload>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: "/sessions/open", method: "POST", body });
+          const result = await baseQuery({
+            url: "/tenant/sessions/open",
+            method: "POST",
+            body,
+          });
           if (!result.error) return { data: result.data as Session };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         return { data: await openOfflineSession(body) };
@@ -54,12 +77,23 @@ export const sessionApi = posApi.injectEndpoints({
       invalidatesTags: ["Sessions"],
     }),
 
-    closeSession: builder.mutation<Session, { sessionId: string; data: CloseSessionPayload }>({
+    closeSession: builder.mutation<
+      Session,
+      { sessionId: string; data: CloseSessionPayload }
+    >({
       async queryFn({ sessionId, data }, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/sessions/${sessionId}/close`, method: "POST", body: data });
+          const result = await baseQuery({
+            url: `/tenant/sessions/${sessionId}/close`,
+            method: "POST",
+            body: data,
+          });
           if (!result.error) return { data: result.data as Session };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         return { data: await closeOfflineSession(sessionId, data) };

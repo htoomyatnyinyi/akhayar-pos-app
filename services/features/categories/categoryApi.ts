@@ -16,7 +16,7 @@ export const categoryApi = posApi.injectEndpoints({
       async queryFn(storeId, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
           const result = await baseQuery({
-            url: "/categories",
+            url: "/tenant/categories",
             params: storeId ? { storeId } : {},
           });
 
@@ -32,16 +32,27 @@ export const categoryApi = posApi.injectEndpoints({
     }),
 
     getCategoryById: builder.query<Category, string>({
-      query: (id) => `/categories/${id}`,
+      query: (id) => `/tenant/categories/${id}`,
       providesTags: ["Categories"],
     }),
 
-    createCategory: builder.mutation<Category, CreateCategoryPayload & { storeId?: string }>({
+    createCategory: builder.mutation<
+      Category,
+      CreateCategoryPayload & { storeId?: string }
+    >({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: "/categories", method: "POST", body });
+          const result = await baseQuery({
+            url: "/tenant/categories",
+            method: "POST",
+            body,
+          });
           if (!result.error) return { data: result.data as Category };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         return { data: await createOfflineCategory(body) };
@@ -49,16 +60,31 @@ export const categoryApi = posApi.injectEndpoints({
       invalidatesTags: ["Categories"],
     }),
 
-    updateCategory: builder.mutation<Category, { id: string; data: Partial<CreateCategoryPayload> }>({
+    updateCategory: builder.mutation<
+      Category,
+      { id: string; data: Partial<CreateCategoryPayload> }
+    >({
       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/categories/${id}`, method: "PUT", body: data });
+          const result = await baseQuery({
+            url: `/tenant/categories/${id}`,
+            method: "PUT",
+            body: data,
+          });
           if (!result.error) return { data: result.data as Category };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         await updateOfflineEntity("categories", id, data);
-        return { data: (await getLocalCategories()).find((category) => category.id === id) as Category };
+        return {
+          data: (await getLocalCategories()).find(
+            (category) => category.id === id,
+          ) as Category,
+        };
       },
       invalidatesTags: ["Categories"],
     }),
@@ -66,9 +92,16 @@ export const categoryApi = posApi.injectEndpoints({
     deleteCategory: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/categories/${id}`, method: "DELETE" });
+          const result = await baseQuery({
+            url: `/tenant/categories/${id}`,
+            method: "DELETE",
+          });
           if (!result.error) return { data: undefined };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         await deleteOfflineEntity("categories", id);

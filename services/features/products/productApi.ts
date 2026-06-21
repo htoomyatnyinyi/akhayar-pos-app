@@ -19,7 +19,7 @@ export const productApi = posApi.injectEndpoints({
       async queryFn(storeId, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
           const result = await baseQuery({
-            url: "/products",
+            url: "/tenant/products",
             params: storeId ? { storeId } : {},
           });
 
@@ -36,15 +36,26 @@ export const productApi = posApi.injectEndpoints({
     }),
 
     getProductById: builder.query<Product, number>({
-      query: (id) => `/products/${id}`,
+      query: (id) => `/tenant/products/${id}`,
     }),
 
-    createProduct: builder.mutation<Product, Partial<Product> & { categoryName?: string; storeId?: string }>({
+    createProduct: builder.mutation<
+      Product,
+      Partial<Product> & { categoryName?: string; storeId?: string }
+    >({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: "/products", method: "POST", body });
+          const result = await baseQuery({
+            url: "/tenant/products",
+            method: "POST",
+            body,
+          });
           if (!result.error) return { data: result.data as Product };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         return { data: await createOfflineProduct(body) };
@@ -53,12 +64,23 @@ export const productApi = posApi.injectEndpoints({
       invalidatesTags: ["Products", "Categories"],
     }),
 
-    updateProduct: builder.mutation<Product, { id: string; data: Partial<Product> & { categoryName?: string } }>({
+    updateProduct: builder.mutation<
+      Product,
+      { id: string; data: Partial<Product> & { categoryName?: string } }
+    >({
       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/products/${id}`, method: "PUT", body: data });
+          const result = await baseQuery({
+            url: `/tenant/products/${id}`,
+            method: "PUT",
+            body: data,
+          });
           if (!result.error) return { data: result.data as Product };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         return { data: await updateOfflineProduct(id, data) };
@@ -69,9 +91,16 @@ export const productApi = posApi.injectEndpoints({
     deleteProduct: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/products/${id}`, method: "DELETE" });
+          const result = await baseQuery({
+            url: `/tenant/products/${id}`,
+            method: "DELETE",
+          });
           if (!result.error) return { data: undefined };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         await deleteOfflineProduct(id);
@@ -80,13 +109,20 @@ export const productApi = posApi.injectEndpoints({
       invalidatesTags: ["Products"],
     }),
 
-    getProductByBarcode: builder.query<{ found: boolean; product?: Product; message?: string }, string>({
+    getProductByBarcode: builder.query<
+      { found: boolean; product?: Product; message?: string },
+      string
+    >({
       async queryFn(barcode, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery(`/products/barcode/${barcode}`);
+          const result = await baseQuery(`/tenant/products/barcode/${barcode}`);
 
           if (!result.error) {
-            const data = result.data as { found: boolean; product?: Product; message?: string };
+            const data = result.data as {
+              found: boolean;
+              product?: Product;
+              message?: string;
+            };
             if (data.product) {
               await upsertProducts([data.product]);
             }
@@ -97,7 +133,12 @@ export const productApi = posApi.injectEndpoints({
         const product = await getLocalProductByBarcode(barcode);
         return product
           ? { data: { found: true, product } }
-          : { data: { found: false, message: "Product is not available in offline cache" } };
+          : {
+              data: {
+                found: false,
+                message: "Product is not available in offline cache",
+              },
+            };
       },
     }),
   }),

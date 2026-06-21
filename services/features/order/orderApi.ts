@@ -37,7 +37,9 @@ export const orderApi = posApi.injectEndpoints({
     getOrders: builder.query<Order[], string | undefined>({
       async queryFn(storeId, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery(`/orders${storeId ? `?storeId=${storeId}` : ""}`);
+          const result = await baseQuery(
+            `/tenant/orders${storeId ? `?storeId=${storeId}` : ""}`,
+          );
           if (!result.error) return { data: result.data as Order[] };
         }
 
@@ -51,7 +53,7 @@ export const orderApi = posApi.injectEndpoints({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
           const result = await baseQuery({
-            url: "/orders",
+            url: "/tenant/orders",
             method: "POST",
             body,
           });
@@ -60,7 +62,10 @@ export const orderApi = posApi.injectEndpoints({
             return { data: result.data as Order };
           }
 
-          if (typeof result.error.status === "number" && result.error.status < 500) {
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          ) {
             return { error: result.error };
           }
         }
@@ -74,12 +79,19 @@ export const orderApi = posApi.injectEndpoints({
     getOrderById: builder.query<Order, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery(`/orders/${id}`);
+          const result = await baseQuery(`/tenant/orders/${id}`);
           if (!result.error) return { data: result.data as Order };
         }
 
         const order = await getLocalOrderById(id);
-        return order ? { data: order } : { error: { status: "CUSTOM_ERROR", error: "Order not found offline" } };
+        return order
+          ? { data: order }
+          : {
+              error: {
+                status: "CUSTOM_ERROR",
+                error: "Order not found offline",
+              },
+            };
       },
       providesTags: ["Orders"],
     }),
@@ -87,9 +99,17 @@ export const orderApi = posApi.injectEndpoints({
     updateOrderStatus: builder.mutation<Order, { id: string; status: string }>({
       async queryFn({ id, status }, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/orders/${id}/status`, method: "PATCH", body: { status } });
+          const result = await baseQuery({
+            url: `/tenant/orders/${id}/status`,
+            method: "PATCH",
+            body: { status },
+          });
           if (!result.error) return { data: result.data as Order };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         return { data: await updateOfflineOrderStatus(id, status) };
@@ -100,9 +120,16 @@ export const orderApi = posApi.injectEndpoints({
     deleteOrder: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery({ url: `/orders/${id}`, method: "DELETE" });
+          const result = await baseQuery({
+            url: `/tenant/orders/${id}`,
+            method: "DELETE",
+          });
           if (!result.error) return { data: undefined };
-          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+          if (
+            typeof result.error.status === "number" &&
+            result.error.status < 500
+          )
+            return { error: result.error };
         }
 
         await deleteOfflineOrder(id);
@@ -114,7 +141,9 @@ export const orderApi = posApi.injectEndpoints({
     getTransactions: builder.query<Order[], string | undefined>({
       async queryFn(storeId, _api, _extraOptions, baseQuery) {
         if (await isOnline()) {
-          const result = await baseQuery(`/orders/transactions/${storeId}`);
+          const result = await baseQuery(
+            `/tenant/orders/transactions/${storeId}`,
+          );
           if (!result.error) return { data: result.data as Order[] };
         }
 
