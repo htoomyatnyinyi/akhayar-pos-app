@@ -112,7 +112,7 @@ export const supplierApi = posApi.injectEndpoints({
         }
 
         await deleteOfflineGenericRecord("suppliers", `/tenant/suppliers/${id}`, id);
-ww        return { data: undefined };
+        return { data: undefined };
       },
       invalidatesTags: ["Inventory"],
     }),

@@ -940,6 +940,36 @@ export async function getDueOutboxItems(limit = 25) {
     .limit(limit);
 }
 
+export async function getOutboxItems(limit = 100) {
+  return getOfflineDb()
+    .select()
+    .from(syncOutbox)
+    .orderBy(syncOutbox.updatedAt)
+    .limit(limit);
+}
+
+export async function getFailedOutboxItems(limit = 100) {
+  return getOfflineDb()
+    .select()
+    .from(syncOutbox)
+    .where(inArray(syncOutbox.status, ["failed", "dead"]))
+    .orderBy(syncOutbox.updatedAt)
+    .limit(limit);
+}
+
+export async function retryOutboxItem(id: string) {
+  const now = new Date().toISOString();
+  await getOfflineDb()
+    .update(syncOutbox)
+    .set({
+      status: "pending",
+      nextAttemptAt: now,
+      updatedAt: now,
+      lastError: null,
+    })
+    .where(eq(syncOutbox.id, id));
+}
+
 export async function markOutboxSynced(id: string) {
   await getOfflineDb().delete(syncOutbox).where(eq(syncOutbox.id, id));
 }

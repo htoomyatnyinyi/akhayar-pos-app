@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
+import { AppState } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
@@ -8,7 +9,7 @@ import "../global.css";
 import { store, persistor } from "@/services/store/store";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { initializeOfflineSystem } from "@/services/offline/syncManager";
+import { initializeOfflineSystem, syncNow } from "@/services/offline/syncManager";
 
 function RootNavigator() {
   const colorScheme = useColorScheme();
@@ -21,6 +22,16 @@ function RootNavigator() {
     initializeOfflineSystem(store.dispatch, store.getState).catch((error) => {
       console.warn("Offline system failed to initialize", error);
     });
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void syncNow(store.dispatch, store.getState);
+      }
+    });
+
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => {
@@ -57,4 +68,3 @@ export default function RootLayout() {
     </Provider>
   );
 }
-

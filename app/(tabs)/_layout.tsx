@@ -60,9 +60,17 @@ export default function TabLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+          name="sync"
+          options={{
+            title: "Sync",
+            tabBarIcon: ({ color, focused }) => (
+              <MaterialIcons name="sync" size={22} color={focused ? "#34d399" : color} />
+            ),
+          }}
+        />
       </Tabs>
       <OfflineSyncStatus />
     </View>
   );
 }
-

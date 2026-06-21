@@ -19,6 +19,8 @@ export const posApi = createApi({
       return headers;
     },
   }),
+  refetchOnFocus: true,
+  refetchOnReconnect: true,
 
   tagTypes: ["Auth", "Products", "Orders", "Customers", "Staff", "Categories", "Inventory", "Sessions", "Stores"],
 

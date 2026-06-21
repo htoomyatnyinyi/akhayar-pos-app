@@ -4,6 +4,8 @@ import { CartItem } from "./cartTypes";
 
 interface CartState {
   items: CartItem[];
+  lastCheckoutId?: string;
+  lastCheckoutStatus?: "pending" | "synced" | "failed";
 }
 
 const initialState: CartState = {
@@ -47,10 +49,20 @@ const cartSlice = createSlice({
     clearCart: (state) => {
       state.items = [];
     },
+    setCheckoutState: (
+      state,
+      action: PayloadAction<{
+        checkoutId?: string;
+        status?: "pending" | "synced" | "failed";
+      }>,
+    ) => {
+      state.lastCheckoutId = action.payload.checkoutId;
+      state.lastCheckoutStatus = action.payload.status;
+    },
   },
 });
 
-export const { addToCart, decreaseQty, removeFromCart, clearCart } =
+export const { addToCart, decreaseQty, removeFromCart, clearCart, setCheckoutState } =
   cartSlice.actions;
 
 export default cartSlice.reducer;
