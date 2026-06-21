@@ -28,7 +28,7 @@ import { useGetCategoriesQuery } from "@/services/features/categories/categoryAp
 import { useGetReturnsQuery } from "@/services/features/returns/returnsApi";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { MaterialIcons } from "@expo/vector-icons";
-import BarcodeManager from "@/components/BarcodeManager";
+// import BarcodeManager from "@/components/BarcodeManager";
 import Svg, {
   Path,
   Defs,
@@ -1719,12 +1719,12 @@ export default function DashboardScreen() {
               </Animated.View>
 
               {/* Barcode Manager Component */}
-              <BarcodeManager
+              {/* <BarcodeManager
                 visible={isBarcodeManagerVisible}
                 onClose={() => setIsBarcodeManagerVisible(false)}
                 products={products}
                 onUpdateProduct={(args) => updateProduct(args).unwrap()}
-              />
+              /> */}
 
               {/* Profitability Report */}
               <Animated.View

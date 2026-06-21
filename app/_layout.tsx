@@ -24,6 +24,7 @@ import Animated, {
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "@/services/store/store";
+import { initializeOfflineSystem } from "@/services/offline/syncManager";
 import "../global.css";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
@@ -46,6 +47,9 @@ function RootNavigator() {
   useEffect(() => {
     // Hide static splash screen once React Native has mounted
     SplashScreen.hideAsync().catch(() => {});
+    initializeOfflineSystem(store.dispatch, store.getState).catch((error) => {
+      console.warn("Offline system failed to initialize", error);
+    });
   }, []);
 
   useEffect(() => {
@@ -90,13 +94,6 @@ function RootNavigator() {
           <Stack.Screen name="(tabs)" />
 
           <Stack.Screen name="(auth)" />
-
-          <Stack.Screen
-            name="modal"
-            options={{
-              presentation: "modal",
-            }}
-          />
         </Stack>
 
         <StatusBar style="light" />

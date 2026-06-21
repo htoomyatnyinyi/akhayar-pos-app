@@ -1,11 +1,29 @@
 import { posApi } from "@/services/api/posApi";
+import { isOnline } from "@/services/offline/network";
+import {
+  createOfflineCustomer,
+  deleteOfflineEntity,
+  getLocalCustomers,
+  updateOfflineEntity,
+  upsertCustomers,
+} from "@/services/offline/repository";
 import { Customer, CreateCustomerPayload } from "./customerTypes";
 
 export const customerApi = posApi.injectEndpoints({
   overrideExisting: false,
   endpoints: (builder) => ({
     getCustomers: builder.query<Customer[], void>({
-      query: () => "/customers",
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery("/customers");
+          if (!result.error && Array.isArray(result.data)) {
+            await upsertCustomers(result.data as Customer[]);
+            return { data: result.data as Customer[] };
+          }
+        }
+
+        return { data: await getLocalCustomers() };
+      },
       providesTags: ["Customers"],
     }),
 
@@ -15,28 +33,43 @@ export const customerApi = posApi.injectEndpoints({
     }),
 
     createCustomer: builder.mutation<Customer, CreateCustomerPayload>({
-      query: (body) => ({
-        url: "/customers",
-        method: "POST",
-        body,
-      }),
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: "/customers", method: "POST", body });
+          if (!result.error) return { data: result.data as Customer };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        return { data: await createOfflineCustomer(body) };
+      },
       invalidatesTags: ["Customers"],
     }),
 
     updateCustomer: builder.mutation<Customer, { id: string; data: Partial<CreateCustomerPayload> }>({
-      query: ({ id, data }) => ({
-        url: `/customers/${id}`,
-        method: "PUT",
-        body: data,
-      }),
+      async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: `/customers/${id}`, method: "PUT", body: data });
+          if (!result.error) return { data: result.data as Customer };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        await updateOfflineEntity("customers", id, data);
+        return { data: (await getLocalCustomers()).find((customer) => customer.id === id) as Customer };
+      },
       invalidatesTags: ["Customers"],
     }),
 
     deleteCustomer: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `/customers/${id}`,
-        method: "DELETE",
-      }),
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: `/customers/${id}`, method: "DELETE" });
+          if (!result.error) return { data: undefined };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        await deleteOfflineEntity("customers", id);
+        return { data: undefined };
+      },
       invalidatesTags: ["Customers"],
     }),
   }),

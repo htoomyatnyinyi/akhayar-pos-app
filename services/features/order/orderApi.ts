@@ -1,4 +1,12 @@
 import { posApi } from "@/services/api/posApi";
+import {
+  createOfflineOrder,
+  deleteOfflineOrder,
+  getLocalOrderById,
+  getLocalOrders,
+  updateOfflineOrderStatus,
+} from "@/services/offline/repository";
+import { isOnline } from "@/services/offline/network";
 export interface CreateOrderPayload {
   subTotal: number;
   taxAmount?: number;
@@ -27,45 +35,91 @@ export const orderApi = posApi.injectEndpoints({
 
   endpoints: (builder) => ({
     getOrders: builder.query<Order[], string | undefined>({
-      query: (storeId) => `/orders${storeId ? `?storeId=${storeId}` : ""}`,
+      async queryFn(storeId, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery(`/orders${storeId ? `?storeId=${storeId}` : ""}`);
+          if (!result.error) return { data: result.data as Order[] };
+        }
+
+        return { data: await getLocalOrders(storeId) };
+      },
 
       providesTags: ["Orders"],
     }),
 
     createOrder: builder.mutation<Order, CreateOrderPayload>({
-      query: (body) => ({
-        url: "/orders",
-        method: "POST",
-        body,
-      }),
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({
+            url: "/orders",
+            method: "POST",
+            body,
+          });
+
+          if (!result.error) {
+            return { data: result.data as Order };
+          }
+
+          if (typeof result.error.status === "number" && result.error.status < 500) {
+            return { error: result.error };
+          }
+        }
+
+        return { data: await createOfflineOrder(body) };
+      },
 
       invalidatesTags: ["Orders", "Products"],
     }),
 
     getOrderById: builder.query<Order, string>({
-      query: (id) => `/orders/${id}`,
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery(`/orders/${id}`);
+          if (!result.error) return { data: result.data as Order };
+        }
+
+        const order = await getLocalOrderById(id);
+        return order ? { data: order } : { error: { status: "CUSTOM_ERROR", error: "Order not found offline" } };
+      },
       providesTags: ["Orders"],
     }),
 
     updateOrderStatus: builder.mutation<Order, { id: string; status: string }>({
-      query: ({ id, status }) => ({
-        url: `/orders/${id}/status`,
-        method: "PATCH",
-        body: { status },
-      }),
+      async queryFn({ id, status }, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: `/orders/${id}/status`, method: "PATCH", body: { status } });
+          if (!result.error) return { data: result.data as Order };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        return { data: await updateOfflineOrderStatus(id, status) };
+      },
       invalidatesTags: ["Orders"],
     }),
 
     deleteOrder: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `/orders/${id}`,
-        method: "DELETE",
-      }),
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: `/orders/${id}`, method: "DELETE" });
+          if (!result.error) return { data: undefined };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        await deleteOfflineOrder(id);
+        return { data: undefined };
+      },
       invalidatesTags: ["Orders"],
     }),
 
     getTransactions: builder.query<Order[], string | undefined>({
-      query: (storeId) => `/orders/transactions/${storeId}`,
+      async queryFn(storeId, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery(`/orders/transactions/${storeId}`);
+          if (!result.error) return { data: result.data as Order[] };
+        }
+
+        return { data: await getLocalOrders(storeId) };
+      },
       providesTags: ["Orders"],
     }),
   }),

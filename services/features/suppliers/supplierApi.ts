@@ -1,14 +1,29 @@
 import { posApi } from "@/services/api/posApi";
+import { isOnline } from "@/services/offline/network";
+import {
+  createOfflineGenericRecord,
+  deleteOfflineGenericRecord,
+  getLocalGenericRecords,
+  updateOfflineGenericRecord,
+  upsertGenericRecords,
+} from "@/services/offline/repository";
 import { Supplier, CreateSupplierPayload } from "./supplierTypes";
 
 export const supplierApi = posApi.injectEndpoints({
   overrideExisting: false,
   endpoints: (builder) => ({
     getSuppliers: builder.query<Supplier[], string | undefined>({
-      query: (storeId) => ({
-        url: "/suppliers",
-        params: storeId ? { storeId } : {},
-      }),
+      async queryFn(storeId, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: "/suppliers", params: storeId ? { storeId } : {} });
+          if (!result.error && Array.isArray(result.data)) {
+            await upsertGenericRecords("suppliers", result.data as Supplier[]);
+            return { data: result.data as Supplier[] };
+          }
+        }
+
+        return { data: await getLocalGenericRecords<Supplier>("suppliers") };
+      },
       providesTags: ["Inventory"],
     }),
 
@@ -18,28 +33,42 @@ export const supplierApi = posApi.injectEndpoints({
     }),
 
     createSupplier: builder.mutation<Supplier, CreateSupplierPayload & { storeId?: string }>({
-      query: (body) => ({
-        url: "/suppliers",
-        method: "POST",
-        body,
-      }),
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: "/suppliers", method: "POST", body });
+          if (!result.error) return { data: result.data as Supplier };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        return { data: (await createOfflineGenericRecord("suppliers", "/suppliers", body)) as Supplier };
+      },
       invalidatesTags: ["Inventory"],
     }),
 
     updateSupplier: builder.mutation<Supplier, { id: string; data: Partial<CreateSupplierPayload> }>({
-      query: ({ id, data }) => ({
-        url: `/suppliers/${id}`,
-        method: "PUT",
-        body: data,
-      }),
+      async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: `/suppliers/${id}`, method: "PUT", body: data });
+          if (!result.error) return { data: result.data as Supplier };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        return { data: (await updateOfflineGenericRecord("suppliers", `/suppliers/${id}`, id, data)) as Supplier };
+      },
       invalidatesTags: ["Inventory"],
     }),
 
     deleteSupplier: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `/suppliers/${id}`,
-        method: "DELETE",
-      }),
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: `/suppliers/${id}`, method: "DELETE" });
+          if (!result.error) return { data: undefined };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        await deleteOfflineGenericRecord("suppliers", `/suppliers/${id}`, id);
+        return { data: undefined };
+      },
       invalidatesTags: ["Inventory"],
     }),
   }),

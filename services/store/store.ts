@@ -15,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import authReducer from "@/services/features/auth/authSlice";
 import cartReducer from "@/services/features/cart/cartSlice";
 import settingsReducer from "@/services/features/settings/settingsSlice";
+import offlineReducer from "@/services/offline/offlineSlice";
 import { posApi } from "@/services/api/posApi";
 
 const persistConfig = {
@@ -28,6 +29,7 @@ const rootReducer = combineReducers({
   auth: authReducer,
   cart: cartReducer,
   settings: settingsReducer,
+  offline: offlineReducer,
   [posApi.reducerPath]: posApi.reducer,
 });
 

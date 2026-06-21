@@ -1,14 +1,33 @@
 import { posApi } from "@/services/api/posApi";
+import { isOnline } from "@/services/offline/network";
+import {
+  createOfflineCategory,
+  deleteOfflineEntity,
+  getLocalCategories,
+  updateOfflineEntity,
+  upsertCategories,
+} from "@/services/offline/repository";
 import { Category, CreateCategoryPayload } from "./categoryTypes";
 
 export const categoryApi = posApi.injectEndpoints({
   overrideExisting: false,
   endpoints: (builder) => ({
     getCategories: builder.query<Category[], string | undefined>({
-      query: (storeId) => ({
-        url: "/categories",
-        params: storeId ? { storeId } : {},
-      }),
+      async queryFn(storeId, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({
+            url: "/categories",
+            params: storeId ? { storeId } : {},
+          });
+
+          if (!result.error && Array.isArray(result.data)) {
+            await upsertCategories(result.data as Category[]);
+            return { data: result.data as Category[] };
+          }
+        }
+
+        return { data: await getLocalCategories(storeId) };
+      },
       providesTags: ["Categories"],
     }),
 
@@ -18,28 +37,43 @@ export const categoryApi = posApi.injectEndpoints({
     }),
 
     createCategory: builder.mutation<Category, CreateCategoryPayload & { storeId?: string }>({
-      query: (body) => ({
-        url: "/categories",
-        method: "POST",
-        body,
-      }),
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: "/categories", method: "POST", body });
+          if (!result.error) return { data: result.data as Category };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        return { data: await createOfflineCategory(body) };
+      },
       invalidatesTags: ["Categories"],
     }),
 
     updateCategory: builder.mutation<Category, { id: string; data: Partial<CreateCategoryPayload> }>({
-      query: ({ id, data }) => ({
-        url: `/categories/${id}`,
-        method: "PUT",
-        body: data,
-      }),
+      async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: `/categories/${id}`, method: "PUT", body: data });
+          if (!result.error) return { data: result.data as Category };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        await updateOfflineEntity("categories", id, data);
+        return { data: (await getLocalCategories()).find((category) => category.id === id) as Category };
+      },
       invalidatesTags: ["Categories"],
     }),
 
     deleteCategory: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `/categories/${id}`,
-        method: "DELETE",
-      }),
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        if (await isOnline()) {
+          const result = await baseQuery({ url: `/categories/${id}`, method: "DELETE" });
+          if (!result.error) return { data: undefined };
+          if (typeof result.error.status === "number" && result.error.status < 500) return { error: result.error };
+        }
+
+        await deleteOfflineEntity("categories", id);
+        return { data: undefined };
+      },
       invalidatesTags: ["Categories"],
     }),
   }),

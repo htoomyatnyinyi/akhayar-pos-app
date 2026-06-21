@@ -5,6 +5,8 @@ if (!POS_URL.endsWith("/api")) {
   POS_URL = `${POS_URL}/api`;
 }
 
+export const POS_API_URL = POS_URL;
+
 export const posApi = createApi({
   reducerPath: "posApi",
   baseQuery: fetchBaseQuery({
