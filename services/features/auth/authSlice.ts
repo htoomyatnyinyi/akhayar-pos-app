@@ -5,11 +5,13 @@ import type { User } from "./authTypes";
 interface AuthState {
   user: User | null;
   currentStoreId: string | null;
+  lastTenantCode: string;
 }
 
 const initialState: AuthState = {
   user: null,
   currentStoreId: null,
+  lastTenantCode: "",
 };
 
 const authSlice = createSlice({
@@ -18,13 +20,18 @@ const authSlice = createSlice({
   reducers: {
     setUser: (state, action: PayloadAction<User>) => {
       state.user = action.payload;
-      // Automatically select the first store if available
-      if (action.payload.stores && action.payload.stores.length > 0) {
+      if (action.payload.stores.length > 0) {
         state.currentStoreId = action.payload.stores[0].id;
+      }
+      if (action.payload.tenant?.code) {
+        state.lastTenantCode = action.payload.tenant.code;
       }
     },
     setStore: (state, action: PayloadAction<string>) => {
       state.currentStoreId = action.payload;
+    },
+    setLastTenantCode: (state, action: PayloadAction<string>) => {
+      state.lastTenantCode = action.payload;
     },
     logout: (state) => {
       state.user = null;
@@ -33,6 +40,6 @@ const authSlice = createSlice({
   },
 });
 
-export const { setUser, logout, setStore } = authSlice.actions;
+export const { setUser, logout, setStore, setLastTenantCode } = authSlice.actions;
 
 export default authSlice.reducer;
