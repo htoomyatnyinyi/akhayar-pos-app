@@ -7,7 +7,7 @@ CREATE TABLE `categories` (
 	`slug` text NOT NULL,
 	`description` text,
 	`parent_id` text,
-	`is_active` integer DEFAULT true NOT NULL,
+	`is_active` integer DEFAULT 1 NOT NULL,
 	`sort_order` integer DEFAULT 0 NOT NULL,
 	`sync_status` text DEFAULT 'synced' NOT NULL,
 	`sync_error` text,
@@ -34,7 +34,7 @@ CREATE TABLE `customers` (
 	`total_orders` integer DEFAULT 0 NOT NULL,
 	`tier` text DEFAULT 'BRONZE' NOT NULL,
 	`tier_valid_until` text,
-	`is_active` integer DEFAULT true NOT NULL,
+	`is_active` integer DEFAULT 1 NOT NULL,
 	`sync_status` text DEFAULT 'synced' NOT NULL,
 	`sync_error` text,
 	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE `generic_records` (
 	`remote_id` text,
 	`entity` text NOT NULL,
 	`data` text NOT NULL,
-	`is_active` integer DEFAULT true NOT NULL,
+	`is_active` integer DEFAULT 1 NOT NULL,
 	`sync_status` text DEFAULT 'synced' NOT NULL,
 	`sync_error` text,
 	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -56,6 +56,54 @@ CREATE TABLE `generic_records` (
 	`last_synced_at` text
 );
 --> statement-breakpoint
+CREATE TABLE `inventory_count_items` (
+	`id` text PRIMARY KEY NOT NULL,
+	`count_id` text NOT NULL,
+	`product_id` text NOT NULL,
+	`variant_id` text,
+	`system_quantity` integer NOT NULL,
+	`counted_quantity` integer NOT NULL,
+	`difference` integer NOT NULL,
+	`reason` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	FOREIGN KEY (`count_id`) REFERENCES `inventory_counts`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `inventory_counts` (
+	`id` text PRIMARY KEY NOT NULL,
+	`remote_id` text,
+	`tenant_id` text,
+	`store_id` text NOT NULL,
+	`status` text DEFAULT 'PENDING' NOT NULL,
+	`scheduled_date` text,
+	`completed_at` text,
+	`notes` text,
+	`sync_status` text DEFAULT 'pending' NOT NULL,
+	`sync_error` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `inventory_counts_remote_id_unique` ON `inventory_counts` (`remote_id`);--> statement-breakpoint
+CREATE TABLE `inventory_movements` (
+	`id` text PRIMARY KEY NOT NULL,
+	`remote_id` text,
+	`tenant_id` text,
+	`store_id` text NOT NULL,
+	`product_id` text NOT NULL,
+	`variant_id` text,
+	`quantity` integer NOT NULL,
+	`type` text NOT NULL,
+	`reference_id` text NOT NULL,
+	`reference_type` text NOT NULL,
+	`reason` text,
+	`sync_status` text DEFAULT 'pending' NOT NULL,
+	`sync_error` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `inventory_movements_remote_id_unique` ON `inventory_movements` (`remote_id`);--> statement-breakpoint
 CREATE TABLE `order_items` (
 	`id` text PRIMARY KEY NOT NULL,
 	`order_id` text NOT NULL,
@@ -117,7 +165,7 @@ CREATE TABLE `products` (
 	`manufacturing_date` text,
 	`expiry_date` text,
 	`version` integer DEFAULT 0 NOT NULL,
-	`is_active` integer DEFAULT true NOT NULL,
+	`is_active` integer DEFAULT 1 NOT NULL,
 	`deleted_at` text,
 	`sync_status` text DEFAULT 'synced' NOT NULL,
 	`sync_error` text,
@@ -164,7 +212,7 @@ CREATE TABLE `stores` (
 	`phone` text,
 	`email` text,
 	`tax_number` text,
-	`is_active` integer DEFAULT true NOT NULL,
+	`is_active` integer DEFAULT 1 NOT NULL,
 	`sync_status` text DEFAULT 'synced' NOT NULL,
 	`sync_error` text,
 	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,

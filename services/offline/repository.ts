@@ -5,6 +5,9 @@ import {
   categories,
   customers,
   genericRecords,
+  inventoryMovements,
+  inventoryCounts,
+  inventoryCountItems,
   orderItems,
   orders,
   products,
@@ -18,15 +21,34 @@ import {
   type LocalSession,
   type LocalStore,
 } from "./schema";
-import type { Category, CreateCategoryPayload } from "@/services/features/categories/categoryTypes";
-import type { CreateCustomerPayload, Customer } from "@/services/features/customers/customerTypes";
+import type {
+  Category,
+  CreateCategoryPayload,
+} from "@/services/features/categories/categoryTypes";
+import type {
+  CreateCustomerPayload,
+  Customer,
+} from "@/services/features/customers/customerTypes";
 import type { CreateOrderPayload } from "@/services/features/order/orderApi";
-import type { Order } from "@/services/features/order/orderTypes";
+import type { Order, OrderItem } from "@/services/features/order/orderTypes";
 import type { Product } from "@/services/features/products/productTypes";
-import type { CloseSessionPayload, Session } from "@/services/features/sessions/sessionTypes";
-import type { CreateStorePayload, Store } from "@/services/features/stores/storeTypes";
+import type {
+  CloseSessionPayload,
+  Session,
+} from "@/services/features/sessions/sessionTypes";
+import type {
+  CreateStorePayload,
+  Store,
+} from "@/services/features/stores/storeTypes";
+import type {
+  CreateMovementPayload,
+  CreateCountPayload,
+  InventoryItem,
+} from "@/services/features/inventory/inventoryTypes";
 
-export function normalizeProduct(product: Product & Record<string, any>): typeof products.$inferInsert {
+export function normalizeProduct(
+  product: Product & Record<string, any>,
+): typeof products.$inferInsert {
   return {
     id: product.id,
     tenantId: product.tenantId,
@@ -41,7 +63,9 @@ export function normalizeProduct(product: Product & Record<string, any>): typeof
     supplierId: product.supplierId,
     costPrice: Number(product.costPrice ?? 0),
     sellingPrice: Number(product.sellingPrice ?? 0),
-    stockQuantity: Number(product.stockQuantity ?? product.inventory?.quantity ?? 0),
+    stockQuantity: Number(
+      product.stockQuantity ?? product.inventory?.quantity ?? 0,
+    ),
     version: Number(product.version ?? 0),
     isActive: product.isActive ?? true,
     deletedAt: product.deletedAt,
@@ -278,59 +302,107 @@ export async function getLocalProducts(storeId?: string) {
     .where(
       and(
         eq(products.isActive, true),
-        storeId ? or(eq(products.storeId, storeId), sql`${products.storeId} IS NULL`) : undefined,
+        storeId
+          ? or(eq(products.storeId, storeId), sql`${products.storeId} IS NULL`)
+          : undefined,
       ),
     );
 
   return rows.map(toProduct);
 }
 
-export async function createOfflineProduct(payload: Partial<Product> & { categoryName?: string; storeId?: string }) {
+export async function createOfflineProduct(
+  payload: Partial<Product> & { categoryName?: string; storeId?: string },
+) {
   const now = new Date().toISOString();
   const id = createLocalId("prod");
 
-  await getOfflineDb().insert(products).values({
-    id,
-    storeId: payload.storeId,
-    sku: payload.sku ?? `LOCAL-${Date.now().toString(36).toUpperCase()}`,
-    barcode: payload.barcode,
-    name: payload.name ?? "Offline product",
-    description: payload.description,
-    brand: payload.brand,
-    categoryId: payload.categoryId ?? "",
-    categoryName: payload.categoryName,
-    supplierId: payload.supplierId,
-    costPrice: Number(payload.costPrice ?? 0),
-    sellingPrice: Number(payload.sellingPrice ?? 0),
-    stockQuantity: Number(payload.stockQuantity ?? 0),
-    isActive: true,
-    syncStatus: "pending" as never,
-    createdAt: now,
-    updatedAt: now,
-  } as typeof products.$inferInsert);
+  await getOfflineDb()
+    .insert(products)
+    .values({
+      id,
+      storeId: payload.storeId,
+      sku: payload.sku ?? `LOCAL-${Date.now().toString(36).toUpperCase()}`,
+      barcode: payload.barcode,
+      name: payload.name ?? "Offline product",
+      description: payload.description,
+      brand: payload.brand,
+      categoryId: payload.categoryId ?? "",
+      categoryName: payload.categoryName,
+      supplierId: payload.supplierId,
+      costPrice: Number(payload.costPrice ?? 0),
+      sellingPrice: Number(payload.sellingPrice ?? 0),
+      stockQuantity: Number(payload.stockQuantity ?? 0),
+      isActive: true,
+      syncStatus: "pending" as never,
+      createdAt: now,
+      updatedAt: now,
+    } as typeof products.$inferInsert);
 
-  await enqueueMutation("products", id, "create", "/tenant/products", "POST", payload);
-  return toProduct((await getOfflineDb().select().from(products).where(eq(products.id, id)).limit(1))[0]);
+  await enqueueMutation(
+    "products",
+    id,
+    "create",
+    "/tenant/products",
+    "POST",
+    payload,
+  );
+  return toProduct(
+    (
+      await getOfflineDb()
+        .select()
+        .from(products)
+        .where(eq(products.id, id))
+        .limit(1)
+    )[0],
+  );
 }
 
-export async function updateOfflineProduct(id: string, data: Partial<Product> & { categoryName?: string }) {
+export async function updateOfflineProduct(
+  id: string,
+  data: Partial<Product> & { categoryName?: string },
+) {
   await getOfflineDb()
     .update(products)
-    .set({ ...data, updatedAt: new Date().toISOString() } as Partial<typeof products.$inferInsert>)
+    .set({ ...data, updatedAt: new Date().toISOString() } as Partial<
+      typeof products.$inferInsert
+    >)
     .where(eq(products.id, id));
 
-  await enqueueMutation("products", id, "update", `/tenant/products/${id}`, "PUT", data);
-  const [row] = await getOfflineDb().select().from(products).where(eq(products.id, id)).limit(1);
+  await enqueueMutation(
+    "products",
+    id,
+    "update",
+    `/tenant/products/${id}`,
+    "PUT",
+    data,
+  );
+  const [row] = await getOfflineDb()
+    .select()
+    .from(products)
+    .where(eq(products.id, id))
+    .limit(1);
   return toProduct(row);
 }
 
 export async function deleteOfflineProduct(id: string) {
   await getOfflineDb()
     .update(products)
-    .set({ isActive: false, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .set({
+      isActive: false,
+      deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
     .where(eq(products.id, id));
 
-  await enqueueMutation("products", id, "delete", `/tenant/products/${id}`, "DELETE", {});
+  await enqueueMutation(
+    "products",
+    id,
+    "delete",
+    `/tenant/products/${id}`,
+    "DELETE",
+    {},
+  );
 }
 
 export async function getLocalCategories(storeId?: string) {
@@ -340,7 +412,12 @@ export async function getLocalCategories(storeId?: string) {
     .where(
       and(
         eq(categories.isActive, true),
-        storeId ? or(eq(categories.storeId, storeId), sql`${categories.storeId} IS NULL`) : undefined,
+        storeId
+          ? or(
+              eq(categories.storeId, storeId),
+              sql`${categories.storeId} IS NULL`,
+            )
+          : undefined,
       ),
     );
 
@@ -357,7 +434,10 @@ export async function getLocalCustomers() {
 }
 
 export async function getLocalStores() {
-  const rows = await getOfflineDb().select().from(stores).where(eq(stores.isActive, true));
+  const rows = await getOfflineDb()
+    .select()
+    .from(stores)
+    .where(eq(stores.isActive, true));
   return rows.map(toStore);
 }
 
@@ -369,7 +449,9 @@ export async function getLocalActiveSession(userId: string, storeId?: string) {
       and(
         eq(sessions.userId, userId),
         eq(sessions.status, "OPEN"),
-        storeId ? or(eq(sessions.storeId, storeId), sql`${sessions.storeId} IS NULL`) : undefined,
+        storeId
+          ? or(eq(sessions.storeId, storeId), sql`${sessions.storeId} IS NULL`)
+          : undefined,
       ),
     )
     .limit(1);
@@ -412,30 +494,64 @@ export async function createOfflineCustomer(payload: CreateCustomerPayload) {
     updatedAt: now,
   });
 
-  await enqueueMutation("customers", id, "create", "/tenant/customers", "POST", payload);
-  return toCustomer((await getOfflineDb().select().from(customers).where(eq(customers.id, id)).limit(1))[0]);
+  await enqueueMutation(
+    "customers",
+    id,
+    "create",
+    "/tenant/customers",
+    "POST",
+    payload,
+  );
+  return toCustomer(
+    (
+      await getOfflineDb()
+        .select()
+        .from(customers)
+        .where(eq(customers.id, id))
+        .limit(1)
+    )[0],
+  );
 }
 
-export async function createOfflineCategory(payload: CreateCategoryPayload & { storeId?: string }) {
+export async function createOfflineCategory(
+  payload: CreateCategoryPayload & { storeId?: string },
+) {
   const now = new Date().toISOString();
   const id = createLocalId("cat");
 
-  await getOfflineDb().insert(categories).values({
-    id,
-    storeId: payload.storeId,
-    name: payload.name,
-    slug: payload.slug,
-    description: payload.description,
-    parentId: payload.parentId,
-    isActive: payload.isActive ?? true,
-    sortOrder: payload.sortOrder ?? 0,
-    syncStatus: "pending",
-    createdAt: now,
-    updatedAt: now,
-  });
+  await getOfflineDb()
+    .insert(categories)
+    .values({
+      id,
+      storeId: payload.storeId,
+      name: payload.name,
+      slug: payload.slug,
+      description: payload.description,
+      parentId: payload.parentId,
+      isActive: payload.isActive ?? true,
+      sortOrder: payload.sortOrder ?? 0,
+      syncStatus: "pending",
+      createdAt: now,
+      updatedAt: now,
+    });
 
-  await enqueueMutation("categories", id, "create", "/tenant/categories", "POST", payload);
-  return toCategory((await getOfflineDb().select().from(categories).where(eq(categories.id, id)).limit(1))[0]);
+  await enqueueMutation(
+    "categories",
+    id,
+    "create",
+    "/tenant/categories",
+    "POST",
+    payload,
+  );
+  return toCategory(
+    (
+      await getOfflineDb()
+        .select()
+        .from(categories)
+        .where(eq(categories.id, id))
+        .limit(1)
+    )[0],
+  );
 }
 
 export async function createOfflineStore(payload: CreateStorePayload) {
@@ -443,25 +559,214 @@ export async function createOfflineStore(payload: CreateStorePayload) {
   const id = createLocalId("store");
   const code = payload.code ?? `LOCAL-${Date.now().toString(36).toUpperCase()}`;
 
-  await getOfflineDb().insert(stores).values({
-    id,
-    code,
-    name: payload.name,
-    address: payload.address,
-    phone: payload.phone,
-    email: payload.email,
-    taxNumber: payload.taxNumber,
-    isActive: payload.isActive ?? true,
-    syncStatus: "pending",
-    createdAt: now,
-    updatedAt: now,
-  });
+  await getOfflineDb()
+    .insert(stores)
+    .values({
+      id,
+      code,
+      name: payload.name,
+      address: payload.address,
+      phone: payload.phone,
+      email: payload.email,
+      taxNumber: payload.taxNumber,
+      isActive: payload.isActive ?? true,
+      syncStatus: "pending",
+      createdAt: now,
+      updatedAt: now,
+    });
 
-  await enqueueMutation("stores", id, "create", "/tenant/stores", "POST", { ...payload, code });
-  return toStore((await getOfflineDb().select().from(stores).where(eq(stores.id, id)).limit(1))[0]);
+  await enqueueMutation("stores", id, "create", "/tenant/stores/", "POST", {
+    ...payload,
+    code,
+  });
+  return toStore(
+    (
+      await getOfflineDb()
+        .select()
+        .from(stores)
+        .where(eq(stores.id, id))
+        .limit(1)
+    )[0],
+  );
 }
 
-export async function openOfflineSession(payload: { userId: string; openingBalance: number; notes?: string; storeId?: string }) {
+export async function getLocalInventory(
+  storeId?: string,
+): Promise<InventoryItem[]> {
+  const db = getOfflineDb();
+  // Inventory is essentially a view of products with stock
+  const rows = await db
+    .select()
+    .from(products)
+    .where(
+      and(
+        eq(products.isActive, true),
+        storeId
+          ? or(eq(products.storeId, storeId), sql`${products.storeId} IS NULL`)
+          : undefined,
+      ),
+    );
+
+  return rows.map((row) => ({
+    id: row.id,
+    productId: row.id,
+    storeId: storeId ?? row.storeId ?? "unknown",
+    quantity: row.stockQuantity,
+    product: {
+      id: row.id,
+      name: row.name,
+      sku: row.sku,
+    },
+  }));
+}
+
+export async function createOfflineInventoryMovement(
+  payload: CreateMovementPayload,
+) {
+  const now = new Date().toISOString();
+  const id = createLocalId("mov");
+  const sqlite = getSqliteDatabase();
+  const db = getOfflineDb();
+
+  sqlite.withTransactionSync(() => {
+    sqlite.runSync(
+      `INSERT INTO inventory_movements (
+        id, tenant_id, store_id, product_id, variant_id, quantity, type,
+        reference_id, reference_type, reason, sync_status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        null, // tenantId (can be null locally)
+        payload.storeId,
+        payload.productId,
+        payload.variantId ?? null,
+        payload.quantity,
+        payload.type,
+        payload.referenceId,
+        payload.referenceType,
+        payload.reason ?? null,
+        "pending",
+        now,
+        now,
+      ],
+    );
+
+    // Update stock quantity based on movement type
+    const multiplier = ["IN", "TRANSFER"].includes(payload.type) ? 1 : -1;
+    sqlite.runSync(
+      "UPDATE products SET stock_quantity = MAX(stock_quantity + ?, 0), updated_at = ? WHERE id = ?",
+      [payload.quantity * multiplier, now, payload.productId],
+    );
+
+    sqlite.runSync(
+      `INSERT INTO sync_outbox (
+        id, entity, entity_id, operation, endpoint, method, payload, status,
+        attempts, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        createLocalId("outbox"),
+        "inventory_movements",
+        id,
+        "create",
+        "/tenant/inventory/movements/",
+        "POST",
+        JSON.stringify(payload),
+        "pending",
+        0,
+        now,
+        now,
+        now,
+      ],
+    );
+  });
+
+  const [row] = await db
+    .select()
+    .from(inventoryMovements)
+    .where(eq(inventoryMovements.id, id))
+    .limit(1);
+  return row;
+}
+
+export async function createOfflineInventoryCount(payload: CreateCountPayload) {
+  const now = new Date().toISOString();
+  const countId = createLocalId("cnt");
+  const sqlite = getSqliteDatabase();
+
+  sqlite.withTransactionSync(() => {
+    sqlite.runSync(
+      `INSERT INTO inventory_counts (
+        id, tenant_id, store_id, status, scheduled_date, sync_status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        countId,
+        null,
+        payload.storeId,
+        "COMPLETED", // Locally we mark it completed immediately
+        payload.scheduledDate ?? null,
+        "pending",
+        now,
+        now,
+      ],
+    );
+
+    for (const item of payload.items) {
+      const diff = item.countedQuantity - item.systemQuantity;
+      sqlite.runSync(
+        `INSERT INTO inventory_count_items (
+          id, count_id, product_id, variant_id, system_quantity, counted_quantity, difference, reason, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          createLocalId("cnti"),
+          countId,
+          item.productId,
+          item.variantId ?? null,
+          item.systemQuantity,
+          item.countedQuantity,
+          diff,
+          item.reason ?? null,
+          now,
+        ],
+      );
+
+      // Adjust stock
+      sqlite.runSync(
+        "UPDATE products SET stock_quantity = ?, updated_at = ? WHERE id = ?",
+        [item.countedQuantity, now, item.productId],
+      );
+    }
+
+    sqlite.runSync(
+      `INSERT INTO sync_outbox (
+        id, entity, entity_id, operation, endpoint, method, payload, status,
+        attempts, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        createLocalId("outbox"),
+        "inventory_counts",
+        countId,
+        "create",
+        "/tenant/inventory/counts/",
+        "POST",
+        JSON.stringify(payload),
+        "pending",
+        0,
+        now,
+        now,
+        now,
+      ],
+    );
+  });
+
+  return { id: countId, status: "COMPLETED" };
+}
+
+export async function openOfflineSession(payload: {
+  userId: string;
+  openingBalance: number;
+  notes?: string;
+  storeId?: string;
+}) {
   const now = new Date().toISOString();
   const id = createLocalId("ses");
 
@@ -481,11 +786,29 @@ export async function openOfflineSession(payload: { userId: string; openingBalan
     updatedAt: now,
   });
 
-  await enqueueMutation("sessions", id, "open", "/tenant/sessions/open", "POST", payload);
-  return toSession((await getOfflineDb().select().from(sessions).where(eq(sessions.id, id)).limit(1))[0]);
+  await enqueueMutation(
+    "sessions",
+    id,
+    "open",
+    "/tenant/sessions/open",
+    "POST",
+    payload,
+  );
+  return toSession(
+    (
+      await getOfflineDb()
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, id))
+        .limit(1)
+    )[0],
+  );
 }
 
-export async function closeOfflineSession(sessionId: string, payload: CloseSessionPayload) {
+export async function closeOfflineSession(
+  sessionId: string,
+  payload: CloseSessionPayload,
+) {
   const now = new Date().toISOString();
 
   await getOfflineDb()
@@ -500,7 +823,14 @@ export async function closeOfflineSession(sessionId: string, payload: CloseSessi
     })
     .where(or(eq(sessions.id, sessionId), eq(sessions.remoteId, sessionId)));
 
-  await enqueueMutation("sessions", sessionId, "close", `/tenant/sessions/${sessionId}/close`, "POST", payload);
+  await enqueueMutation(
+    "sessions",
+    sessionId,
+    "close",
+    `/tenant/sessions/${sessionId}/close`,
+    "POST",
+    payload,
+  );
   const [row] = await getOfflineDb()
     .select()
     .from(sessions)
@@ -516,27 +846,57 @@ export async function updateOfflineEntity(
   data: Record<string, unknown>,
 ) {
   const now = new Date().toISOString();
-  const table = entity === "customers" ? customers : entity === "categories" ? categories : stores;
+  const table =
+    entity === "customers"
+      ? customers
+      : entity === "categories"
+        ? categories
+        : stores;
   await getOfflineDb()
     .update(table)
     .set({ ...toSqliteUpdate(data), syncStatus: "pending", updatedAt: now })
     .where(eq(table.id, id));
 
-  await enqueueMutation(entity, id, "update", `/tenant/${entity}/${id}`, "PUT", data);
+  await enqueueMutation(
+    entity,
+    id,
+    "update",
+    `/tenant/${entity}/${id}`,
+    "PUT",
+    data,
+  );
 }
 
-export async function deleteOfflineEntity(entity: "customers" | "categories" | "stores", id: string) {
+export async function deleteOfflineEntity(
+  entity: "customers" | "categories" | "stores",
+  id: string,
+) {
   const now = new Date().toISOString();
-  const table = entity === "customers" ? customers : entity === "categories" ? categories : stores;
+  const table =
+    entity === "customers"
+      ? customers
+      : entity === "categories"
+        ? categories
+        : stores;
   await getOfflineDb()
     .update(table)
     .set({ isActive: false, syncStatus: "pending", updatedAt: now })
     .where(eq(table.id, id));
 
-  await enqueueMutation(entity, id, "delete", `/tenant/${entity}/${id}`, "DELETE", {});
+  await enqueueMutation(
+    entity,
+    id,
+    "delete",
+    `/tenant/${entity}/${id}`,
+    "DELETE",
+    {},
+  );
 }
 
-export async function upsertGenericRecords<T extends { id: string }>(entity: string, records: T[]) {
+export async function upsertGenericRecords<T extends { id: string }>(
+  entity: string,
+  records: T[],
+) {
   if (!records.length) return;
   const now = new Date().toISOString();
   await getOfflineDb()
@@ -573,9 +933,14 @@ export async function getLocalGenericRecords<T>(entity: string) {
   const rows = await getOfflineDb()
     .select()
     .from(genericRecords)
-    .where(and(eq(genericRecords.entity, entity), eq(genericRecords.isActive, true)));
+    .where(
+      and(eq(genericRecords.entity, entity), eq(genericRecords.isActive, true)),
+    );
 
-  return rows.map((row) => ({ ...(row.data as T), id: row.remoteId ?? row.id }));
+  return rows.map((row) => ({
+    ...(row.data as T),
+    id: row.remoteId ?? row.id,
+  }));
 }
 
 export async function createOfflineGenericRecord<T extends Record<string, any>>(
@@ -615,8 +980,16 @@ export async function updateOfflineGenericRecord<T extends Record<string, any>>(
   data: T,
 ) {
   const now = new Date().toISOString();
-  const [row] = await getOfflineDb().select().from(genericRecords).where(eq(genericRecords.id, id)).limit(1);
-  const nextData = { ...((row?.data as Record<string, any>) ?? { id }), ...data, updatedAt: now };
+  const [row] = await getOfflineDb()
+    .select()
+    .from(genericRecords)
+    .where(eq(genericRecords.id, id))
+    .limit(1);
+  const nextData = {
+    ...((row?.data as Record<string, any>) ?? { id }),
+    ...data,
+    updatedAt: now,
+  };
 
   await getOfflineDb()
     .update(genericRecords)
@@ -627,7 +1000,11 @@ export async function updateOfflineGenericRecord<T extends Record<string, any>>(
   return nextData;
 }
 
-export async function deleteOfflineGenericRecord(entity: string, endpoint: string, id: string) {
+export async function deleteOfflineGenericRecord(
+  entity: string,
+  endpoint: string,
+  id: string,
+) {
   const now = new Date().toISOString();
   await getOfflineDb()
     .update(genericRecords)
@@ -637,7 +1014,9 @@ export async function deleteOfflineGenericRecord(entity: string, endpoint: strin
   await enqueueMutation(entity, id, "delete", endpoint, "DELETE", {});
 }
 
-export async function createOfflineOrder(payload: CreateOrderPayload): Promise<Order> {
+export async function createOfflineOrder(
+  payload: CreateOrderPayload,
+): Promise<Order> {
   const db = getOfflineDb();
   const sqlite = getSqliteDatabase();
   const now = new Date().toISOString();
@@ -720,37 +1099,51 @@ export async function createOfflineOrder(payload: CreateOrderPayload): Promise<O
     );
   });
 
-  const [created] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-  const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  const [created] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  const items = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
 
-    return {
-      id: created.id,
-      grandTotal: created.grandTotal,
-      status: created.status,
-      createdAt: created.createdAt,
-      subTotal: created.subTotal,
-      taxAmount: created.taxAmount,
-      discountAmount: created.discountAmount,
-      paidAmount: created.paidAmount,
-      changeAmount: created.changeAmount,
-      paymentMethod: created.paymentMethod,
-      paymentStatus: created.paymentStatus,
-      paymentBreakdown: parsePaymentBreakdown(created.paymentBreakdown ?? payload.paymentBreakdown),
-      customerId: created.customerId ?? undefined,
-      storeId: created.storeId ?? undefined,
-      userId: created.userId,
-      items: items.map((item) => ({
-        id: item.id,
-        productId: item.productId,
-        productName: item.productName ?? "",
+  return {
+    id: created.id,
+    grandTotal: created.grandTotal,
+    status: created.status,
+    createdAt: created.createdAt,
+    subTotal: created.subTotal,
+    taxAmount: created.taxAmount,
+    discountAmount: created.discountAmount,
+    paidAmount: created.paidAmount,
+    changeAmount: created.changeAmount,
+    paymentMethod: created.paymentMethod,
+    paymentStatus: created.paymentStatus,
+    paymentBreakdown: parsePaymentBreakdown(
+      created.paymentBreakdown ?? payload.paymentBreakdown,
+    ),
+    customerId: created.customerId ?? undefined,
+    storeId: created.storeId ?? undefined,
+    userId: created.userId,
+    items: items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      productName: item.productName ?? "",
       price: item.unitPrice,
       quantity: item.quantity,
-      product: { name: item.productName ?? "", sellingPrice: String(item.unitPrice) },
+      product: {
+        name: item.productName ?? "",
+        sellingPrice: String(item.unitPrice),
+      },
     })),
   };
 }
 
-export async function upsertOrders(remoteOrders: (Order & Record<string, any>)[]) {
+export async function upsertOrders(
+  remoteOrders: (Order & Record<string, any>)[],
+) {
   if (!remoteOrders.length) return;
   const now = new Date().toISOString();
 
@@ -807,7 +1200,10 @@ export async function upsertOrders(remoteOrders: (Order & Record<string, any>)[]
             quantity: item.quantity,
             unitPrice: Number(item.unitPrice ?? item.price ?? 0),
             discountAmount: Number(item.discountAmount ?? 0),
-            subTotal: Number(item.subTotal ?? item.quantity * Number(item.unitPrice ?? item.price ?? 0)),
+            subTotal: Number(
+              item.subTotal ??
+                item.quantity * Number(item.unitPrice ?? item.price ?? 0),
+            ),
             createdAt: item.createdAt ?? now,
           })
           .onConflictDoUpdate({
@@ -849,7 +1245,14 @@ export async function updateOfflineOrderStatus(id: string, status: string) {
     .set({ status, syncStatus: "pending", updatedAt: now })
     .where(or(eq(orders.id, id), eq(orders.remoteId, id)));
 
-  await enqueueMutation("orders", id, "updateStatus", `/tenant/orders/${id}/status`, "PATCH", { status });
+  await enqueueMutation(
+    "orders",
+    id,
+    "updateStatus",
+    `/tenant/orders/${id}/status`,
+    "PATCH",
+    { status },
+  );
   const order = await getLocalOrderById(id);
   if (!order) throw new Error("Order not found in offline cache");
   return order;
@@ -862,10 +1265,20 @@ export async function deleteOfflineOrder(id: string) {
     .set({ status: "VOIDED", syncStatus: "pending", updatedAt: now })
     .where(or(eq(orders.id, id), eq(orders.remoteId, id)));
 
-  await enqueueMutation("orders", id, "delete", `/tenant/orders/${id}`, "DELETE", {});
+  await enqueueMutation(
+    "orders",
+    id,
+    "delete",
+    `/tenant/orders/${id}`,
+    "DELETE",
+    {},
+  );
 }
 
-export async function markOrderSynced(localId: string, remote: Order & Record<string, any>) {
+export async function markOrderSynced(
+  localId: string,
+  remote: Order & Record<string, any>,
+) {
   const now = new Date().toISOString();
   await getOfflineDb()
     .update(orders)
@@ -880,7 +1293,11 @@ export async function markOrderSynced(localId: string, remote: Order & Record<st
     .where(eq(orders.id, localId));
 }
 
-export async function markEntitySynced(entity: string, localId: string, remote: Record<string, any>) {
+export async function markEntitySynced(
+  entity: string,
+  localId: string,
+  remote: Record<string, any>,
+) {
   const now = new Date().toISOString();
   const id = String(remote.id ?? localId);
   const common = {
@@ -892,15 +1309,30 @@ export async function markEntitySynced(entity: string, localId: string, remote: 
   };
 
   if (entity === "products") {
-    await getOfflineDb().update(products).set({ lastSyncedAt: now, updatedAt: now }).where(eq(products.id, localId));
+    await getOfflineDb()
+      .update(products)
+      .set({ lastSyncedAt: now, updatedAt: now })
+      .where(eq(products.id, localId));
   } else if (entity === "customers") {
-    await getOfflineDb().update(customers).set({ ...common, code: remote.code }).where(eq(customers.id, localId));
+    await getOfflineDb()
+      .update(customers)
+      .set({ ...common, code: remote.code })
+      .where(eq(customers.id, localId));
   } else if (entity === "categories") {
-    await getOfflineDb().update(categories).set(common).where(eq(categories.id, localId));
+    await getOfflineDb()
+      .update(categories)
+      .set(common)
+      .where(eq(categories.id, localId));
   } else if (entity === "stores") {
-    await getOfflineDb().update(stores).set({ ...common, code: remote.code }).where(eq(stores.id, localId));
+    await getOfflineDb()
+      .update(stores)
+      .set({ ...common, code: remote.code })
+      .where(eq(stores.id, localId));
   } else if (entity === "sessions") {
-    await getOfflineDb().update(sessions).set(common).where(eq(sessions.id, localId));
+    await getOfflineDb()
+      .update(sessions)
+      .set(common)
+      .where(eq(sessions.id, localId));
   } else {
     await getOfflineDb()
       .update(genericRecords)
@@ -919,24 +1351,58 @@ export async function markEntitySynced(entity: string, localId: string, remote: 
 export async function markOrderSyncFailed(localId: string, error: string) {
   await getOfflineDb()
     .update(orders)
-    .set({ syncStatus: "failed", syncError: error, updatedAt: new Date().toISOString() })
+    .set({
+      syncStatus: "failed",
+      syncError: error,
+      updatedAt: new Date().toISOString(),
+    })
     .where(eq(orders.id, localId));
 }
 
-export async function markEntitySyncFailed(entity: string, localId: string, error: string) {
-  const update = { syncStatus: "failed", syncError: error, updatedAt: new Date().toISOString() };
+export async function markEntitySyncFailed(
+  entity: string,
+  localId: string,
+  error: string,
+) {
+  const update = {
+    syncStatus: "failed",
+    syncError: error,
+    updatedAt: new Date().toISOString(),
+  };
   if (entity === "products") {
-    await getOfflineDb().update(products).set({ syncStatus: "failed", syncError: error, updatedAt: new Date().toISOString() } as any).where(eq(products.id, localId));
+    await getOfflineDb()
+      .update(products)
+      .set({
+        syncStatus: "failed",
+        syncError: error,
+        updatedAt: new Date().toISOString(),
+      } as any)
+      .where(eq(products.id, localId));
   } else if (entity === "customers") {
-    await getOfflineDb().update(customers).set(update).where(eq(customers.id, localId));
+    await getOfflineDb()
+      .update(customers)
+      .set(update)
+      .where(eq(customers.id, localId));
   } else if (entity === "categories") {
-    await getOfflineDb().update(categories).set(update).where(eq(categories.id, localId));
+    await getOfflineDb()
+      .update(categories)
+      .set(update)
+      .where(eq(categories.id, localId));
   } else if (entity === "stores") {
-    await getOfflineDb().update(stores).set(update).where(eq(stores.id, localId));
+    await getOfflineDb()
+      .update(stores)
+      .set(update)
+      .where(eq(stores.id, localId));
   } else if (entity === "sessions") {
-    await getOfflineDb().update(sessions).set(update).where(eq(sessions.id, localId));
+    await getOfflineDb()
+      .update(sessions)
+      .set(update)
+      .where(eq(sessions.id, localId));
   } else {
-    await getOfflineDb().update(genericRecords).set(update).where(eq(genericRecords.id, localId));
+    await getOfflineDb()
+      .update(genericRecords)
+      .set(update)
+      .where(eq(genericRecords.id, localId));
   }
 }
 
@@ -987,9 +1453,15 @@ export async function markOutboxSynced(id: string) {
   await getOfflineDb().delete(syncOutbox).where(eq(syncOutbox.id, id));
 }
 
-export async function markOutboxFailed(id: string, attempts: number, error: string) {
+export async function markOutboxFailed(
+  id: string,
+  attempts: number,
+  error: string,
+) {
   const delaySeconds = Math.min(300, Math.pow(2, attempts) * 5);
-  const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+  const nextAttemptAt = new Date(
+    Date.now() + delaySeconds * 1000,
+  ).toISOString();
 
   await getOfflineDb()
     .update(syncOutbox)
@@ -1057,7 +1529,10 @@ function toProduct(product: LocalProduct): Product {
 }
 
 async function toOrder(order: LocalOrder): Promise<Order> {
-  const items = await getOfflineDb().select().from(orderItems).where(eq(orderItems.orderId, order.id));
+  const items = await getOfflineDb()
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, order.id));
   return {
     id: order.remoteId ?? order.id,
     grandTotal: order.grandTotal,
@@ -1080,7 +1555,10 @@ async function toOrder(order: LocalOrder): Promise<Order> {
       productName: item.productName ?? "",
       price: item.unitPrice,
       quantity: item.quantity,
-      product: { name: item.productName ?? "", sellingPrice: String(item.unitPrice) },
+      product: {
+        name: item.productName ?? "",
+        sellingPrice: String(item.unitPrice),
+      },
     })),
   };
 }
@@ -1162,20 +1640,22 @@ async function enqueueMutation(
   payload: unknown,
 ) {
   const now = new Date().toISOString();
-  await getOfflineDb().insert(syncOutbox).values({
-    id: createLocalId("outbox"),
-    entity,
-    entityId,
-    operation,
-    endpoint,
-    method,
-    payload,
-    status: "pending",
-    attempts: 0,
-    nextAttemptAt: now,
-    createdAt: now,
-    updatedAt: now,
-  });
+  await getOfflineDb()
+    .insert(syncOutbox)
+    .values({
+      id: createLocalId("outbox"),
+      entity,
+      entityId,
+      operation,
+      endpoint,
+      method,
+      payload,
+      status: "pending",
+      attempts: 0,
+      nextAttemptAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
 }
 
 function toSqliteUpdate(data: Record<string, unknown>) {

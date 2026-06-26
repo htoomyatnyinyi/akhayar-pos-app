@@ -1,5 +1,6 @@
-import { ScrollView, View } from "react-native";
+import { ScrollView, View, Text, Pressable, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useMemo } from "react";
 import {
   Card,
   Header,
@@ -9,15 +10,33 @@ import {
   SectionTitle,
   StatRow,
 } from "@/components/app-ui";
-
-const products = [
-  { title: "Fresh Milk 2L", subtitle: "SKU MILK-2001", right: "12 left", icon: "local-drink" as const },
-  { title: "Rice 5kg", subtitle: "SKU RICE-5001", right: "48 left", icon: "shopping-bag" as const },
-  { title: "Laundry Soap", subtitle: "SKU SOAP-1040", right: "Low", icon: "warning" as const },
-  { title: "Cooking Oil 1L", subtitle: "SKU OIL-1022", right: "24 left", icon: "kitchen" as const },
-];
+import { useGetInventoryQuery } from "@/services/features/inventory/inventoryApi";
+import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 
 export default function InventoryScreen() {
+  const { currentStoreId } = useAppSelector((state) => state.auth);
+  const { data: inventory = [], isLoading } = useGetInventoryQuery(currentStoreId || undefined);
+
+  const lowStockThreshold = 15; // Example threshold
+  
+  const stats = useMemo(() => {
+    let activeSkus = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+
+    inventory.forEach((item) => {
+      activeSkus++;
+      if (item.quantity <= 0) outOfStockCount++;
+      else if (item.quantity <= lowStockThreshold) lowStockCount++;
+    });
+
+    return { activeSkus, lowStockCount, outOfStockCount };
+  }, [inventory]);
+
+  const lowStockItems = useMemo(() => {
+    return inventory.filter(item => item.quantity > 0 && item.quantity <= lowStockThreshold);
+  }, [inventory]);
+
   return (
     <Screen>
       <SafeAreaView className="flex-1">
@@ -26,43 +45,57 @@ export default function InventoryScreen() {
             eyebrow="Catalog"
             title="Inventory"
             subtitle="Keep item counts, replenishment, and product visibility easy to scan."
-            right={<Pill label="14 low stock" tone="rose" />}
+            right={<Pill label={`${stats.lowStockCount} low stock`} tone={stats.lowStockCount > 0 ? "rose" : "emerald"} />}
           />
 
           <View className="mb-4 flex-row gap-3">
             <View className="flex-1">
               <Card>
-                <StatRow label="Active SKUs" value="1,248" />
-                <StatRow label="New items" value="24 this week" />
+                <StatRow label="Active SKUs" value={String(stats.activeSkus)} />
+                <StatRow label="In stock" value={`${stats.activeSkus - stats.outOfStockCount} items`} />
               </Card>
             </View>
             <View className="flex-1">
               <Card>
-                <StatRow label="Reorder alerts" value="14 items" />
-                <StatRow label="Out of stock" value="3 items" />
+                <StatRow label="Reorder alerts" value={`${stats.lowStockCount} items`} />
+                <StatRow label="Out of stock" value={`${stats.outOfStockCount} items`} />
               </Card>
             </View>
           </View>
 
           <SectionTitle title="Needs replenishment" action="Manage" />
           <Card className="mb-4">
-            {products.map((item, index) => (
-              <View key={item.title}>
-                <RowItem {...item} />
-                {index < products.length - 1 ? <View className="my-3 h-px bg-white/8" /> : null}
-              </View>
-            ))}
+            {isLoading ? (
+              <Text className="py-8 text-center text-sm text-slate-400">Loading...</Text>
+            ) : lowStockItems.length > 0 ? (
+              lowStockItems.map((item, index) => (
+                <View key={item.id}>
+                  <RowItem 
+                    title={item.product?.name ?? "Unknown"} 
+                    subtitle={`SKU ${item.product?.sku ?? ""}`} 
+                    right={`${item.quantity} left`} 
+                    icon="warning" 
+                  />
+                  {index < lowStockItems.length - 1 ? <View className="my-3 h-px bg-white/8" /> : null}
+                </View>
+              ))
+            ) : (
+              <Text className="py-8 text-center text-sm text-slate-400">All items are well stocked.</Text>
+            )}
           </Card>
 
           <SectionTitle title="Stock operations" />
           <Card>
-            <RowItem title="Receive purchase order" subtitle="Log supplier delivery and update counts" right="Open" icon="inventory-2" />
+            <Pressable onPress={() => Alert.alert("Coming soon", "Receive purchase order UI")}>
+              <RowItem title="Receive purchase order" subtitle="Log supplier delivery and update counts" right="Open" icon="inventory-2" />
+            </Pressable>
             <View className="my-3 h-px bg-white/8" />
-            <RowItem title="Cycle count" subtitle="Audit fast-moving items" right="Start" icon="fact-check" />
+            <Pressable onPress={() => Alert.alert("Coming soon", "Cycle count UI")}>
+              <RowItem title="Cycle count" subtitle="Audit fast-moving items" right="Start" icon="fact-check" />
+            </Pressable>
           </Card>
         </ScrollView>
       </SafeAreaView>
     </Screen>
   );
 }
-

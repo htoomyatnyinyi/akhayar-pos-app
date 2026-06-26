@@ -124,9 +124,14 @@ export default function LoginScreen() {
               className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-white"
             />
 
-            <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
-              Password
-            </Text>
+            <View className="mb-2 flex-row items-center justify-between">
+              <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
+                Password
+              </Text>
+              <Pressable onPress={() => router.push("/(auth)/forgot-password")}>
+                <Text className="text-xs font-bold text-sky-400">Forgot?</Text>
+              </Pressable>
+            </View>
             <View className="mb-6 flex-row items-center rounded-2xl border border-white/10 bg-white/5 px-4">
               <TextInput
                 value={password}

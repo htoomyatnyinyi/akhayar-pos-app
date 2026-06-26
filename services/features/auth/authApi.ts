@@ -6,6 +6,9 @@ import {
   AuthSuccessResponse,
   LoginPayload,
   RegisterPayload,
+  VerifyEmailPayload,
+  ForgotPasswordPayload,
+  ResetPasswordPayload,
   User,
 } from "./authTypes";
 import { normalizeAuthUser } from "./authUtils";
@@ -61,7 +64,51 @@ export const authApi = posApi.injectEndpoints({
       },
       providesTags: ["Auth"],
     }),
+
+    verifyEmail: builder.mutation<void, VerifyEmailPayload>({
+      query: (body) => ({
+        url: "/auth/verify-email",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Auth"],
+    }),
+
+    resendOtp: builder.mutation<void, void>({
+      query: () => ({
+        url: "/auth/resend-otp",
+        method: "POST",
+      }),
+    }),
+
+    forgotPassword: builder.mutation<void, ForgotPasswordPayload>({
+      query: (body) => ({
+        url: "/auth/forgot-password",
+        method: "POST",
+        body: { email: body.email.trim().toLowerCase() },
+      }),
+    }),
+
+    resetPassword: builder.mutation<void, ResetPasswordPayload>({
+      query: (body) => ({
+        url: "/auth/reset-password",
+        method: "POST",
+        body: {
+          email: body.email.trim().toLowerCase(),
+          code: body.code,
+          newPassword: body.newPassword,
+        },
+      }),
+    }),
   }),
 });
 
-export const { useLoginMutation, useRegisterMutation, useMeQuery } = authApi;
+export const {
+  useLoginMutation,
+  useRegisterMutation,
+  useMeQuery,
+  useVerifyEmailMutation,
+  useResendOtpMutation,
+  useForgotPasswordMutation,
+  useResetPasswordMutation,
+} = authApi;

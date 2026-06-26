@@ -4,7 +4,7 @@ import * as schema from "./schema";
 // 🌟 'documentsDirectory' ကို သီးသန့် import ထပ်ထုတ်ပေးရန် လိုအပ်ပါသည်
 import { Directory, File, documentsDirectory } from "expo-file-system";
 
-const databaseName = "midnightcorner_offline.db";
+const databaseName = "midnightcorner_offline_v2.db";
 
 let sqlite: SQLiteDatabase | undefined;
 let db: ReturnType<typeof drizzle<typeof schema>> | undefined;

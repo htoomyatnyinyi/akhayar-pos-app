@@ -37,6 +37,20 @@ export interface RegisterPayload {
   tenantCode?: string;
 }
 
+export interface VerifyEmailPayload {
+  code: string;
+}
+
+export interface ForgotPasswordPayload {
+  email: string;
+}
+
+export interface ResetPasswordPayload {
+  email: string;
+  code: string;
+  newPassword: string;
+}
+
 export interface AuthApiUser {
   id: string;
   name: string;
