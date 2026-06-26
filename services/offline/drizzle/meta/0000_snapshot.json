@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c2fe6117-a204-4329-9063-4a2419f5c064",
+  "id": "cf0e86a1-6259-4b14-bacd-62e18cac0439",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "categories": {
@@ -204,6 +204,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "debt_amount": {
+          "name": "debt_amount",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         },
         "loyalty_points": {
           "name": "loyalty_points",
@@ -413,6 +421,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "variant_id": {
+          "name": "variant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "product_name": {
           "name": "product_name",
           "type": "text",
@@ -504,6 +519,13 @@
         },
         "store_id": {
           "name": "store_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "register_id": {
+          "name": "register_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -605,6 +627,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "payment_breakdown": {
+          "name": "payment_breakdown",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "sync_status": {
           "name": "sync_status",
@@ -755,6 +784,14 @@
           "autoincrement": false,
           "default": 0
         },
+        "wholesale_price": {
+          "name": "wholesale_price",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "stock_quantity": {
           "name": "stock_quantity",
           "type": "integer",
@@ -762,6 +799,20 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "manufacturing_date": {
+          "name": "manufacturing_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expiry_date": {
+          "name": "expiry_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "version": {
           "name": "version",
@@ -874,6 +925,13 @@
         },
         "store_id": {
           "name": "store_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "register_id": {
+          "name": "register_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

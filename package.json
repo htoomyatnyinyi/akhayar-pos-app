@@ -9,6 +9,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "db:generate": "drizzle-kit generate",
+    "db:export": "drizzle-kit export",
     "build:ldev": "eas build --profile development --platform android --local",
     "build:lapk": "eas build --profile preview --platform android --local",
     "build:lprod": "eas build --profile production --platform android --local",
