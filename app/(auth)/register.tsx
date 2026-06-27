@@ -88,7 +88,10 @@ export default function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-950">
+    <SafeAreaView
+      className="flex-1 bg-slate-950"
+      style={{ flex: 1, backgroundColor: "#020617" }}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}

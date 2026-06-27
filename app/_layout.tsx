@@ -1,7 +1,16 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
-import { Stack, useRootNavigationState, useRouter, useSegments } from "expo-router";
-import { useEffect } from "react";
-import { AppState } from "react-native";
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "@react-navigation/native";
+import {
+  Stack,
+  useRootNavigationState,
+  useRouter,
+  useSegments,
+} from "expo-router";
+import { useEffect, useState } from "react";
+import { AppState, View, Text, ActivityIndicator } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
@@ -9,7 +18,10 @@ import "../global.css";
 import { store, persistor } from "@/services/store/store";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { initializeOfflineSystem, syncNow } from "@/services/offline/syncManager";
+import {
+  initializeOfflineSystem,
+  syncNow,
+} from "@/services/offline/syncManager";
 
 function RootNavigator() {
   const colorScheme = useColorScheme();
@@ -17,6 +29,7 @@ function RootNavigator() {
   const segments = useSegments();
   const navigationState = useRootNavigationState();
   const router = useRouter();
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     initializeOfflineSystem(store.dispatch, store.getState).catch((error) => {
@@ -46,7 +59,26 @@ function RootNavigator() {
     if (user && inAuthGroup) {
       router.replace("/");
     }
+
+    // Mark ready after first navigation decision
+    setIsReady(true);
   }, [user, segments, navigationState?.key, router]);
+
+  // Show a loading screen until navigation is resolved
+  if (!isReady) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#020617",
+        }}
+      >
+        <ActivityIndicator size="large" color="#38bdf8" />
+      </View>
+    );
+  }
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
@@ -62,7 +94,22 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <Provider store={store}>
-      <PersistGate loading={null} persistor={persistor}>
+      <PersistGate
+        loading={
+          <View
+            style={{
+              flex: 1,
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: "#020617",
+            }}
+          >
+            <ActivityIndicator size="large" color="#38bdf8" />
+            <Text style={{ color: "#94a3b8", marginTop: 12 }}>Loading...</Text>
+          </View>
+        }
+        persistor={persistor}
+      >
         <RootNavigator />
       </PersistGate>
     </Provider>
