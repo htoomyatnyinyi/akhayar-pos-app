@@ -21,7 +21,7 @@ export const supplierApi = posApi.injectEndpoints({
           });
           if (!result.error && Array.isArray(result.data)) {
             await upsertGenericRecords("suppliers", result.data as Supplier[]);
-            return { data: result.data as Supplier[] };
+            return { data: await getLocalGenericRecords<Supplier>("suppliers") };
           }
         }
 
@@ -70,7 +70,7 @@ export const supplierApi = posApi.injectEndpoints({
       { id: string; data: Partial<CreateSupplierPayload> }
     >({
       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if (await isOnline() && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/suppliers/${id}`,
             method: "PUT",
@@ -98,7 +98,7 @@ export const supplierApi = posApi.injectEndpoints({
 
     deleteSupplier: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if (await isOnline() && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/suppliers/${id}`,
             method: "DELETE",

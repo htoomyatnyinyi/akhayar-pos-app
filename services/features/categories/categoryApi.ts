@@ -22,7 +22,7 @@ export const categoryApi = posApi.injectEndpoints({
 
           if (!result.error && Array.isArray(result.data)) {
             await upsertCategories(result.data as Category[]);
-            return { data: result.data as Category[] };
+            return { data: await getLocalCategories(storeId) };
           }
         }
 
@@ -65,7 +65,7 @@ export const categoryApi = posApi.injectEndpoints({
       { id: string; data: Partial<CreateCategoryPayload> }
     >({
       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if ((await isOnline()) && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/categories/${id}`,
             method: "PUT",
@@ -91,7 +91,7 @@ export const categoryApi = posApi.injectEndpoints({
 
     deleteCategory: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if ((await isOnline()) && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/categories/${id}`,
             method: "DELETE",

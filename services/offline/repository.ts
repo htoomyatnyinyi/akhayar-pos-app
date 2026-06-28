@@ -119,6 +119,7 @@ export async function upsertCategories(remoteCategories: Category[]) {
         slug: category.slug,
         description: category.description,
         parentId: category.parentId,
+        storeId: category.storeId,
         isActive: category.isActive,
         sortOrder: category.sortOrder,
         syncStatus: "synced",
@@ -136,6 +137,7 @@ export async function upsertCategories(remoteCategories: Category[]) {
         slug: sql`excluded.slug`,
         description: sql`excluded.description`,
         parentId: sql`excluded.parent_id`,
+        storeId: sql`excluded.store_id`,
         isActive: sql`excluded.is_active`,
         sortOrder: sql`excluded.sort_order`,
         syncStatus: "synced",
@@ -405,16 +407,16 @@ export async function deleteOfflineProduct(id: string) {
   );
 }
 
-export async function getLocalCategories(storeId?: string) {
+export async function getLocalCategories(storeId?: string | null) {
   const rows = await getOfflineDb()
     .select()
     .from(categories)
     .where(
       and(
         eq(categories.isActive, true),
-        storeId
+        storeId !== undefined
           ? or(
-              eq(categories.storeId, storeId),
+              eq(categories.storeId, storeId ?? ""),
               sql`${categories.storeId} IS NULL`,
             )
           : undefined,

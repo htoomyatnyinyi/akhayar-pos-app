@@ -25,7 +25,7 @@ export const productApi = posApi.injectEndpoints({
 
           if (!result.error && Array.isArray(result.data)) {
             await upsertProducts(result.data as Product[]);
-            return { data: result.data as Product[] };
+            return { data: await getLocalProducts(storeId) };
           }
         }
 
@@ -69,7 +69,7 @@ export const productApi = posApi.injectEndpoints({
       { id: string; data: Partial<Product> & { categoryName?: string } }
     >({
       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if (await isOnline() && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/products/${id}`,
             method: "PUT",
@@ -90,7 +90,7 @@ export const productApi = posApi.injectEndpoints({
 
     deleteProduct: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if (await isOnline() && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/products/${id}`,
             method: "DELETE",

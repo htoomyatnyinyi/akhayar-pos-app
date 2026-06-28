@@ -24,7 +24,7 @@ export const orderApi = posApi.injectEndpoints({
           if (!result.error) {
             const data = result.data as Order[];
             if (Array.isArray(data)) await upsertOrders(data);
-            return { data };
+            return { data: await getLocalOrders(storeId) };
           }
         }
 
@@ -92,7 +92,7 @@ export const orderApi = posApi.injectEndpoints({
 
     updateOrderStatus: builder.mutation<Order, { id: string; status: string }>({
       async queryFn({ id, status }, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if (await isOnline() && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/orders/${id}/status`,
             method: "PATCH",
@@ -113,7 +113,7 @@ export const orderApi = posApi.injectEndpoints({
 
     deleteOrder: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if (await isOnline() && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/orders/${id}`,
             method: "DELETE",

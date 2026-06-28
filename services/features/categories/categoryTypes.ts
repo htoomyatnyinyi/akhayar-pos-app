@@ -8,6 +8,7 @@ export interface Category {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  storeId?: string;
 }
 
 export interface CreateCategoryPayload {

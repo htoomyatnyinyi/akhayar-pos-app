@@ -108,7 +108,7 @@ export default function ManageScreen() {
       { userId: user?.id || "", storeId: currentStoreId || undefined },
       { skip: !user?.id },
     );
-  console.log("categories", categories);
+  // console.log("categories", categories);
 
   const [createStaff] = useCreateStaffMutation();
   const [updateStaff] = useUpdateStaffMutation();

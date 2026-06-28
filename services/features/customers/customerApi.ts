@@ -18,7 +18,7 @@ export const customerApi = posApi.injectEndpoints({
           const result = await baseQuery("/tenant/customers");
           if (!result.error && Array.isArray(result.data)) {
             await upsertCustomers(result.data as Customer[]);
-            return { data: result.data as Customer[] };
+            return { data: await getLocalCustomers() };
           }
         }
 
@@ -58,7 +58,7 @@ export const customerApi = posApi.injectEndpoints({
       { id: string; data: Partial<CreateCustomerPayload> }
     >({
       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if ((await isOnline()) && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/customers/${id}`,
             method: "PUT",
@@ -84,7 +84,7 @@ export const customerApi = posApi.injectEndpoints({
 
     deleteCustomer: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if ((await isOnline()) && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/customers/${id}`,
             method: "DELETE",

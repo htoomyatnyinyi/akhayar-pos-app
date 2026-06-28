@@ -31,7 +31,7 @@ export const staffApi = posApi.injectEndpoints({
           );
           if (!result.error && Array.isArray(result.data)) {
             await upsertGenericRecords("staff", result.data as Staff[]);
-            return { data: result.data as Staff[] };
+            return { data: await getLocalGenericRecords<Staff>("staff") };
           }
         }
 
@@ -77,7 +77,7 @@ export const staffApi = posApi.injectEndpoints({
       { id: string; data: Partial<CreateStaffPayload> }
     >({
       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if (await isOnline() && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/staff/${id}`,
             method: "PUT",
@@ -105,7 +105,7 @@ export const staffApi = posApi.injectEndpoints({
 
     deleteStaff: builder.mutation<void, string>({
       async queryFn(id, _api, _extraOptions, baseQuery) {
-        if (await isOnline()) {
+        if (await isOnline() && !String(id).includes("_")) {
           const result = await baseQuery({
             url: `/tenant/staff/${id}`,
             method: "DELETE",
