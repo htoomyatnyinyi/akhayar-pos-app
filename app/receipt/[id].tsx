@@ -1,13 +1,7 @@
 import * as Print from "expo-print";
 import QRCode from "react-native-qrcode-svg";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  Share,
-  Text,
-  View,
-} from "react-native";
+import { Alert, ScrollView, Share, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -39,7 +33,10 @@ export default function ReceiptScreen() {
 
   const receiptNumber = useMemo(() => {
     if (!order?.id) return "RCPT-XXXX";
-    return `RCPT-${order.id.replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase()}`;
+    return `RCPT-${order.id
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(-8)
+      .toUpperCase()}`;
   }, [order?.id]);
 
   const customer = useMemo(
@@ -260,7 +257,10 @@ export default function ReceiptScreen() {
             <Divider />
             <StatRow label="Order" value={order?.id ?? "..."} />
             <StatRow label="Receipt #" value={receiptNumber} />
-            <StatRow label="Payment method" value={order?.paymentMethod ?? "CASH"} />
+            <StatRow
+              label="Payment method"
+              value={order?.paymentMethod ?? "CASH"}
+            />
             <StatRow label="Customer" value={customer?.name ?? "Walk-in"} />
             <StatRow label="Store" value={store?.name ?? "Main Store"} />
             <StatRow label="Status" value={order?.status ?? "..."} />
@@ -314,13 +314,31 @@ export default function ReceiptScreen() {
 
           <SectionTitle title="Summary" />
           <Card className="mb-4">
-            <StatRow label="Subtotal" value={`$${Number(order?.subTotal ?? 0).toFixed(2)}`} />
-            <StatRow label="Tax" value={`$${Number(order?.taxAmount ?? 0).toFixed(2)}`} />
-            <StatRow label="Discount" value={`$${Number(order?.discountAmount ?? 0).toFixed(2)}`} />
+            <StatRow
+              label="Subtotal"
+              value={`$${Number(order?.subTotal ?? 0).toFixed(2)}`}
+            />
+            <StatRow
+              label="Tax"
+              value={`$${Number(order?.taxAmount ?? 0).toFixed(2)}`}
+            />
+            <StatRow
+              label="Discount"
+              value={`$${Number(order?.discountAmount ?? 0).toFixed(2)}`}
+            />
             <Divider />
-            <StatRow label="Total" value={`$${Number(order?.grandTotal ?? 0).toFixed(2)}`} />
-            <StatRow label="Paid" value={`$${Number(order?.paidAmount ?? 0).toFixed(2)}`} />
-            <StatRow label="Change" value={`$${Number(order?.changeAmount ?? 0).toFixed(2)}`} />
+            <StatRow
+              label="Total"
+              value={`$${Number(order?.grandTotal ?? 0).toFixed(2)}`}
+            />
+            <StatRow
+              label="Paid"
+              value={`$${Number(order?.paidAmount ?? 0).toFixed(2)}`}
+            />
+            <StatRow
+              label="Change"
+              value={`$${Number(order?.changeAmount ?? 0).toFixed(2)}`}
+            />
           </Card>
 
           <SectionTitle title="Tender split" />

@@ -10,7 +10,8 @@ export default function TabLayout() {
   const showManagement = role === "ADMIN" || role === "MANAGER";
 
   return (
-    <View style={{ flex: 1 }}>
+    <View className="flex-1 ">
+      {/* style={{ flex: 1 }} */}
       <Tabs
         screenOptions={{
           headerShown: false,

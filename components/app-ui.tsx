@@ -1,11 +1,6 @@
 import { MaterialIcons } from "@expo/vector-icons";
 import { ReactNode } from "react";
-import {
-  Pressable,
-  Text,
-  View,
-  type ViewStyle,
-} from "react-native";
+import { Pressable, Text, View, type ViewStyle } from "react-native";
 
 export function Screen({
   children,
@@ -16,11 +11,11 @@ export function Screen({
 }) {
   return (
     <View className="flex-1 bg-slate-950">
-      <View className="absolute inset-0">
+      {/* <View className="absolute inset-0">
         <View className="absolute -top-24 -left-24 h-64 w-64 rounded-full bg-sky-500/10" />
         <View className="absolute top-32 -right-24 h-72 w-72 rounded-full bg-emerald-500/10" />
         <View className="absolute bottom-0 left-1/4 h-56 w-56 rounded-full bg-amber-500/10" />
-      </View>
+      </View> */}
       <View className={`flex-1 ${padded ? "px-4 pt-4" : ""}`}>{children}</View>
     </View>
   );
@@ -193,9 +188,13 @@ export function RowItem({
       ) : null}
       <View className="flex-1">
         <Text className="text-sm font-semibold text-white">{title}</Text>
-        {subtitle ? <Text className="mt-1 text-xs text-slate-400">{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text className="mt-1 text-xs text-slate-400">{subtitle}</Text>
+        ) : null}
       </View>
-      {right ? <Text className="text-sm font-bold text-slate-200">{right}</Text> : null}
+      {right ? (
+        <Text className="text-sm font-bold text-slate-200">{right}</Text>
+      ) : null}
     </View>
   );
 }
@@ -212,7 +211,9 @@ export function SectionTitle({
       <Text className="text-sm font-bold uppercase tracking-[3px] text-slate-400">
         {title}
       </Text>
-      {action ? <Text className="text-xs font-semibold text-sky-300">{action}</Text> : null}
+      {action ? (
+        <Text className="text-xs font-semibold text-sky-300">{action}</Text>
+      ) : null}
     </View>
   );
 }
@@ -225,7 +226,11 @@ export function Pill({
   tone?: "sky" | "emerald" | "amber" | "rose";
 }) {
   const tones: Record<string, { bg: string; border: string; fg: string }> = {
-    sky: { bg: "bg-sky-500/10", border: "border-sky-500/20", fg: "text-sky-200" },
+    sky: {
+      bg: "bg-sky-500/10",
+      border: "border-sky-500/20",
+      fg: "text-sky-200",
+    },
     emerald: {
       bg: "bg-emerald-500/10",
       border: "border-emerald-500/20",
@@ -236,25 +241,27 @@ export function Pill({
       border: "border-amber-500/20",
       fg: "text-amber-200",
     },
-    rose: { bg: "bg-rose-500/10", border: "border-rose-500/20", fg: "text-rose-200" },
+    rose: {
+      bg: "bg-rose-500/10",
+      border: "border-rose-500/20",
+      fg: "text-rose-200",
+    },
   };
   const t = tones[tone];
   return (
-    <View className={`self-start rounded-full border px-3 py-1.5 ${t.bg} ${t.border}`}>
-      <Text className={`text-[10px] font-black uppercase tracking-[3px] ${t.fg}`}>
+    <View
+      className={`self-start rounded-full border px-3 py-1.5 ${t.bg} ${t.border}`}
+    >
+      <Text
+        className={`text-[10px] font-black uppercase tracking-[3px] ${t.fg}`}
+      >
         {label}
       </Text>
     </View>
   );
 }
 
-export function SmallLabel({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+export function SmallLabel({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-1">
       <Text className="text-[10px] font-bold uppercase tracking-[3px] text-slate-500">
@@ -269,13 +276,7 @@ export function Divider() {
   return <View className="my-4 h-px bg-white/8" />;
 }
 
-export function StatRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+export function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row items-center justify-between py-2">
       <Text className="text-sm text-slate-300">{label}</Text>

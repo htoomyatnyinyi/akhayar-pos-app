@@ -9,7 +9,10 @@ const databaseName = "midnightcorner_offline_v2.db";
 let sqlite: SQLiteDatabase | undefined;
 let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
 
-// 🌟 Expo SDK 54 API သစ်ကို အမှန်ကန်ဆုံး ပြင်ဆင်ထားသည့် function
+// Expo SDK 54 API သစ်ကို အမှန်ကန်ဆုံး ပြင်ဆင်ထားသည့် function
+/**
+ * 1. Cleans up old database files if necessary (Your SDK 54 setup)
+ */
 async function deleteOldDatabase() {
   try {
     // 💡 Directory.documentsDirectory အစား တိုက်ရိုက် import ထုတ်ထားသည့် documentsDirectory ကို သုံးပါသည်
@@ -47,6 +50,28 @@ export function getOfflineDb() {
 
   return db;
 }
+/* deepseed add on */
+// 🌟 DeepSeek Add-on: Export direct database instance for easier imports
+export const database = getOfflineDb();
+
+// 🌟 DeepSeek Add-on: Export Database type for your repositories/hooks
+export type Database = typeof database;
+
+/**
+ * 🌟 DeepSeek Add-on: Initialization wrapper
+ * You can call this inside your app's root splash screen/loading logic
+ */
+export async function initializeDatabase() {
+  try {
+    // Calling this forces the DB to open and apply PRAGMAs right at launch
+    getSqliteDatabase();
+    console.log("Database initialized successfully with WAL and Foreign Keys.");
+  } catch (error) {
+    console.error("Failed to initialize database:", error);
+    throw error;
+  }
+}
+/* old */
 
 // import { drizzle } from "drizzle-orm/expo-sqlite";
 // import { openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";

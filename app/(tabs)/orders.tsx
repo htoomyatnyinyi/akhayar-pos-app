@@ -35,7 +35,10 @@ import {
   setCheckoutState,
 } from "@/services/features/cart/cartSlice";
 import { useCreateOrderMutation } from "@/services/features/order/orderApi";
-import { useGetProductsQuery, useLazyGetProductByBarcodeQuery } from "@/services/features/products/productApi";
+import {
+  useGetProductsQuery,
+  useLazyGetProductByBarcodeQuery,
+} from "@/services/features/products/productApi";
 import { useGetCustomersQuery } from "@/services/features/customers/customerApi";
 import { useGetActiveSessionQuery } from "@/services/features/sessions/sessionApi";
 import { useGetStoresQuery } from "@/services/features/stores/storeApi";
@@ -112,16 +115,22 @@ export default function OrdersScreen() {
       );
     });
   }, [customers, customerSearch]);
+  // console.log("activeSession", activeSession);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const taxAmount = subtotal * 0.05;
   const discountAmount = 0;
   const grandTotal = subtotal + taxAmount - discountAmount;
-  const tenderTotal = paymentBreakdown.reduce((sum, item) => sum + item.amount, 0);
+  const tenderTotal = paymentBreakdown.reduce(
+    (sum, item) => sum + item.amount,
+    0,
+  );
   const changeAmount = Math.max(tenderTotal - grandTotal, 0);
   const dueAmount = Math.max(grandTotal - tenderTotal, 0);
   const paymentMethod =
-    paymentBreakdown.length > 1 ? "MIXED_PAYMENT" : paymentBreakdown[0]?.method ?? "CASH";
+    paymentBreakdown.length > 1
+      ? "MIXED_PAYMENT"
+      : (paymentBreakdown[0]?.method ?? "CASH");
 
   const addProduct = (product: Product) => {
     dispatch(
@@ -159,7 +168,10 @@ export default function OrdersScreen() {
         Alert.alert("Not found", result.message || "Product not found.");
       }
     } catch (error: any) {
-      Alert.alert("Lookup failed", error?.message || "Unable to scan this barcode.");
+      Alert.alert(
+        "Lookup failed",
+        error?.message || "Unable to scan this barcode.",
+      );
     } finally {
       setTimeout(() => setScanLocked(false), 500);
     }
@@ -215,7 +227,9 @@ export default function OrdersScreen() {
       Alert.alert("Empty cart", "Add at least one item before checkout.");
       return;
     }
-    if (!activeSession?.id) {
+
+    // console.log("activeSession", activeSession?.session.id);
+    if (!activeSession?.session?.id) {
       Alert.alert(
         "No open session",
         "Open a cashier session before taking payments.",
@@ -242,7 +256,7 @@ export default function OrdersScreen() {
       paymentBreakdown,
       userId: user.id,
       customerId: selectedCustomer?.id,
-      sessionId: activeSession.id,
+      sessionId: activeSession?.session?.id,
       storeId: currentStoreId,
       items: cart.map((item) => ({
         productId: item.id,
@@ -417,7 +431,9 @@ export default function OrdersScreen() {
                         <MaterialIcons name="add" size={18} color="#fff" />
                       </Pressable>
                     </View>
-                    <Pressable onPress={() => dispatch(removeFromCart(item.id))}>
+                    <Pressable
+                      onPress={() => dispatch(removeFromCart(item.id))}
+                    >
                       <Text className="text-xs font-bold uppercase tracking-[2px] text-rose-300">
                         Remove
                       </Text>
@@ -506,7 +522,10 @@ export default function OrdersScreen() {
             <View className="mt-4">
               <StatRow label="Subtotal" value={`$${subtotal.toFixed(2)}`} />
               <StatRow label="Tax" value={`$${taxAmount.toFixed(2)}`} />
-              <StatRow label="Discount" value={`$${discountAmount.toFixed(2)}`} />
+              <StatRow
+                label="Discount"
+                value={`$${discountAmount.toFixed(2)}`}
+              />
               <Divider />
               <StatRow label="Total" value={`$${grandTotal.toFixed(2)}`} />
               <StatRow label="Tendered" value={`$${tenderTotal.toFixed(2)}`} />
@@ -535,7 +554,9 @@ export default function OrdersScreen() {
               <RowItem
                 title={storeName}
                 subtitle={
-                  activeSession ? `Session ${activeSession.id}` : "No open session"
+                  activeSession
+                    ? `Session ${activeSession.id}`
+                    : "No open session"
                 }
                 right={offline.isOnline ? "Live" : "Cached"}
                 icon="store"
