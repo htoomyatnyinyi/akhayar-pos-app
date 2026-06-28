@@ -39,9 +39,16 @@ export interface CreateOrderPayload {
   taxAmount?: number;
   discountAmount?: number;
   grandTotal: number;
-  paymentMethod: "CASH" | "KBZ_PAY" | "CB_PAY" | "WAVE_PAY" | "CARD" | "MIXED_PAYMENT";
+  paymentMethod:
+    | "CASH"
+    | "KBZ_PAY"
+    | "CB_PAY"
+    | "WAVE_PAY"
+    | "CARD"
+    | "MIXED_PAYMENT";
   paidAmount: number;
   changeAmount: number;
+
   paymentStatus?: string;
   paymentBreakdown?: PaymentBreakdownItem[];
   userId: string;
