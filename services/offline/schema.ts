@@ -39,7 +39,9 @@ export const products = sqliteTable(
     manufacturingDate: text("manufacturing_date"), // 🌟 Added to match API
     expiryDate: text("expiry_date"), // 🌟 Added to match API
     version: integer("version").notNull().default(0),
-    isActive: integer("is_active", { mode: "boolean" }).notNull().default(sql`1`),
+    isActive: integer("is_active", { mode: "boolean" })
+      .notNull()
+      .default(sql`1`),
     deletedAt: text("deleted_at"),
     syncStatus: text("sync_status").notNull().default("synced"),
     syncError: text("sync_error"),
@@ -73,7 +75,9 @@ export const categories = sqliteTable("categories", {
   description: text("description"),
   parentId: text("parent_id"),
 
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(sql`1`),
+  isActive: integer("is_active", { mode: "boolean" })
+    .notNull()
+    .default(sql`1`),
   sortOrder: integer("sort_order").notNull().default(0),
   syncStatus: text("sync_status").notNull().default("synced"),
   syncError: text("sync_error"),
@@ -103,7 +107,9 @@ export const customers = sqliteTable("customers", {
   totalOrders: integer("total_orders").notNull().default(0),
   tier: text("tier").notNull().default("BRONZE"),
   tierValidUntil: text("tier_valid_until"),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(sql`1`),
+  isActive: integer("is_active", { mode: "boolean" })
+    .notNull()
+    .default(sql`1`),
   syncStatus: text("sync_status").notNull().default("synced"),
   syncError: text("sync_error"),
   createdAt: text("created_at")
@@ -125,7 +131,9 @@ export const stores = sqliteTable("stores", {
   phone: text("phone"),
   email: text("email"),
   taxNumber: text("tax_number"),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(sql`1`),
+  isActive: integer("is_active", { mode: "boolean" })
+    .notNull()
+    .default(sql`1`),
   syncStatus: text("sync_status").notNull().default("synced"),
   syncError: text("sync_error"),
   createdAt: text("created_at")
@@ -308,7 +316,9 @@ export const genericRecords = sqliteTable("generic_records", {
   remoteId: text("remote_id"),
   entity: text("entity").notNull(),
   data: text("data", { mode: "json" }).notNull(),
-  isActive: integer("is_active", { mode: "boolean" }).notNull().default(sql`1`),
+  isActive: integer("is_active", { mode: "boolean" })
+    .notNull()
+    .default(sql`1`),
   syncStatus: text("sync_status").notNull().default("synced"),
   syncError: text("sync_error"),
   createdAt: text("created_at")

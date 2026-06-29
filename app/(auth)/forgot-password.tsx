@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -19,22 +29,33 @@ export default function ForgotPasswordScreen() {
 
     try {
       await forgotPassword({ email }).unwrap();
-      Alert.alert("Success", "Instructions to reset your password have been sent to your email.");
+      Alert.alert(
+        "Success",
+        "Instructions to reset your password have been sent to your email.",
+      );
       router.push({ pathname: "/(auth)/reset-password", params: { email } });
     } catch (error: any) {
-      Alert.alert("Reset Failed", error?.data?.message || "Failed to send reset instructions.");
+      Alert.alert(
+        "Reset Failed",
+        error?.data?.message || "Failed to send reset instructions.",
+      );
     }
   };
 
   return (
     <SafeAreaView className="flex-1 bg-slate-950">
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
       >
-        <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 24, justifyContent: "center" }}>
-          
-          <Pressable 
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
+            padding: 24,
+            justifyContent: "center",
+          }}
+        >
+          <Pressable
             onPress={() => router.back()}
             className="absolute left-6 top-6 h-10 w-10 items-center justify-center rounded-full bg-white/5"
           >
@@ -45,9 +66,12 @@ export default function ForgotPasswordScreen() {
             <View className="mb-6 h-20 w-20 items-center justify-center rounded-3xl bg-amber-500/20">
               <MaterialIcons name="lock-reset" size={40} color="#fbbf24" />
             </View>
-            <Text className="text-3xl font-black text-white">Reset Password</Text>
+            <Text className="text-3xl font-black text-white">
+              Reset Password
+            </Text>
             <Text className="mt-3 text-center text-sm text-slate-400">
-              Enter the email address associated with your account and we'll send you a link to reset your password.
+              Enter the email address associated with your account and we'll
+              send you a link to reset your password.
             </Text>
           </View>
 
@@ -80,11 +104,12 @@ export default function ForgotPasswordScreen() {
               {isLoading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text className="text-base font-bold text-white">Send Instructions</Text>
+                <Text className="text-base font-bold text-white">
+                  Send Instructions
+                </Text>
               )}
             </Pressable>
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

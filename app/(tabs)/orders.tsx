@@ -90,7 +90,13 @@ export default function OrdersScreen() {
   const [lookupBarcode] = useLazyGetProductByBarcodeQuery();
 
   const storeName =
-    stores.find((store) => store.id === currentStoreId)?.name ?? "Main Store";
+    stores.find((store) => store.id === currentStoreId)?.name ??
+    activeSession?.session?.store?.name;
+
+  console.log("auth", activeSession?.session?.store?.name);
+  // const storeName =
+  //   stores.find((store) => store.id === currentStoreId)?.name ??
+  //   user?.stores?.find((store) => store.id === currentStoreId)?.name;
 
   const visibleProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -115,7 +121,7 @@ export default function OrdersScreen() {
       );
     });
   }, [customers, customerSearch]);
-  // console.log("activeSession", activeSession);
+  console.log("activeSession", activeSession?.session);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const taxAmount = subtotal * 0.05;

@@ -515,6 +515,53 @@ export async function createOfflineCustomer(payload: CreateCustomerPayload) {
   );
 }
 
+export async function updateOfflineCustomer(
+  id: string,
+  data: Partial<Customer>,
+) {
+  await getOfflineDb()
+    .update(customers)
+    .set({ ...data, updatedAt: new Date().toISOString() } as Partial<
+      typeof customers.$inferInsert
+    >)
+    .where(eq(customers.id, id));
+
+  await enqueueMutation(
+    "customers",
+    id,
+    "update",
+    `/tenant/customers/${id}`,
+    "PUT",
+    data,
+  );
+  const [row] = await getOfflineDb()
+    .select()
+    .from(customers)
+    .where(eq(customers.id, id))
+    .limit(1);
+  return toCustomer(row);
+}
+
+export async function deleteOfflineCustomer(id: string) {
+  await getOfflineDb()
+    .update(customers)
+    .set({
+      isActive: false,
+      // deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(customers.id, id));
+
+  await enqueueMutation(
+    "customers",
+    id,
+    "delete",
+    `/tenant/customers/${id}`,
+    "DELETE",
+    {},
+  );
+}
+
 export async function createOfflineCategory(
   payload: CreateCategoryPayload & { storeId?: string },
 ) {
@@ -556,6 +603,52 @@ export async function createOfflineCategory(
   );
 }
 
+export async function updateOfflineCategory(
+  id: string,
+  data: Partial<Category>,
+) {
+  await getOfflineDb()
+    .update(categories)
+    .set({ ...data, updatedAt: new Date().toISOString() } as Partial<
+      typeof categories.$inferInsert
+    >)
+    .where(eq(categories.id, id));
+
+  await enqueueMutation(
+    "categories",
+    id,
+    "update",
+    `/tenant/categories/${id}`,
+    "PUT",
+    data,
+  );
+  const [row] = await getOfflineDb()
+    .select()
+    .from(categories)
+    .where(eq(categories.id, id))
+    .limit(1);
+  return toCategory(row);
+}
+
+export async function deleteOfflineCategory(id: string) {
+  await getOfflineDb()
+    .update(categories)
+    .set({
+      isActive: false,
+      // deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(categories.id, id));
+
+  await enqueueMutation(
+    "categories",
+    id,
+    "delete",
+    `/tenant/categories/${id}`,
+    "DELETE",
+    {},
+  );
+}
 export async function createOfflineStore(payload: CreateStorePayload) {
   const now = new Date().toISOString();
   const id = createLocalId("store");
@@ -589,6 +682,50 @@ export async function createOfflineStore(payload: CreateStorePayload) {
         .where(eq(stores.id, id))
         .limit(1)
     )[0],
+  );
+}
+
+export async function updateOfflineStore(id: string, data: Partial<Store>) {
+  await getOfflineDb()
+    .update(stores)
+    .set({ ...data, updatedAt: new Date().toISOString() } as Partial<
+      typeof stores.$inferInsert
+    >)
+    .where(eq(stores.id, id));
+
+  await enqueueMutation(
+    "stores",
+    id,
+    "update",
+    `/tenant/stores/${id}`,
+    "PUT",
+    data,
+  );
+  const [row] = await getOfflineDb()
+    .select()
+    .from(stores)
+    .where(eq(stores.id, id))
+    .limit(1);
+  return toStore(row);
+}
+
+export async function deleteOfflineStore(id: string) {
+  await getOfflineDb()
+    .update(stores)
+    .set({
+      isActive: false,
+      // deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(stores.id, id));
+
+  await enqueueMutation(
+    "stores",
+    id,
+    "delete",
+    `/tenant/stores/${id}`,
+    "DELETE",
+    {},
   );
 }
 
@@ -1303,6 +1440,7 @@ export async function markEntitySynced(
   const now = new Date().toISOString();
   const id = String(remote.id ?? localId);
   const common = {
+    id: id,
     remoteId: id,
     syncStatus: "synced",
     syncError: null,
@@ -1313,7 +1451,14 @@ export async function markEntitySynced(
   if (entity === "products") {
     await getOfflineDb()
       .update(products)
-      .set({ lastSyncedAt: now, updatedAt: now })
+      .set({ lastSyncedAt: now, updatedAt: now, syncStatus: "synced" })
+      // .set({
+      //    id: id,
+      //   remoteId: id,
+      //   syncStatus: "synced",
+      //   lastSyncedAt: now,
+      //   updatedAt: remote.updatedAt ?? now,
+      // })
       .where(eq(products.id, localId));
   } else if (entity === "customers") {
     await getOfflineDb()
@@ -1339,6 +1484,7 @@ export async function markEntitySynced(
     await getOfflineDb()
       .update(genericRecords)
       .set({
+        id: id,
         remoteId: id,
         data: remote.id ? remote : sql`${genericRecords.data}`,
         syncStatus: "synced",
@@ -1347,6 +1493,18 @@ export async function markEntitySynced(
         lastSyncedAt: now,
       })
       .where(eq(genericRecords.id, localId));
+  }
+
+  // Rewrite all pending outbox payloads and endpoints to use the new remote ID
+  if (id !== localId) {
+    await getOfflineDb()
+      .update(syncOutbox)
+      .set({
+        entityId: sql`CASE WHEN ${syncOutbox.entityId} = ${localId} THEN ${id} ELSE ${syncOutbox.entityId} END`,
+        endpoint: sql`REPLACE(${syncOutbox.endpoint}, ${localId}, ${id})`,
+        payload: sql`REPLACE(CAST(${syncOutbox.payload} AS TEXT), ${localId}, ${id})`,
+      })
+      .where(eq(syncOutbox.status, "pending"));
   }
 }
 
