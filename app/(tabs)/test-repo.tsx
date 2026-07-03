@@ -5,7 +5,6 @@ import {
   Text,
   Button,
   ScrollView,
-  SafeAreaView,
   TextInput,
   Pressable,
   StatusBar,
@@ -84,6 +83,7 @@ import {
   markOrderSynced,
   markOrderSyncFailed,
 } from "@/services/offline/repository";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type TestSection =
   | "products"
@@ -710,6 +710,7 @@ export default function TestRepositoryScreen() {
       setIsLoading(true);
       addLog("Fetching active session...", "info");
       const session = await getLocalActiveSession("test-user-123", "store-123");
+      console.log("Session active or not?", session);
       setSessionData(session);
       if (session) {
         addLog(

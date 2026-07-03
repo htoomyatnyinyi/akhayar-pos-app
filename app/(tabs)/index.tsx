@@ -18,6 +18,7 @@ import {
   SmallLabel,
   StatRow,
 } from "@/components/app-ui";
+import { SyncStatus } from "@/components/SyncStatus";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -269,6 +270,7 @@ export default function HomeScreen() {
               value={`$${shiftSnapshot.netSales.toFixed(2)}`}
             />
           </Card>
+          <SyncStatus />
         </ScrollView>
       </SafeAreaView>
     </Screen>

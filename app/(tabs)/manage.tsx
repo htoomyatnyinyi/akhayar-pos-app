@@ -83,6 +83,7 @@ export default function ManageScreen() {
     mode: "create" | "edit";
     item?: any;
   }>({ open: false, mode: "create" });
+
   const [sessionModal, setSessionModal] = useState<"open" | "close" | null>(
     null,
   );
@@ -108,7 +109,10 @@ export default function ManageScreen() {
       { userId: user?.id || "", storeId: currentStoreId || undefined },
       { skip: !user?.id },
     );
-  // console.log("categories", categories);
+  console.log(
+    "activeSession at Manage for session open and close",
+    activeSession,
+  );
 
   const [createStaff] = useCreateStaffMutation();
   const [updateStaff] = useUpdateStaffMutation();
@@ -1468,14 +1472,14 @@ function SessionModal({
           keyboardType="decimal-pad"
           placeholder={mode === "open" ? "Opening balance" : "Closing balance"}
           placeholderTextColor="#64748b"
-          className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-white"
+          className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-green-500"
         />
         <TextInput
           value={notes}
           onChangeText={setNotes}
           placeholder="Notes"
           placeholderTextColor="#64748b"
-          className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-white"
+          className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-green-500"
         />
         <View className="flex-row gap-3">
           <ActionButton

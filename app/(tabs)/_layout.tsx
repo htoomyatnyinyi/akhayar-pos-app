@@ -126,7 +126,7 @@ export default function TabLayout() {
       </Tabs>
 
       {/* Absolute positioning wrapper around this component is completely fine here */}
-      {/* <OfflineSyncStatus /> */}
+      <OfflineSyncStatus />
     </View>
   );
 }

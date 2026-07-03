@@ -53,7 +53,8 @@
         {
           "cameraPermission": "Allow POS App to use camera for scanning barcodes and QR codes"
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -3,13 +3,14 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "@react-navigation/native";
+import { PreventRemoveContext } from "@react-navigation/core";
 import {
   Stack,
   useRootNavigationState,
   useRouter,
   useSegments,
 } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppState, View, Text, ActivityIndicator } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Provider } from "react-redux";
@@ -23,29 +24,13 @@ import {
   syncNow,
 } from "@/services/offline/syncManager";
 
-function RootNavigator() {
-  const colorScheme = useColorScheme();
+// NavigationGuard runs *inside* the Stack so router hooks have the navigation context they need.
+function NavigationGuard() {
   const { user } = useAppSelector((state) => state.auth);
   const segments = useSegments();
   const navigationState = useRootNavigationState();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    initializeOfflineSystem(store.dispatch, store.getState).catch((error) => {
-      console.warn("Offline system failed to initialize", error);
-    });
-  }, []);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active") {
-        void syncNow(store.dispatch, store.getState);
-      }
-    });
-
-    return () => subscription.remove();
-  }, []);
 
   useEffect(() => {
     if (!navigationState?.key) return;
@@ -80,12 +65,45 @@ function RootNavigator() {
     );
   }
 
+  return null;
+}
+
+function RootNavigator() {
+  const colorScheme = useColorScheme();
+
+  // Provide the PreventRemoveContext that @react-navigation/native-stack v7
+  // requires but expo-router's NavigationContainer doesn't supply.
+  const setPreventRemove = useCallback(() => {}, []);
+  const preventRemoveContextValue = useMemo(
+    () => ({ setPreventRemove, preventedRoutes: {} }),
+    [setPreventRemove]
+  );
+
+  useEffect(() => {
+    initializeOfflineSystem(store.dispatch, store.getState).catch((error) => {
+      console.warn("Offline system failed to initialize", error);
+    });
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void syncNow(store.dispatch, store.getState);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(auth)" />
-      </Stack>
+      <PreventRemoveContext.Provider value={preventRemoveContextValue}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(auth)" />
+        </Stack>
+      </PreventRemoveContext.Provider>
+      <NavigationGuard />
       <StatusBar style="light" />
     </ThemeProvider>
   );
