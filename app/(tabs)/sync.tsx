@@ -17,6 +17,8 @@ import {
 // import { userLoggedOut } from "@/services/slices/userSessionSlice";
 import { useDispatch } from "react-redux";
 import { logout } from "@/services/features/auth/authSlice";
+import { clearOfflineDatabase } from "@/services/offline/db";
+import { resetOfflineState } from "@/services/features/offline/offlineSlice";
 
 export default function SyncScreen() {
   const dispatch = useDispatch();
@@ -44,7 +46,12 @@ export default function SyncScreen() {
     retry();
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    // Clear offline database to prevent other users from accessing the data
+    await clearOfflineDatabase();
+    // Reset offline Redux state
+    dispatch(resetOfflineState());
+    // Logout (clears auth and current store from Redux, triggering persist update)
     dispatch(logout());
   };
 

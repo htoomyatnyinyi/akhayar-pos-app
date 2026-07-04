@@ -161,7 +161,7 @@ export default function RegisterScreen() {
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="Jane Doe"
+              placeholder="Owner Name"
               placeholderTextColor="#64748b"
               className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-white"
             />

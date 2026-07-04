@@ -71,6 +71,35 @@ export async function initializeDatabase() {
     throw error;
   }
 }
+
+/**
+ * Clears all data from the offline SQLite database.
+ * Useful for sign-out or account switching.
+ */
+export async function clearOfflineDatabase() {
+  try {
+    const offlineDb = getOfflineDb();
+    
+    // Delete in order to avoid foreign key constraint violations
+    await offlineDb.delete(schema.orderItems);
+    await offlineDb.delete(schema.orders);
+    await offlineDb.delete(schema.inventoryCountItems);
+    await offlineDb.delete(schema.inventoryCounts);
+    await offlineDb.delete(schema.inventoryMovements);
+    await offlineDb.delete(schema.sessions);
+    await offlineDb.delete(schema.stores);
+    await offlineDb.delete(schema.customers);
+    await offlineDb.delete(schema.categories);
+    await offlineDb.delete(schema.products);
+    await offlineDb.delete(schema.syncOutbox);
+    await offlineDb.delete(schema.syncState);
+    await offlineDb.delete(schema.genericRecords);
+
+    console.log("🔥 Offline database cleared successfully on logout!");
+  } catch (error) {
+    console.error("❌ Failed to clear offline database:", error);
+  }
+}
 /* old */
 
 // import { drizzle } from "drizzle-orm/expo-sqlite";
