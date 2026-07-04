@@ -94,10 +94,10 @@ export const remoteApi = posApi.injectEndpoints({
       providesTags: (result, error, id) => [{ type: "Products", id }],
     }),
 
-    getRemoteProductByBarcode: builder.query({
-      query: (barcode) => `/tenant/products/barcode/${barcode}`,
-      providesTags: ["Products"],
-    }),
+    // getRemoteProductByBarcode: builder.query({
+    //   query: (barcode) => `/tenant/products/barcode/${barcode}`,
+    //   providesTags: ["Products"],
+    // }),
 
     createRemoteProduct: builder.mutation({
       query: (product) => ({

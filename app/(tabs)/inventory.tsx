@@ -31,6 +31,7 @@ import {
   Divider,
   StatRow,
 } from "@/components/app-ui";
+import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
 
 type ActiveTab = "stock" | "movements";
 
@@ -40,6 +41,7 @@ export default function InventoryScreen() {
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   // Queries
@@ -134,6 +136,7 @@ export default function InventoryScreen() {
     async (payload: {
       name: string;
       sku: string;
+      barcode: string;
       costPrice: number;
       sellingPrice: number;
       stockQuantity: number;
@@ -151,6 +154,25 @@ export default function InventoryScreen() {
       }
     },
     [createProduct],
+  );
+
+  const handleScan = useCallback(
+    (data: string) => {
+      setShowScannerModal(false);
+      const product = inventoryData?.find(
+        (p: any) => p.barcode === data || p.sku === data || p.id === data
+      );
+      if (product) {
+        setSelectedProduct(product);
+        setShowAdjustModal(true);
+      } else {
+        Alert.alert(
+          "Not Found",
+          `No local product found for barcode/SKU:\n${data}`
+        );
+      }
+    },
+    [inventoryData]
   );
 
   // ============================================
@@ -331,12 +353,19 @@ export default function InventoryScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
-            {searchQuery.length > 0 && (
+            {searchQuery.length > 0 ? (
               <TouchableOpacity
                 onPress={() => setSearchQuery("")}
-                className="bg-white/10 p-1 rounded-full"
+                className="bg-white/10 p-1.5 rounded-full"
               >
                 <MaterialIcons name="close" size={14} color="#cbd5e1" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowScannerModal(true)}
+                className="bg-sky-500/20 p-1.5 rounded-full border border-sky-500/30"
+              >
+                <MaterialIcons name="qr-code-scanner" size={16} color="#38bdf8" />
               </TouchableOpacity>
             )}
           </View>
@@ -428,6 +457,15 @@ export default function InventoryScreen() {
         isLoading={isCreatingProduct}
         onClose={() => setShowProductModal(false)}
         onSubmit={handleCreateProduct}
+      />
+
+      {/* ============================================ */}
+      {/* SCANNER MODAL */}
+      {/* ============================================ */}
+      <BarcodeScannerModal
+        visible={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        onScan={handleScan}
       />
     </Screen>
   );
@@ -810,6 +848,7 @@ function NewProductModal({
   onSubmit: (payload: {
     name: string;
     sku: string;
+    barcode: string;
     costPrice: number;
     sellingPrice: number;
     stockQuantity: number;
@@ -818,6 +857,7 @@ function NewProductModal({
 }) {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
+  const [barcode, setBarcode] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [sellingPrice, setSellingPrice] = useState("");
   const [stockQuantity, setStockQuantity] = useState("");
@@ -826,6 +866,7 @@ function NewProductModal({
   const handleOpen = useCallback(() => {
     setName("");
     setSku("");
+    setBarcode("");
     setCostPrice("");
     setSellingPrice("");
     setStockQuantity("");
@@ -865,6 +906,17 @@ function NewProductModal({
                 value={name}
                 onChangeText={setName}
                 placeholder="Product Name"
+                placeholderTextColor="#64748b"
+              />
+
+              <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                Barcode / QR (Optional)
+              </Text>
+              <TextInput
+                className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+                value={barcode}
+                onChangeText={setBarcode}
+                placeholder="Scan or leave empty to auto-generate"
                 placeholderTextColor="#64748b"
               />
 
@@ -965,6 +1017,7 @@ function NewProductModal({
                   onSubmit({
                     name,
                     sku,
+                    barcode,
                     costPrice: Number(costPrice) || 0,
                     sellingPrice: Number(sellingPrice) || 0,
                     stockQuantity: Number(stockQuantity) || 0,

@@ -14,8 +14,13 @@ import {
   Divider,
   StatRow,
 } from "@/components/app-ui";
+// import { userLoggedOut } from "@/services/slices/userSessionSlice";
+import { useDispatch } from "react-redux";
+import { logout } from "@/services/features/auth/authSlice";
 
 export default function SyncScreen() {
+  const dispatch = useDispatch();
+
   const {
     isOnline,
     isSyncing,
@@ -39,6 +44,10 @@ export default function SyncScreen() {
     retry();
   };
 
+  const handleSignOut = () => {
+    dispatch(logout());
+  };
+
   return (
     <Screen padded={false}>
       <View className="px-5 pt-12 pb-4">
@@ -52,6 +61,16 @@ export default function SyncScreen() {
                 label={isOnline ? "ONLINE" : "OFFLINE"}
                 tone={isOnline ? "emerald" : "rose"}
               />
+              <View className="flex-row items-center gap-3 mt-3">
+                <View className="flex-1">
+                  <ActionButton
+                    title="Sign out"
+                    icon="logout"
+                    accent="rose"
+                    onPress={handleSignOut}
+                  />
+                </View>
+              </View>
             </View>
           }
         />
@@ -62,7 +81,7 @@ export default function SyncScreen() {
         contentContainerStyle={{ paddingBottom: 40 }}
       >
         <SectionTitle title="Overview" />
-        
+
         <View className="flex-row gap-3 mb-5 mt-2">
           <MetricCard
             icon="cloud-upload"
@@ -79,11 +98,13 @@ export default function SyncScreen() {
         </View>
 
         <SectionTitle title="Details" action="Refresh" />
-        
+
         <Card className="mb-6 mt-2">
           <StatRow
             label="Last Synced"
-            value={lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : "Never"}
+            value={
+              lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : "Never"
+            }
           />
           <Divider />
           <StatRow
@@ -93,7 +114,13 @@ export default function SyncScreen() {
           <Divider />
           <StatRow
             label="Current Status"
-            value={isSyncing ? "Syncing..." : syncStatus === "failed" ? "Failed" : "Idle"}
+            value={
+              isSyncing
+                ? "Syncing..."
+                : syncStatus === "failed"
+                  ? "Failed"
+                  : "Idle"
+            }
           />
 
           {isSyncing && (
@@ -102,7 +129,9 @@ export default function SyncScreen() {
                 <Text className="text-slate-300 font-semibold text-xs uppercase tracking-widest">
                   Progress
                 </Text>
-                <Text className="text-sky-400 font-bold text-xs">{Math.round(syncProgress)}%</Text>
+                <Text className="text-sky-400 font-bold text-xs">
+                  {Math.round(syncProgress)}%
+                </Text>
               </View>
               <View className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
                 <View
@@ -115,7 +144,9 @@ export default function SyncScreen() {
 
           {syncError && (
             <View className="mt-4 p-3 bg-rose-500/10 rounded-xl border border-rose-500/20">
-              <Text className="text-rose-400 text-sm font-medium">{syncError}</Text>
+              <Text className="text-rose-400 text-sm font-medium">
+                {syncError}
+              </Text>
             </View>
           )}
         </Card>
@@ -145,7 +176,6 @@ export default function SyncScreen() {
           subtitle="Manually update queue counts"
           icon="update"
         />
-        
       </ScrollView>
     </Screen>
   );

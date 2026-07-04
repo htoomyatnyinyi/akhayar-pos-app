@@ -17,9 +17,11 @@ import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { addToCart } from "@/services/features/cart/cartSlice";
 import { Screen, Header, Card, Pill } from "@/components/app-ui";
+import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
 
 export default function POSScreen() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(
     undefined,
   );
@@ -52,6 +54,19 @@ export default function POSScreen() {
     );
   };
 
+  const handleScan = (data: string) => {
+    setShowScannerModal(false);
+    const product = productsData?.find(
+      (p: any) => p.barcode === data || p.sku === data || p.id === data,
+    );
+    if (product) {
+      handleAddToCart(product);
+    } else {
+      // Could also alert here, but let's just set it as search query if not found directly
+      setSearchQuery(data);
+    }
+  };
+
   const renderProduct = ({ item }: { item: any }) => (
     <TouchableOpacity
       className="flex-1 m-2 active:scale-95 transition-transform"
@@ -67,7 +82,10 @@ export default function POSScreen() {
         >
           {item.name}
         </Text>
-        <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mb-3" numberOfLines={1}>
+        <Text
+          className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mb-3"
+          numberOfLines={1}
+        >
           SKU: {item.sku}
         </Text>
         <View className="flex-row items-center justify-between mt-auto">
@@ -103,9 +121,23 @@ export default function POSScreen() {
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery("")} className="bg-white/10 p-1 rounded-full">
-                <MaterialIcons name="close" size={16} color="#cbd5e1" />
+            {searchQuery.length > 0 ? (
+              <TouchableOpacity
+                onPress={() => setSearchQuery("")}
+                className="bg-white/10 p-1.5 rounded-full"
+              >
+                <MaterialIcons name="close" size={14} color="#cbd5e1" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowScannerModal(true)}
+                className="bg-sky-500/20 p-1.5 rounded-full border border-sky-500/30"
+              >
+                <MaterialIcons
+                  name="qr-code-scanner"
+                  size={16}
+                  color="#38bdf8"
+                />
               </TouchableOpacity>
             )}
           </View>
@@ -122,9 +154,9 @@ export default function POSScreen() {
               className="mr-2"
               onPress={() => setSelectedCategory(undefined)}
             >
-              <Pill 
-                label="All Items" 
-                tone={!selectedCategory ? "sky" : "amber"} 
+              <Pill
+                label="All Items"
+                tone={!selectedCategory ? "sky" : "amber"}
               />
             </TouchableOpacity>
 
@@ -134,9 +166,9 @@ export default function POSScreen() {
                 className="mr-2"
                 onPress={() => setSelectedCategory(cat.id)}
               >
-                <Pill 
-                  label={cat.name} 
-                  tone={selectedCategory === cat.id ? "sky" : "amber"} 
+                <Pill
+                  label={cat.name}
+                  tone={selectedCategory === cat.id ? "sky" : "amber"}
                 />
               </TouchableOpacity>
             ))}
@@ -148,7 +180,11 @@ export default function POSScreen() {
           data={productsData || []}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 120, paddingTop: 8 }}
+          contentContainerStyle={{
+            paddingHorizontal: 12,
+            paddingBottom: 120,
+            paddingTop: 8,
+          }}
           renderItem={renderProduct}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center mt-24">
@@ -159,7 +195,8 @@ export default function POSScreen() {
                 No products found
               </Text>
               <Text className="text-slate-500 mt-2 text-sm text-center px-10 leading-5">
-                Try adjusting your search or sync to pull latest items from the server.
+                Try adjusting your search or sync to pull latest items from the
+                server.
               </Text>
             </View>
           }
@@ -188,6 +225,12 @@ export default function POSScreen() {
             </TouchableOpacity>
           </View>
         )}
+
+        <BarcodeScannerModal
+          visible={showScannerModal}
+          onClose={() => setShowScannerModal(false)}
+          onScan={handleScan}
+        />
       </Screen>
     </SafeAreaView>
   );

@@ -659,7 +659,10 @@ export async function createOfflineProduct(
       id,
       storeId: payload.storeId,
       sku: payload.sku ?? `LOCAL-${Date.now().toString(36).toUpperCase()}`,
-      barcode: payload.barcode,
+      barcode:
+        payload.barcode && payload.barcode.trim() !== ""
+          ? payload.barcode.trim()
+          : `QR-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
       name: payload.name ?? "Offline product",
       description: payload.description,
       brand: payload.brand,
