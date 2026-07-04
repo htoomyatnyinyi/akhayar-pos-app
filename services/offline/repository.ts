@@ -97,25 +97,25 @@ export async function upsertProducts(remoteProducts: Product[]) {
     .onConflictDoUpdate({
       target: products.id,
       set: {
-        sku: sql`excluded.sku`,
-        barcode: sql`excluded.barcode`,
-        name: sql`excluded.name`,
-        description: sql`excluded.description`,
-        brand: sql`excluded.brand`,
-        categoryId: sql`excluded.category_id`,
-        categoryName: sql`excluded.category_name`,
-        supplierId: sql`excluded.supplier_id`,
-        costPrice: sql`excluded.cost_price`,
-        sellingPrice: sql`excluded.selling_price`,
-        wholesalePrice: sql`excluded.wholesale_price`,
-        stockQuantity: sql`excluded.stock_quantity`,
-        manufacturingDate: sql`excluded.manufacturing_date`,
-        expiryDate: sql`excluded.expiry_date`,
-        version: sql`excluded.version`,
-        isActive: sql`excluded.is_active`,
-        deletedAt: sql`excluded.deleted_at`,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: sql`excluded.last_synced_at`,
+        sku: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.sku ELSE ${products.sku} END`,
+        barcode: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.barcode ELSE ${products.barcode} END`,
+        name: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.name ELSE ${products.name} END`,
+        description: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.description ELSE ${products.description} END`,
+        brand: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.brand ELSE ${products.brand} END`,
+        categoryId: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.category_id ELSE ${products.categoryId} END`,
+        categoryName: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.category_name ELSE ${products.categoryName} END`,
+        supplierId: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.supplier_id ELSE ${products.supplierId} END`,
+        costPrice: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.cost_price ELSE ${products.costPrice} END`,
+        sellingPrice: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.selling_price ELSE ${products.sellingPrice} END`,
+        wholesalePrice: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.wholesale_price ELSE ${products.wholesalePrice} END`,
+        stockQuantity: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.stock_quantity ELSE ${products.stockQuantity} END`,
+        manufacturingDate: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.manufacturing_date ELSE ${products.manufacturingDate} END`,
+        expiryDate: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.expiry_date ELSE ${products.expiryDate} END`,
+        version: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.version ELSE ${products.version} END`,
+        isActive: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.is_active ELSE ${products.isActive} END`,
+        deletedAt: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.deleted_at ELSE ${products.deletedAt} END`,
+        updatedAt: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.updated_at ELSE ${products.updatedAt} END`,
+        lastSyncedAt: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.last_synced_at ELSE ${products.lastSyncedAt} END`,
       },
     });
 }
@@ -317,77 +317,80 @@ export async function upsertOrders(
   if (!remoteOrders.length) return;
   const now = new Date().toISOString();
 
-  for (const order of remoteOrders) {
-    await getOfflineDb()
-      .insert(orders)
-      .values({
-        id: order.id,
-        tenantId: order.tenantId,
-        storeId: order.storeId,
-        registerId: order.registerId,
-        userId: order.userId ?? "",
-        customerId: order.customerId,
-        sessionId: order.sessionId,
-        orderNumber: order.orderNumber,
-        status: order.status ?? "COMPLETED",
-        paymentStatus: order.paymentStatus ?? "PAID",
-        paymentMethod: order.paymentMethod ?? "CASH",
-        subTotal: Number(order.subTotal ?? order.grandTotal ?? 0),
-        taxAmount: Number(order.taxAmount ?? 0),
-        discountAmount: Number(order.discountAmount ?? 0),
-        grandTotal: Number(order.grandTotal ?? 0),
-        paidAmount: Number(order.paidAmount ?? 0),
-        changeAmount: Number(order.changeAmount ?? 0),
-        paymentBreakdown: order.paymentBreakdown ?? null,
-        syncStatus: "synced",
-        syncError: null,
-        createdAt: order.createdAt ?? now,
-        updatedAt: order.updatedAt ?? now,
-        lastSyncedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: orders.id,
-        set: {
-          status: order.status,
-          paymentStatus: sql`excluded.payment_status`,
-          grandTotal: sql`excluded.grand_total`,
+  const db = getOfflineDb();
+  await db.transaction(async (tx) => {
+    for (const order of remoteOrders) {
+      await tx
+        .insert(orders)
+        .values({
+          id: order.id,
+          tenantId: order.tenantId,
+          storeId: order.storeId,
+          registerId: order.registerId,
+          userId: order.userId ?? "",
+          customerId: order.customerId,
+          sessionId: order.sessionId,
+          orderNumber: order.orderNumber,
+          status: order.status ?? "COMPLETED",
+          paymentStatus: order.paymentStatus ?? "PAID",
+          paymentMethod: order.paymentMethod ?? "CASH",
+          subTotal: Number(order.subTotal ?? order.grandTotal ?? 0),
+          taxAmount: Number(order.taxAmount ?? 0),
+          discountAmount: Number(order.discountAmount ?? 0),
+          grandTotal: Number(order.grandTotal ?? 0),
+          paidAmount: Number(order.paidAmount ?? 0),
+          changeAmount: Number(order.changeAmount ?? 0),
+          paymentBreakdown: order.paymentBreakdown ?? null,
           syncStatus: "synced",
           syncError: null,
-          updatedAt: sql`excluded.updated_at`,
+          createdAt: order.createdAt ?? now,
+          updatedAt: order.updatedAt ?? now,
           lastSyncedAt: now,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: orders.id,
+          set: {
+            status: order.status,
+            paymentStatus: sql`excluded.payment_status`,
+            grandTotal: sql`excluded.grand_total`,
+            syncStatus: "synced",
+            syncError: null,
+            updatedAt: sql`excluded.updated_at`,
+            lastSyncedAt: now,
+          },
+        });
 
-    if (Array.isArray(order.items)) {
-      for (const item of order.items as (OrderItem & Record<string, any>)[]) {
-        await getOfflineDb()
-          .insert(orderItems)
-          .values({
-            id: item.id ?? createLocalId("item"),
-            orderId: order.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            productName: item.productName ?? item.product?.name ?? null,
-            quantity: item.quantity,
-            unitPrice: Number(item.unitPrice ?? item.price ?? 0),
-            discountAmount: Number(item.discountAmount ?? 0),
-            subTotal: Number(
-              item.subTotal ??
-                item.quantity * Number(item.unitPrice ?? item.price ?? 0),
-            ),
-            createdAt: item.createdAt ?? now,
-          })
-          .onConflictDoUpdate({
-            target: orderItems.id,
-            set: {
-              quantity: sql`excluded.quantity`,
-              unitPrice: sql`excluded.unit_price`,
-              subTotal: sql`excluded.sub_total`,
-            },
-          });
+      if (Array.isArray(order.items)) {
+        for (const item of order.items as (OrderItem & Record<string, any>)[]) {
+          await tx
+            .insert(orderItems)
+            .values({
+              id: item.id ?? createLocalId("item"),
+              orderId: order.id,
+              productId: item.productId,
+              variantId: item.variantId,
+              productName: item.productName ?? item.product?.name ?? null,
+              quantity: item.quantity,
+              unitPrice: Number(item.unitPrice ?? item.price ?? 0),
+              discountAmount: Number(item.discountAmount ?? 0),
+              subTotal: Number(
+                item.subTotal ??
+                  item.quantity * Number(item.unitPrice ?? item.price ?? 0),
+              ),
+              createdAt: item.createdAt ?? now,
+            })
+            .onConflictDoUpdate({
+              target: orderItems.id,
+              set: {
+                quantity: sql`excluded.quantity`,
+                unitPrice: sql`excluded.unit_price`,
+                subTotal: sql`excluded.sub_total`,
+              },
+            });
+        }
       }
     }
-  }
+  });
 }
 
 export async function upsertGenericRecords<T extends { id: string }>(

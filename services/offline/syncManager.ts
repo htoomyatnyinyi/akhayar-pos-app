@@ -99,15 +99,29 @@ export async function initializeOfflineSystem(
     }
 
     // 6. Set up periodic sync (every 5 minutes)
+    // Ensure syncInterval is typed as a number or null
+    let syncInterval: number | null = null;
+
     if (syncInterval) {
       clearInterval(syncInterval);
     }
-    syncInterval = setInterval(
+
+    // Prefix with window.
+    syncInterval = window.setInterval(
       () => {
         void syncNow(dispatch, getState);
       },
       5 * 60 * 1000,
     );
+    // if (syncInterval) {
+    //   clearInterval(syncInterval as any);
+    // }
+    // syncInterval = setInterval(
+    //   () => {
+    //     void syncNow(dispatch, getState);
+    //   },
+    //   5 * 60 * 1000,
+    // );
 
     console.log("✅ Offline system initialized");
   } catch (error) {
@@ -149,7 +163,7 @@ export async function syncNow(
   syncStartTime = Date.now();
 
   dispatch(setSyncing(true));
-  dispatch(setSyncError(null));
+  dispatch(setSyncError(null as any));
   dispatch(setSyncProgress(0));
 
   let syncedItems = 0;
@@ -305,10 +319,6 @@ async function pullProducts(dispatch: AppDispatch) {
     );
 
     if (error) {
-      if (error.status === 401) {
-        console.warn("⚠️ Unauthorized - skipping product pull");
-        return { synced: 0 };
-      }
       console.error("❌ Product pull failed:", error);
       return { synced: 0 };
     }
@@ -519,7 +529,7 @@ async function processOutboxItem(
         const { data, error } = await store.dispatch(
           remoteApi.endpoints.createRemoteOrder.initiate(item.payload),
         );
-        if (error) throw new Error(error as any);
+        if (error) throw new Error(JSON.stringify(error));
 
         await db
           .update(orders)
@@ -539,7 +549,7 @@ async function processOutboxItem(
           remoteApi.endpoints.createRemoteSession.initiate(item.payload),
           // remoteApi.endpoints.getRemoteSessions.initiate(item.payload),
         );
-        if (error) throw new Error(error as any);
+        if (error) throw new Error(JSON.stringify(error));
 
         await db
           .update(sessions)
@@ -559,7 +569,7 @@ async function processOutboxItem(
           const { data, error } = await store.dispatch(
             remoteApi.endpoints.createRemoteProduct.initiate(item.payload),
           );
-          if (error) throw new Error(error as any);
+          if (error) throw new Error(JSON.stringify(error));
           await db
             .update(products)
             .set({
@@ -575,7 +585,7 @@ async function processOutboxItem(
               ...item.payload,
             }),
           );
-          if (error) throw new Error(error as any);
+          if (error) throw new Error(JSON.stringify(error));
           await db
             .update(products)
             .set({ syncStatus: "synced" })
@@ -584,7 +594,7 @@ async function processOutboxItem(
           const { error } = await store.dispatch(
             remoteApi.endpoints.deleteRemoteProduct.initiate(item.entityId),
           );
-          if (error) throw new Error(error as any);
+          if (error) throw new Error(JSON.stringify(error));
           await db.delete(products).where(eq(products.id, item.entityId));
         }
         await markOutboxSynced(item.id);
@@ -599,7 +609,7 @@ async function processOutboxItem(
         const { data, error } = await store.dispatch(
           remoteApi.endpoints.createInventoryMovement.initiate(item.payload),
         );
-        if (error) throw new Error(error as any);
+        if (error) throw new Error(JSON.stringify(error));
 
         await db
           .update(inventoryMovements)
