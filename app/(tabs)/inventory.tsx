@@ -18,6 +18,8 @@ import {
   useGetLocalInventoryMovementsQuery,
   useCreateLocalInventoryMovementMutation,
   useAdjustLocalStockMutation,
+  useCreateLocalProductMutation,
+  useGetLocalCategoriesQuery,
 } from "@/services/features/offline/localApi";
 import {
   Screen,
@@ -37,6 +39,7 @@ export default function InventoryScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
+  const [showProductModal, setShowProductModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   // Queries
@@ -57,6 +60,9 @@ export default function InventoryScreen() {
     useCreateLocalInventoryMovementMutation();
   const [adjustStock, { isLoading: isAdjusting }] =
     useAdjustLocalStockMutation();
+  const [createProduct, { isLoading: isCreatingProduct }] =
+    useCreateLocalProductMutation();
+  const { data: categories } = useGetLocalCategoriesQuery({});
 
   // Computed values
   const filteredInventory = (inventoryData ?? []).filter((item: any) => {
@@ -122,6 +128,29 @@ export default function InventoryScreen() {
       }
     },
     [createMovement],
+  );
+
+  const handleCreateProduct = useCallback(
+    async (payload: {
+      name: string;
+      sku: string;
+      costPrice: number;
+      sellingPrice: number;
+      stockQuantity: number;
+      categoryId: string;
+    }) => {
+      try {
+        await createProduct({
+          ...payload,
+          storeId: "default",
+        }).unwrap();
+        setShowProductModal(false);
+        Alert.alert("Success", "Product created successfully");
+      } catch (err: any) {
+        Alert.alert("Error", err?.message ?? "Failed to create product");
+      }
+    },
+    [createProduct],
   );
 
   // ============================================
@@ -232,6 +261,17 @@ export default function InventoryScreen() {
           eyebrow="Warehouse"
           title="Inventory"
           subtitle="Track stock levels and movements"
+          right={
+            <TouchableOpacity
+              className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30 flex-row items-center"
+              onPress={() => setShowProductModal(true)}
+            >
+              <MaterialIcons name="add" size={16} color="#38bdf8" />
+              <Text className="text-sky-400 font-bold text-xs ml-1">
+                Product
+              </Text>
+            </TouchableOpacity>
+          }
         />
       </View>
 
@@ -259,7 +299,10 @@ export default function InventoryScreen() {
 
       {/* Tabs */}
       <View className="flex-row px-5 mb-4">
-        <TouchableOpacity className="mr-2" onPress={() => setActiveTab("stock")}>
+        <TouchableOpacity
+          className="mr-2"
+          onPress={() => setActiveTab("stock")}
+        >
           <Pill
             label="Stock Levels"
             tone={activeTab === "stock" ? "sky" : "amber"}
@@ -375,6 +418,16 @@ export default function InventoryScreen() {
         isLoading={isCreatingMovement}
         onClose={() => setShowMovementModal(false)}
         onSubmit={handleCreateMovement}
+      />
+      {/* ============================================ */}
+      {/* NEW PRODUCT MODAL */}
+      {/* ============================================ */}
+      <NewProductModal
+        visible={showProductModal}
+        categories={categories ?? []}
+        isLoading={isCreatingProduct}
+        onClose={() => setShowProductModal(false)}
+        onSubmit={handleCreateProduct}
       />
     </Screen>
   );
@@ -729,6 +782,203 @@ function NewMovementModal({
                     {movementType === "IN"
                       ? "Record Stock In"
                       : "Record Stock Out"}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// ============================================
+// NEW PRODUCT MODAL COMPONENT
+// ============================================
+function NewProductModal({
+  visible,
+  categories,
+  isLoading,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean;
+  categories: any[];
+  isLoading: boolean;
+  onClose: () => void;
+  onSubmit: (payload: {
+    name: string;
+    sku: string;
+    costPrice: number;
+    sellingPrice: number;
+    stockQuantity: number;
+    categoryId: string;
+  }) => void;
+}) {
+  const [name, setName] = useState("");
+  const [sku, setSku] = useState("");
+  const [costPrice, setCostPrice] = useState("");
+  const [sellingPrice, setSellingPrice] = useState("");
+  const [stockQuantity, setStockQuantity] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+
+  const handleOpen = useCallback(() => {
+    setName("");
+    setSku("");
+    setCostPrice("");
+    setSellingPrice("");
+    setStockQuantity("");
+    setCategoryId("");
+  }, []);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onShow={handleOpen}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
+      >
+        <View className="flex-1 justify-end bg-black/60">
+          <View className="bg-slate-900 rounded-t-[32px] border-t border-white/10 p-6 max-h-[90%]">
+            <View className="flex-row items-center justify-between mb-6">
+              <Text className="text-white font-black text-xl">New Product</Text>
+              <TouchableOpacity
+                onPress={onClose}
+                className="bg-white/10 p-2 rounded-full"
+              >
+                <MaterialIcons name="close" size={18} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                Name
+              </Text>
+              <TextInput
+                className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+                value={name}
+                onChangeText={setName}
+                placeholder="Product Name"
+                placeholderTextColor="#64748b"
+              />
+
+              <View className="flex-row gap-3">
+                <View className="flex-1">
+                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                    SKU (Optional)
+                  </Text>
+                  <TextInput
+                    className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+                    value={sku}
+                    onChangeText={setSku}
+                    placeholder="Auto-generated"
+                    placeholderTextColor="#64748b"
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                    Initial Stock
+                  </Text>
+                  <TextInput
+                    className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+                    keyboardType="number-pad"
+                    value={stockQuantity}
+                    onChangeText={setStockQuantity}
+                    placeholder="0"
+                    placeholderTextColor="#64748b"
+                  />
+                </View>
+              </View>
+
+              <View className="flex-row gap-3">
+                <View className="flex-1">
+                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                    Cost Price
+                  </Text>
+                  <TextInput
+                    className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+                    keyboardType="decimal-pad"
+                    value={costPrice}
+                    onChangeText={setCostPrice}
+                    placeholder="0.00"
+                    placeholderTextColor="#64748b"
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                    Selling Price
+                  </Text>
+                  <TextInput
+                    className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+                    keyboardType="decimal-pad"
+                    value={sellingPrice}
+                    onChangeText={setSellingPrice}
+                    placeholder="0.00"
+                    placeholderTextColor="#64748b"
+                  />
+                </View>
+              </View>
+
+              <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                Category
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                className="mb-6"
+                contentContainerStyle={{ paddingRight: 20 }}
+              >
+                {categories.map((cat: any) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    className={`mr-2 px-4 py-2 rounded-full border ${
+                      categoryId === cat.id
+                        ? "bg-sky-500/20 border-sky-500/40"
+                        : "bg-white/5 border-white/10"
+                    }`}
+                    onPress={() => setCategoryId(cat.id)}
+                  >
+                    <Text
+                      className={`font-semibold text-sm ${
+                        categoryId === cat.id
+                          ? "text-sky-400"
+                          : "text-slate-300"
+                      }`}
+                    >
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                className={`bg-sky-500 rounded-2xl py-4 items-center border border-sky-400 mb-6 ${
+                  isLoading || !name || !sellingPrice ? "opacity-50" : ""
+                }`}
+                onPress={() =>
+                  onSubmit({
+                    name,
+                    sku,
+                    costPrice: Number(costPrice) || 0,
+                    sellingPrice: Number(sellingPrice) || 0,
+                    stockQuantity: Number(stockQuantity) || 0,
+                    categoryId,
+                  })
+                }
+                disabled={isLoading || !name || !sellingPrice}
+                activeOpacity={0.8}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-white font-bold text-lg">
+                    Create Product
                   </Text>
                 )}
               </TouchableOpacity>

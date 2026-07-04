@@ -101,6 +101,29 @@ export const localApi = createApi({
       providesTags: ["LocalProducts"],
     }),
 
+    createLocalProduct: builder.mutation({
+      async queryFn(payload: {
+        name: string;
+        sku?: string;
+        costPrice: number;
+        sellingPrice: number;
+        stockQuantity: number;
+        categoryId?: string;
+        storeId?: string;
+      }) {
+        try {
+          const { createOfflineProduct } = await import(
+            "@/services/offline/repository"
+          );
+          const result = await createOfflineProduct(payload);
+          return { data: result };
+        } catch (error) {
+          return { error: { message: (error as Error).message } };
+        }
+      },
+      invalidatesTags: ["LocalProducts", "LocalInventory"],
+    }),
+
     // ============================================
     // 2. CATEGORIES
     // ============================================
@@ -524,6 +547,7 @@ export const {
   useGetLocalProductsQuery,
   useGetLocalProductByIdQuery,
   useGetLocalProductByBarcodeQuery,
+  useCreateLocalProductMutation,
   useGetLocalCategoriesQuery,
   useGetLocalCustomersQuery,
   useGetLocalCustomerByIdQuery,
