@@ -34,10 +34,10 @@ export const products = sqliteTable(
     supplierId: text("supplier_id"),
     costPrice: real("cost_price").notNull().default(0),
     sellingPrice: real("selling_price").notNull().default(0),
-    wholesalePrice: real("wholesale_price").notNull().default(0), // 🌟 Added to match API
+    wholesalePrice: real("wholesale_price").notNull().default(0),
     stockQuantity: integer("stock_quantity").notNull().default(0),
-    manufacturingDate: text("manufacturing_date"), // 🌟 Added to match API
-    expiryDate: text("expiry_date"), // 🌟 Added to match API
+    manufacturingDate: text("manufacturing_date"),
+    expiryDate: text("expiry_date"),
     version: integer("version").notNull().default(0),
     isActive: integer("is_active", { mode: "boolean" })
       .notNull()
@@ -181,7 +181,7 @@ export const orders = sqliteTable("orders", {
   remoteId: text("remote_id").unique(),
   tenantId: text("tenant_id"),
   storeId: text("store_id"),
-  registerId: text("register_id"), // 🌟 Added to match API
+  registerId: text("register_id"),
   userId: text("user_id").notNull(),
   customerId: text("customer_id"),
   sessionId: text("session_id"),
@@ -213,7 +213,7 @@ export const orderItems = sqliteTable("order_items", {
     .notNull()
     .references(() => orders.id, { onDelete: "cascade" }),
   productId: text("product_id").notNull(),
-  variantId: text("variant_id"), // 🌟 Added to match API item options
+  variantId: text("variant_id"),
   productName: text("product_name"),
   quantity: integer("quantity").notNull(),
   unitPrice: real("unit_price").notNull(),

@@ -22,7 +22,17 @@ export const posApi = createApi({
   refetchOnFocus: true,
   refetchOnReconnect: true,
 
-  tagTypes: ["Auth", "Products", "Orders", "Customers", "Staff", "Categories", "Inventory", "Sessions", "Stores"],
+  tagTypes: [
+    "Auth",
+    "Products",
+    "Orders",
+    "Customers",
+    "Staff",
+    "Categories",
+    "Inventory",
+    "Sessions",
+    "Stores",
+  ],
 
   endpoints: () => ({}),
 });

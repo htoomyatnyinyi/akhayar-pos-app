@@ -14,7 +14,8 @@ import {
 import { normalizeAuthUser } from "./authUtils";
 
 export const authApi = posApi.injectEndpoints({
-  overrideExisting: false,
+  // overrideExisting: false,
+  overrideExisting: true, //  true လို့ ပြောင်းပေးလိုက်ပါ
 
   endpoints: (builder) => ({
     login: builder.mutation<User, LoginPayload>({

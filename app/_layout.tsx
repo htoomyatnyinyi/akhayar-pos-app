@@ -76,7 +76,7 @@ function RootNavigator() {
   const setPreventRemove = useCallback(() => {}, []);
   const preventRemoveContextValue = useMemo(
     () => ({ setPreventRemove, preventedRoutes: {} }),
-    [setPreventRemove]
+    [setPreventRemove],
   );
 
   useEffect(() => {
