@@ -383,6 +383,104 @@ export const localApi = createApi({
     }),
 
     // ============================================
+    // 7b. INVENTORY MUTATIONS
+    // ============================================
+    createLocalInventoryMovement: builder.mutation({
+      async queryFn(payload: {
+        storeId: string;
+        productId: string;
+        variantId?: string;
+        quantity: number;
+        type: "IN" | "OUT" | "TRANSFER" | "ADJUSTMENT" | "COUNT";
+        referenceId: string;
+        referenceType: string;
+        reason?: string;
+      }) {
+        try {
+          const { createOfflineInventoryMovement } = await import(
+            "@/services/offline/repository"
+          );
+          const result = await createOfflineInventoryMovement(payload);
+          return { data: result };
+        } catch (error) {
+          return { error: { message: (error as Error).message } };
+        }
+      },
+      invalidatesTags: ["LocalInventory", "LocalProducts"],
+    }),
+
+    createLocalInventoryCount: builder.mutation({
+      async queryFn(payload: {
+        storeId: string;
+        scheduledDate?: string;
+        items: {
+          productId: string;
+          variantId?: string;
+          systemQuantity: number;
+          countedQuantity: number;
+          reason?: string;
+        }[];
+      }) {
+        try {
+          const { createOfflineInventoryCount } = await import(
+            "@/services/offline/repository"
+          );
+          const result = await createOfflineInventoryCount(payload);
+          return { data: result };
+        } catch (error) {
+          return { error: { message: (error as Error).message } };
+        }
+      },
+      invalidatesTags: ["LocalInventory", "LocalProducts"],
+    }),
+
+    adjustLocalStock: builder.mutation({
+      async queryFn(payload: {
+        productId: string;
+        storeId: string;
+        newQuantity: number;
+        reason?: string;
+      }) {
+        try {
+          const db = getOfflineDb();
+          const now = new Date().toISOString();
+
+          // Get current stock
+          const [product] = await db
+            .select()
+            .from(products)
+            .where(eq(products.id, payload.productId))
+            .limit(1);
+
+          if (!product) {
+            return { error: { message: "Product not found" } };
+          }
+
+          const diff = payload.newQuantity - product.stockQuantity;
+
+          // Create an adjustment movement
+          const { createOfflineInventoryMovement } = await import(
+            "@/services/offline/repository"
+          );
+          const movement = await createOfflineInventoryMovement({
+            storeId: payload.storeId,
+            productId: payload.productId,
+            quantity: Math.abs(diff),
+            type: "ADJUSTMENT",
+            referenceId: `adj-${Date.now()}`,
+            referenceType: "STOCK_ADJUSTMENT",
+            reason: payload.reason ?? `Stock adjusted from ${product.stockQuantity} to ${payload.newQuantity}`,
+          });
+
+          return { data: movement };
+        } catch (error) {
+          return { error: { message: (error as Error).message } };
+        }
+      },
+      invalidatesTags: ["LocalInventory", "LocalProducts"],
+    }),
+
+    // ============================================
     // 8. SYNC OUTBOX STATUS
     // ============================================
     getPendingSyncItems: builder.query({
@@ -436,6 +534,10 @@ export const {
   useGetLocalOrderByIdQuery,
   useGetLocalInventoryQuery,
   useGetLocalInventoryMovementsQuery,
+  useCreateLocalInventoryMovementMutation,
+  useCreateLocalInventoryCountMutation,
+  useAdjustLocalStockMutation,
   useGetPendingSyncItemsQuery,
   useGetFailedSyncItemsQuery,
 } = localApi;
+

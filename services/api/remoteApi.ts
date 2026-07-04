@@ -2,12 +2,16 @@
 import { posApi } from "./posApi";
 
 export const remoteApi = posApi.injectEndpoints({
-  overrideExisting: true, //  true လို့ ပြောင်းပေးလိုက်ပါ
+  overrideExisting: true,
   endpoints: (builder) => ({
     // ============================================
-    // 1. AUTH (Platform & Tenant)
+    // 1. AUTH (Platform-specific only)
+    // NOTE: login, register, verifyEmail, forgotPassword,
+    // resetPassword, resendOtp are defined in authApi.ts
     // ============================================
-    login: builder.mutation({
+
+    /*
+        login: builder.mutation({
       query: (credentials) => ({
         url: "/auth/login",
         method: "POST",
@@ -55,6 +59,7 @@ export const remoteApi = posApi.injectEndpoints({
       }),
     }),
 
+    */
     getMe: builder.query({
       query: () => "/auth/me",
       providesTags: ["Auth"],
@@ -755,7 +760,6 @@ export const remoteApi = posApi.injectEndpoints({
       invalidatesTags: ["Products"],
     }),
   }),
-  overrideExisting: false,
 });
 
 export const { endpoints: remoteEndpoints } = remoteApi;
