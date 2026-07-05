@@ -1,3 +1,7 @@
+// ============================================
+// FILE: app/(tabs)/inventory.tsx
+// ============================================
+
 import {
   Card,
   Divider,
@@ -15,6 +19,7 @@ import {
   useGetLocalCategoriesQuery,
   useGetLocalInventoryMovementsQuery,
   useGetLocalInventoryQuery,
+  useGetLocalProductsQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useState } from "react";
@@ -41,9 +46,9 @@ export default function InventoryScreen() {
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [selectedInventory, setSelectedInventory] = useState<any>(null);
 
-  // Queries
+  // ✅ Use the new inventory table
   const {
     data: inventoryData,
     isLoading: isInventoryLoading,
@@ -56,6 +61,9 @@ export default function InventoryScreen() {
     refetch: refetchMovements,
   } = useGetLocalInventoryMovementsQuery({});
 
+  // ✅ Get products for display
+  const { data: productsData } = useGetLocalProductsQuery({});
+
   // Mutations
   const [createMovement, { isLoading: isCreatingMovement }] =
     useCreateLocalInventoryMovementMutation();
@@ -65,8 +73,25 @@ export default function InventoryScreen() {
     useCreateLocalProductMutation();
   const { data: categories } = useGetLocalCategoriesQuery({});
 
+  // ✅ Build inventory items with product details
+  const inventoryWithDetails = React.useMemo(() => {
+    if (!inventoryData || !productsData) return [];
+
+    return inventoryData.map((inv: any) => {
+      const product = productsData.find((p: any) => p.id === inv.productId);
+      return {
+        ...inv,
+        name: product?.name || "Unknown Product",
+        sku: product?.sku || "N/A",
+        sellingPrice: product?.sellingPrice || 0,
+        costPrice: product?.costPrice || 0,
+        categoryId: product?.categoryId,
+      };
+    });
+  }, [inventoryData, productsData]);
+
   // Computed values
-  const filteredInventory = (inventoryData ?? []).filter((item: any) => {
+  const filteredInventory = inventoryWithDetails.filter((item: any) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -75,11 +100,13 @@ export default function InventoryScreen() {
     );
   });
 
-  const totalProducts = inventoryData?.length ?? 0;
-  const lowStockCount =
-    inventoryData?.filter((p: any) => p.stockQuantity <= 10).length ?? 0;
-  const outOfStockCount =
-    inventoryData?.filter((p: any) => p.stockQuantity === 0).length ?? 0;
+  const totalProducts = inventoryWithDetails.length;
+  const lowStockCount = inventoryWithDetails.filter(
+    (p: any) => p.quantity <= 10 && p.quantity > 0,
+  ).length;
+  const outOfStockCount = inventoryWithDetails.filter(
+    (p: any) => p.quantity === 0,
+  ).length;
 
   // ============================================
   // HANDLERS
@@ -87,35 +114,40 @@ export default function InventoryScreen() {
 
   const handleAdjustStock = useCallback(
     async (newQty: number, reason: string) => {
-      if (!selectedProduct) return;
+      if (!selectedInventory) return;
       try {
         await adjustStock({
-          productId: selectedProduct.id,
-          storeId: selectedProduct.storeId ?? "default",
+          productId: selectedInventory.productId,
+          storeId: selectedInventory.storeId,
+          variantId: selectedInventory.variantId || undefined,
           newQuantity: newQty,
           reason,
         }).unwrap();
         setShowAdjustModal(false);
-        setSelectedProduct(null);
+        setSelectedInventory(null);
+        refetchInventory();
+        refetchMovements();
         Alert.alert("Success", "Stock adjusted successfully");
       } catch (err: any) {
         Alert.alert("Error", err?.message ?? "Failed to adjust stock");
       }
     },
-    [selectedProduct, adjustStock],
+    [selectedInventory, adjustStock, refetchInventory, refetchMovements],
   );
 
   const handleCreateMovement = useCallback(
     async (payload: {
       productId: string;
+      variantId?: string;
       quantity: number;
       type: "IN" | "OUT";
       reason: string;
     }) => {
       try {
         await createMovement({
-          storeId: "default",
+          storeId: "default", // TODO: Get from context
           productId: payload.productId,
+          variantId: payload.variantId,
           quantity: payload.quantity,
           type: payload.type,
           referenceId: `manual-${Date.now()}`,
@@ -123,46 +155,41 @@ export default function InventoryScreen() {
           reason: payload.reason,
         }).unwrap();
         setShowMovementModal(false);
+        refetchInventory();
+        refetchMovements();
         Alert.alert("Success", "Movement recorded successfully");
       } catch (err: any) {
         Alert.alert("Error", err?.message ?? "Failed to create movement");
       }
     },
-    [createMovement],
+    [createMovement, refetchInventory, refetchMovements],
   );
 
   const handleCreateProduct = useCallback(
-    async (payload: {
-      name: string;
-      sku: string;
-      barcode: string;
-      costPrice: number;
-      sellingPrice: number;
-      stockQuantity: number;
-      categoryId: string;
-    }) => {
+    async (payload: any) => {
       try {
         await createProduct({
           ...payload,
-          storeId: "default",
+          storeId: "default", // TODO: Get from context
         }).unwrap();
         setShowProductModal(false);
+        refetchInventory();
         Alert.alert("Success", "Product created successfully");
       } catch (err: any) {
         Alert.alert("Error", err?.message ?? "Failed to create product");
       }
     },
-    [createProduct],
+    [createProduct, refetchInventory],
   );
 
   const handleScan = useCallback(
     (data: string) => {
       setShowScannerModal(false);
-      const product = inventoryData?.find(
+      const inventory = inventoryWithDetails.find(
         (p: any) => p.barcode === data || p.sku === data || p.id === data,
       );
-      if (product) {
-        setSelectedProduct(product);
+      if (inventory) {
+        setSelectedInventory(inventory);
         setShowAdjustModal(true);
       } else {
         Alert.alert(
@@ -171,7 +198,7 @@ export default function InventoryScreen() {
         );
       }
     },
-    [inventoryData],
+    [inventoryWithDetails],
   );
 
   // ============================================
@@ -202,12 +229,12 @@ export default function InventoryScreen() {
   };
 
   const renderStockItem = ({ item }: { item: any }) => {
-    const badge = getStockBadge(item.stockQuantity);
+    const badge = getStockBadge(item.quantity);
     return (
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => {
-          setSelectedProduct(item);
+          setSelectedInventory(item);
           setShowAdjustModal(true);
         }}
       >
@@ -223,10 +250,15 @@ export default function InventoryScreen() {
               <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mt-0.5">
                 {item.sku}
               </Text>
+              {item.variantId && (
+                <Text className="text-slate-500 text-[9px] mt-0.5">
+                  Variant: {item.variantId}
+                </Text>
+              )}
             </View>
             <View className="items-end">
               <Text className="text-white font-black text-lg">
-                {item.stockQuantity}
+                {item.quantity}
               </Text>
               <Pill label={badge.label} tone={badge.tone} />
             </View>
@@ -238,6 +270,7 @@ export default function InventoryScreen() {
 
   const renderMovementItem = ({ item }: { item: any }) => {
     const icon = getMovementIcon(item.type);
+    const isIn = ["IN", "TRANSFER_IN"].includes(item.type);
     return (
       <Card className="mb-3">
         <View className="flex-row items-center">
@@ -254,16 +287,19 @@ export default function InventoryScreen() {
             <Text className="text-slate-400 text-xs mt-0.5">
               {item.reason ?? "No reason"}
             </Text>
+            {item.variantId && (
+              <Text className="text-slate-500 text-[9px] mt-0.5">
+                Variant: {item.variantId}
+              </Text>
+            )}
           </View>
           <View className="items-end">
             <Text
               className={`font-black text-base ${
-                ["IN", "TRANSFER"].includes(item.type)
-                  ? "text-emerald-400"
-                  : "text-rose-400"
+                isIn ? "text-emerald-400" : "text-rose-400"
               }`}
             >
-              {["IN", "TRANSFER"].includes(item.type) ? "+" : "-"}
+              {isIn ? "+" : "-"}
               {item.quantity}
             </Text>
             <Text className="text-slate-500 text-[10px] mt-0.5">
@@ -274,6 +310,17 @@ export default function InventoryScreen() {
       </Card>
     );
   };
+
+  if (isInventoryLoading) {
+    return (
+      <Screen>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#38bdf8" />
+          <Text className="text-slate-400 mt-4">Loading inventory...</Text>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen padded={false}>
@@ -432,11 +479,11 @@ export default function InventoryScreen() {
       {/* ============================================ */}
       <AdjustStockModal
         visible={showAdjustModal}
-        product={selectedProduct}
+        inventory={selectedInventory}
         isLoading={isAdjusting}
         onClose={() => {
           setShowAdjustModal(false);
-          setSelectedProduct(null);
+          setSelectedInventory(null);
         }}
         onSubmit={handleAdjustStock}
       />
@@ -446,11 +493,12 @@ export default function InventoryScreen() {
       {/* ============================================ */}
       <NewMovementModal
         visible={showMovementModal}
-        products={inventoryData ?? []}
+        inventoryItems={inventoryWithDetails}
         isLoading={isCreatingMovement}
         onClose={() => setShowMovementModal(false)}
         onSubmit={handleCreateMovement}
       />
+
       {/* ============================================ */}
       {/* NEW PRODUCT MODAL */}
       {/* ============================================ */}
@@ -479,13 +527,13 @@ export default function InventoryScreen() {
 // ============================================
 function AdjustStockModal({
   visible,
-  product,
+  inventory,
   isLoading,
   onClose,
   onSubmit,
 }: {
   visible: boolean;
-  product: any;
+  inventory: any;
   isLoading: boolean;
   onClose: () => void;
   onSubmit: (qty: number, reason: string) => void;
@@ -494,9 +542,9 @@ function AdjustStockModal({
   const [reason, setReason] = useState("");
 
   const handleOpen = useCallback(() => {
-    setNewQty(product?.stockQuantity?.toString() ?? "0");
+    setNewQty(inventory?.quantity?.toString() ?? "0");
     setReason("");
-  }, [product]);
+  }, [inventory]);
 
   return (
     <Modal
@@ -524,16 +572,22 @@ function AdjustStockModal({
               </TouchableOpacity>
             </View>
 
-            {product && (
+            {inventory && (
               <Card className="mb-5">
-                <StatRow label="Product" value={product.name} />
+                <StatRow label="Product" value={inventory.name} />
                 <Divider />
-                <StatRow label="SKU" value={product.sku} />
+                <StatRow label="SKU" value={inventory.sku} />
                 <Divider />
                 <StatRow
                   label="Current Stock"
-                  value={product.stockQuantity?.toString() ?? "0"}
+                  value={inventory.quantity?.toString() ?? "0"}
                 />
+                {inventory.variantId && (
+                  <>
+                    <Divider />
+                    <StatRow label="Variant" value={inventory.variantId} />
+                  </>
+                )}
               </Card>
             )}
 
@@ -562,7 +616,9 @@ function AdjustStockModal({
             />
 
             <TouchableOpacity
-              className={`bg-sky-500 rounded-2xl py-4 items-center border border-sky-400 ${isLoading ? "opacity-60" : ""}`}
+              className={`bg-sky-500 rounded-2xl py-4 items-center border border-sky-400 ${
+                isLoading ? "opacity-60" : ""
+              }`}
               onPress={() => onSubmit(Number(newQty), reason)}
               disabled={isLoading || !newQty}
               activeOpacity={0.8}
@@ -587,45 +643,49 @@ function AdjustStockModal({
 // ============================================
 function NewMovementModal({
   visible,
-  products,
+  inventoryItems,
   isLoading,
   onClose,
   onSubmit,
 }: {
   visible: boolean;
-  products: any[];
+  inventoryItems: any[];
   isLoading: boolean;
   onClose: () => void;
   onSubmit: (payload: {
     productId: string;
+    variantId?: string;
     quantity: number;
     type: "IN" | "OUT";
     reason: string;
   }) => void;
 }) {
-  const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [movementType, setMovementType] = useState<"IN" | "OUT">("IN");
   const [reason, setReason] = useState("");
   const [productSearch, setProductSearch] = useState("");
 
   const handleOpen = useCallback(() => {
-    setSelectedProductId("");
+    setSelectedInventoryId("");
     setQuantity("");
     setMovementType("IN");
     setReason("");
     setProductSearch("");
   }, []);
 
-  const filteredProducts = products.filter((p: any) => {
+  const filteredItems = inventoryItems.filter((item: any) => {
     if (!productSearch) return true;
     const q = productSearch.toLowerCase();
     return (
-      p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q)
+      item.name?.toLowerCase().includes(q) ||
+      item.sku?.toLowerCase().includes(q)
     );
   });
 
-  const selectedProduct = products.find((p: any) => p.id === selectedProductId);
+  const selectedItem = inventoryItems.find(
+    (item: any) => item.id === selectedInventoryId,
+  );
 
   return (
     <Modal
@@ -707,24 +767,28 @@ function NewMovementModal({
                 </TouchableOpacity>
               </View>
 
-              {/* Product Search & Selection */}
+              {/* Product Selection */}
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
                 Product
               </Text>
-              {selectedProduct ? (
+              {selectedItem ? (
                 <Card className="mb-4">
                   <View className="flex-row items-center justify-between">
                     <View className="flex-1">
                       <Text className="text-white font-bold">
-                        {selectedProduct.name}
+                        {selectedItem.name}
                       </Text>
                       <Text className="text-sky-300/60 text-xs mt-0.5">
-                        {selectedProduct.sku} — Stock:{" "}
-                        {selectedProduct.stockQuantity}
+                        {selectedItem.sku} — Stock: {selectedItem.quantity}
                       </Text>
+                      {selectedItem.variantId && (
+                        <Text className="text-slate-500 text-[10px] mt-0.5">
+                          Variant: {selectedItem.variantId}
+                        </Text>
+                      )}
                     </View>
                     <TouchableOpacity
-                      onPress={() => setSelectedProductId("")}
+                      onPress={() => setSelectedInventoryId("")}
                       className="bg-white/10 p-1.5 rounded-full"
                     >
                       <MaterialIcons name="close" size={14} color="#94a3b8" />
@@ -745,12 +809,12 @@ function NewMovementModal({
                   </View>
                   <View className="max-h-40 mb-4">
                     <ScrollView nestedScrollEnabled>
-                      {filteredProducts.slice(0, 10).map((p: any) => (
+                      {filteredItems.slice(0, 10).map((item: any) => (
                         <TouchableOpacity
-                          key={p.id}
+                          key={item.id}
                           className="flex-row items-center py-2.5 px-3 rounded-xl active:bg-white/5"
                           onPress={() => {
-                            setSelectedProductId(p.id);
+                            setSelectedInventoryId(item.id);
                             setProductSearch("");
                           }}
                         >
@@ -760,10 +824,10 @@ function NewMovementModal({
                             color="#64748b"
                           />
                           <Text className="text-slate-200 font-medium ml-2 flex-1 text-sm">
-                            {p.name}
+                            {item.name}
                           </Text>
                           <Text className="text-slate-500 text-xs">
-                            Qty: {p.stockQuantity}
+                            Qty: {item.quantity}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -804,16 +868,24 @@ function NewMovementModal({
                   movementType === "IN"
                     ? "bg-emerald-500 border-emerald-400"
                     : "bg-rose-500 border-rose-400"
-                } ${isLoading || !selectedProductId || !quantity ? "opacity-50" : ""}`}
-                onPress={() =>
+                } ${
+                  isLoading || !selectedInventoryId || !quantity
+                    ? "opacity-50"
+                    : ""
+                }`}
+                onPress={() => {
+                  const product = inventoryItems.find(
+                    (item: any) => item.id === selectedInventoryId,
+                  );
                   onSubmit({
-                    productId: selectedProductId,
+                    productId: product?.productId || selectedInventoryId,
+                    variantId: product?.variantId || undefined,
                     quantity: Number(quantity),
                     type: movementType,
                     reason,
-                  })
-                }
-                disabled={isLoading || !selectedProductId || !quantity}
+                  });
+                }}
+                disabled={isLoading || !selectedInventoryId || !quantity}
                 activeOpacity={0.8}
               >
                 {isLoading ? (
@@ -902,7 +974,7 @@ function NewProductModal({
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                Name
+                Name *
               </Text>
               <TextInput
                 className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
@@ -967,7 +1039,7 @@ function NewProductModal({
                 </View>
                 <View className="flex-1">
                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                    Selling Price
+                    Selling Price *
                   </Text>
                   <TextInput
                     className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"

@@ -1352,6 +1352,7 @@ export async function createOfflineStore(payload: CreateStorePayload) {
 
 export async function openOfflineSession(payload: {
   userId: string;
+  tenantId: string;
   openingBalance: number;
   notes?: string;
   storeId?: string;
@@ -1365,7 +1366,7 @@ export async function openOfflineSession(payload: {
     .values({
       id: id,
       remoteId: null,
-      tenantId: payload.storeId ? undefined : undefined,
+      tenantId: payload.tenantId,
       userId: payload.userId,
       storeId: payload.storeId,
       registerId: payload.registerId,
