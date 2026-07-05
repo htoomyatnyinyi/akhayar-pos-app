@@ -1,28 +1,29 @@
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
-} from "@react-navigation/native";
-import { PreventRemoveContext } from "@react-navigation/core";
-import {
-  Stack,
-  useRootNavigationState,
-  useRouter,
-  useSegments,
-} from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AppState, View, Text, ActivityIndicator } from "react-native";
-import { StatusBar } from "expo-status-bar";
-import { Provider } from "react-redux";
-import { PersistGate } from "redux-persist/integration/react";
-import "../global.css";
-import { store, persistor } from "@/services/store/store";
+import { OfflineSyncStatus } from "@/components/offline-sync-status";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
   initializeOfflineSystem,
   syncNow,
 } from "@/services/offline/syncManager";
+import { persistor, store } from "@/services/store/store";
+import { PreventRemoveContext } from "@react-navigation/core";
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "@react-navigation/native";
+import {
+  Stack,
+  useRootNavigationState,
+  useRouter,
+  useSegments,
+} from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, AppState, Text, View } from "react-native";
+import { Provider } from "react-redux";
+import { PersistGate } from "redux-persist/integration/react";
+import "../global.css";
 
 // NavigationGuard runs *inside* the Stack so router hooks have the navigation context they need.
 function NavigationGuard() {
@@ -102,6 +103,7 @@ function RootNavigator() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="(auth)" />
         </Stack>
+        <OfflineSyncStatus />
       </PreventRemoveContext.Provider>
       <NavigationGuard />
       <StatusBar style="light" />

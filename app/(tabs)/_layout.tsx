@@ -1,9 +1,8 @@
+import { HapticTab } from "@/components/haptic-tab";
+import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Platform, View } from "react-native";
-import { OfflineSyncStatus } from "@/components/offline-sync-status";
-import { HapticTab } from "@/components/haptic-tab";
-import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 
 export default function TabLayout() {
   const role = useAppSelector((state) => state.auth.user?.role);
@@ -15,7 +14,7 @@ export default function TabLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarButton: HapticTab,
+          tabBarButton: (props) => <HapticTab {...props} />,
           tabBarShowLabel: false,
           tabBarActiveTintColor: "#7dd3fc",
           tabBarInactiveTintColor: "#64748b",
@@ -42,7 +41,7 @@ export default function TabLayout() {
             ),
           }}
         />
-        <Tabs.Screen
+        {/* <Tabs.Screen
           name="orders"
           options={{
             title: "Orders",
@@ -54,7 +53,7 @@ export default function TabLayout() {
               />
             ),
           }}
-        />
+        /> */}
         <Tabs.Screen
           name="inventory"
           options={{
@@ -68,7 +67,7 @@ export default function TabLayout() {
             ),
           }}
         />
-        <Tabs.Screen
+        {/* <Tabs.Screen
           name="dashboard"
           options={{
             title: "Dashboard",
@@ -80,7 +79,7 @@ export default function TabLayout() {
               />
             ),
           }}
-        />
+        /> */}
         <Tabs.Screen
           name="sync"
           options={{

@@ -1,37 +1,36 @@
-import React, { useState, useCallback } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  Modal,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-import {
-  useGetLocalInventoryQuery,
-  useGetLocalInventoryMovementsQuery,
-  useCreateLocalInventoryMovementMutation,
-  useAdjustLocalStockMutation,
-  useCreateLocalProductMutation,
-  useGetLocalCategoriesQuery,
-} from "@/services/features/offline/localApi";
-import {
-  Screen,
-  Header,
   Card,
-  MetricCard,
-  SectionTitle,
-  Pill,
   Divider,
+  Header,
+  MetricCard,
+  Pill,
+  Screen,
   StatRow,
 } from "@/components/app-ui";
 import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
+import {
+  useAdjustLocalStockMutation,
+  useCreateLocalInventoryMovementMutation,
+  useCreateLocalProductMutation,
+  useGetLocalCategoriesQuery,
+  useGetLocalInventoryMovementsQuery,
+  useGetLocalInventoryQuery,
+} from "@/services/features/offline/localApi";
+import { MaterialIcons } from "@expo/vector-icons";
+import React, { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 type ActiveTab = "stock" | "movements";
 
@@ -160,7 +159,7 @@ export default function InventoryScreen() {
     (data: string) => {
       setShowScannerModal(false);
       const product = inventoryData?.find(
-        (p: any) => p.barcode === data || p.sku === data || p.id === data
+        (p: any) => p.barcode === data || p.sku === data || p.id === data,
       );
       if (product) {
         setSelectedProduct(product);
@@ -168,11 +167,11 @@ export default function InventoryScreen() {
       } else {
         Alert.alert(
           "Not Found",
-          `No local product found for barcode/SKU:\n${data}`
+          `No local product found for barcode/SKU:\n${data}`,
         );
       }
     },
-    [inventoryData]
+    [inventoryData],
   );
 
   // ============================================
@@ -278,7 +277,7 @@ export default function InventoryScreen() {
 
   return (
     <Screen padded={false}>
-      <View className="px-5 pt-12 pb-2">
+      <View className="px-5 pt-6 pb-2">
         <Header
           eyebrow="Warehouse"
           title="Inventory"
@@ -365,7 +364,11 @@ export default function InventoryScreen() {
                 onPress={() => setShowScannerModal(true)}
                 className="bg-sky-500/20 p-1.5 rounded-full border border-sky-500/30"
               >
-                <MaterialIcons name="qr-code-scanner" size={16} color="#38bdf8" />
+                <MaterialIcons
+                  name="qr-code-scanner"
+                  size={16}
+                  color="#38bdf8"
+                />
               </TouchableOpacity>
             )}
           </View>

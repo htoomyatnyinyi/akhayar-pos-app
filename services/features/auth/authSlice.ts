@@ -37,10 +37,13 @@ const authSlice = createSlice({
       state.user = null;
       state.currentStoreId = null;
     },
+    clearUser: (state) => {
+      state.user = null;
+    },
   },
 });
 
-export const { setUser, logout, setStore, setLastTenantCode } =
+export const { setUser, logout, setStore, setLastTenantCode, clearUser } =
   authSlice.actions;
 
 export default authSlice.reducer;

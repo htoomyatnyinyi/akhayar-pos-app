@@ -1,40 +1,51 @@
-// services/features/customers/customerTypes.ts
+// ============================================
+// FILE: services/features/customers/customerTypes.ts
+// ============================================
+
+import { Order } from "../order/orderTypes";
+
 export interface Customer {
-  tenantId: any;
+  remoteId: any;
   id: string;
+  tenantId: string;
   code: string;
   name: string;
   phone?: string;
   email?: string;
   address?: string;
   dateOfBirth?: string;
-  gender?: string;
-  debtAmount?: number;
+  gender?: "MALE" | "FEMALE" | "OTHER";
+  debtAmount: number;
   loyaltyPoints: number;
   totalSpent: number;
   totalOrders: number;
-  tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+  tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM" | "DIAMOND";
   tierValidUntil?: string;
   isActive: boolean;
+  orders?: Order[];
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateCustomerPayload {
-  name: string;
+  tenantId: string;
   code?: string;
+  name: string;
   phone?: string;
   email?: string;
   address?: string;
   dateOfBirth?: string;
-  gender?: string;
+  gender?: "MALE" | "FEMALE" | "OTHER";
   debtAmount?: number;
-  tier?: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 }
 
+export interface UpdateCustomerPayload extends Partial<CreateCustomerPayload> {
+  id: string;
+}
+
+// // services/features/customers/customerTypes.ts
 // export interface Customer {
 //   tenantId: any;
-//   debtAmount: number;
 //   id: string;
 //   code: string;
 //   name: string;
@@ -43,10 +54,11 @@ export interface CreateCustomerPayload {
 //   address?: string;
 //   dateOfBirth?: string;
 //   gender?: string;
+//   debtAmount?: number;
 //   loyaltyPoints: number;
 //   totalSpent: number;
 //   totalOrders: number;
-//   tier: string;
+//   tier: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 //   tierValidUntil?: string;
 //   isActive: boolean;
 //   createdAt: string;
@@ -54,12 +66,45 @@ export interface CreateCustomerPayload {
 // }
 
 // export interface CreateCustomerPayload {
-//   code: string;
-//   debtAmount: number;
 //   name: string;
+//   code?: string;
 //   phone?: string;
 //   email?: string;
 //   address?: string;
 //   dateOfBirth?: string;
 //   gender?: string;
+//   debtAmount?: number;
+//   tier?: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
 // }
+
+// // export interface Customer {
+// //   tenantId: any;
+// //   debtAmount: number;
+// //   id: string;
+// //   code: string;
+// //   name: string;
+// //   phone?: string;
+// //   email?: string;
+// //   address?: string;
+// //   dateOfBirth?: string;
+// //   gender?: string;
+// //   loyaltyPoints: number;
+// //   totalSpent: number;
+// //   totalOrders: number;
+// //   tier: string;
+// //   tierValidUntil?: string;
+// //   isActive: boolean;
+// //   createdAt: string;
+// //   updatedAt: string;
+// // }
+
+// // export interface CreateCustomerPayload {
+// //   code: string;
+// //   debtAmount: number;
+// //   name: string;
+// //   phone?: string;
+// //   email?: string;
+// //   address?: string;
+// //   dateOfBirth?: string;
+// //   gender?: string;
+// // }
