@@ -549,6 +549,102 @@ export const sessions = sqliteTable(
 // ============================================
 // 12. STAFF
 // ============================================
+// export const staff = sqliteTable(
+//   "staff",
+//   {
+//     id: text("id").primaryKey(),
+//     remoteId: text("remote_id").unique(),
+//     tenantId: text("tenant_id").notNull(),
+//     storeId: text("store_id"),
+//     username: text("username").notNull(),
+//     email: text("email"),
+//     name: text("name").notNull(),
+//     role: text("role").notNull().default("CASHIER"),
+//     permissions: text("permissions", { mode: "json" })
+//       .$type<string[]>()
+//       .default([]),
+//     isActive: integer("is_active", { mode: "boolean" })
+//       .notNull()
+//       .default(sql`1`),
+//     syncStatus: text("sync_status").notNull().default("synced"),
+//     syncError: text("sync_error"),
+//     createdAt: text("created_at")
+//       .notNull()
+//       .default(sql`CURRENT_TIMESTAMP`),
+//     updatedAt: text("updated_at")
+//       .notNull()
+//       .default(sql`CURRENT_TIMESTAMP`),
+//     lastSyncedAt: text("last_synced_at"),
+//   },
+//   (table) => ({
+//     tenantUsernameIdx: uniqueIndex("staff_tenant_username_idx").on(
+//       table.tenantId,
+//       table.username,
+//     ),
+//     tenantEmailIdx: uniqueIndex("staff_tenant_email_idx").on(
+//       table.tenantId,
+//       table.email,
+//     ),
+//     storeIdx: index("staff_store_idx").on(table.storeId),
+//     roleIdx: index("staff_role_idx").on(table.role),
+//     activeIdx: index("staff_active_idx").on(table.isActive),
+//     tenantIdx: index("staff_tenant_idx").on(table.tenantId),
+//   }),
+// );
+
+// ============================================
+// FILE: services/offline/schema.ts
+// ============================================
+
+// // In the staff table definition, make sure permissions is defined as:
+// export const staff = sqliteTable(
+//   "staff",
+//   {
+//     id: text("id").primaryKey(),
+//     remoteId: text("remote_id").unique(),
+//     tenantId: text("tenant_id").notNull(),
+//     storeId: text("store_id"),
+//     username: text("username").notNull(),
+//     email: text("email"),
+//     name: text("name").notNull(),
+//     role: text("role").notNull().default("CASHIER"),
+//     // ✅ Make sure permissions is stored as TEXT with json mode
+//     permissions: text("permissions", { mode: "json" })
+//       .$type<string[]>()
+//       .default([]),
+//     isActive: integer("is_active", { mode: "boolean" })
+//       .notNull()
+//       .default(sql`1`),
+//     syncStatus: text("sync_status").notNull().default("synced"),
+//     syncError: text("sync_error"),
+//     createdAt: text("created_at")
+//       .notNull()
+//       .default(sql`CURRENT_TIMESTAMP`),
+//     updatedAt: text("updated_at")
+//       .notNull()
+//       .default(sql`CURRENT_TIMESTAMP`),
+//     lastSyncedAt: text("last_synced_at"),
+//   },
+//   (table) => ({
+//     tenantUsernameIdx: uniqueIndex("staff_tenant_username_idx").on(
+//       table.tenantId,
+//       table.username,
+//     ),
+//     tenantEmailIdx: uniqueIndex("staff_tenant_email_idx").on(
+//       table.tenantId,
+//       table.email,
+//     ),
+//     storeIdx: index("staff_store_idx").on(table.storeId),
+//     roleIdx: index("staff_role_idx").on(table.role),
+//     activeIdx: index("staff_active_idx").on(table.isActive),
+//     tenantIdx: index("staff_tenant_idx").on(table.tenantId),
+//   }),
+// );
+
+// ============================================
+// FILE: services/offline/schema.ts
+// ============================================
+
 export const staff = sqliteTable(
   "staff",
   {
@@ -560,9 +656,10 @@ export const staff = sqliteTable(
     email: text("email"),
     name: text("name").notNull(),
     role: text("role").notNull().default("CASHIER"),
+    // ✅ Fix: Use text with json mode, but handle null values
     permissions: text("permissions", { mode: "json" })
       .$type<string[]>()
-      .default([]),
+      .default(sql`'[]'`),
     isActive: integer("is_active", { mode: "boolean" })
       .notNull()
       .default(sql`1`),

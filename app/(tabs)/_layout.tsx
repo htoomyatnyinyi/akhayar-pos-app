@@ -80,7 +80,7 @@ export default function TabLayout() {
             ),
           }}
         />
-        {/* <Tabs.Screen
+        <Tabs.Screen
           name="dashboard"
           options={{
             title: "Dashboard",
@@ -92,7 +92,7 @@ export default function TabLayout() {
               />
             ),
           }}
-        /> */}
+        />
         <Tabs.Screen
           name="sync"
           options={{

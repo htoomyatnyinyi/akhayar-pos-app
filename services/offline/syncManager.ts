@@ -431,6 +431,20 @@ export async function syncNow(
 
     // In syncNow function, add this step after suppliers or before stores:
 
+    // // ============================================
+    // // STEP: PULL Staff
+    // // ============================================
+    // if (!silent) console.log("📥 Pulling staff...");
+    // const staffResult = await pullStaff(dispatch);
+    // syncedItems += staffResult.synced;
+    // dispatch(setSyncProgress(35));
+    // if (!silent) console.log(`✅ Synced ${staffResult.synced} staff`);
+
+    // // ============================================
+    // FILE: services/offline/syncManager.ts - syncNow function
+    // ============================================
+
+    // Add this step after suppliers or before stores:
     // ============================================
     // STEP: PULL Staff
     // ============================================
@@ -896,7 +910,104 @@ async function pullCategories(dispatch: AppDispatch) {
 // FILE: services/offline/syncManager.ts
 // ============================================
 
-// Add this pull function after pullSuppliers or in the appropriate section:
+// // Add this pull function after pullSuppliers or in the appropriate section:
+
+// // async function pullStaff(dispatch: AppDispatch) {
+// //   try {
+// //     const state = store.getState();
+// //     const token = state.auth?.user?.token;
+
+// //     if (!token) {
+// //       console.warn("⚠️ No auth token found, skipping staff pull");
+// //       return { synced: 0 };
+// //     }
+
+// //     if (!remoteApi.endpoints.getRemoteStaff) {
+// //       console.warn("⚠️ getRemoteStaff endpoint not available");
+// //       return { synced: 0 };
+// //     }
+
+// //     const { data, error } = await store.dispatch(
+// //       remoteApi.endpoints.getRemoteStaff.initiate(undefined, {
+// //         forceRefetch: true,
+// //       }),
+// //     );
+
+// //     if (error) {
+// //       return handleApiError(error, "Staff");
+// //     }
+
+// //     const staffData = data?.staff || data?.data || data || [];
+
+// //     if (staffData.length > 0) {
+// //       await upsertStaff(staffData);
+// //       return { synced: staffData.length };
+// //     }
+
+// //     return { synced: 0 };
+// //   } catch (error) {
+// //     console.error("❌ Failed to pull staff:", error);
+// //     return { synced: 0 };
+// //   }
+// // }
+
+// // ============================================
+// // FILE: services/offline/syncManager.ts
+// // ============================================
+
+// async function pullStaff(dispatch: AppDispatch) {
+//   try {
+//     const state = store.getState();
+//     const token = state.auth?.user?.token;
+
+//     if (!token) {
+//       console.warn("⚠️ No auth token found, skipping staff pull");
+//       return { synced: 0 };
+//     }
+
+//     if (!remoteApi.endpoints.getRemoteStaff) {
+//       console.warn("⚠️ getRemoteStaff endpoint not available");
+//       return { synced: 0 };
+//     }
+
+//     const { data, error } = await store.dispatch(
+//       remoteApi.endpoints.getRemoteStaff.initiate(undefined, {
+//         forceRefetch: true,
+//       }),
+//     );
+
+//     if (error) {
+//       return handleApiError(error, "Staff");
+//     }
+
+//     const staffData = data?.staff || data?.data || data || [];
+
+//     // ✅ Clean staff data before upsert
+//     const cleanedStaff = staffData.map((staff: any) => ({
+//       ...staff,
+//       // Ensure permissions is always an array
+//       permissions: Array.isArray(staff.permissions) ? staff.permissions : [],
+//       // Ensure all required fields exist
+//       name: staff.name || staff.username || "Unknown Staff",
+//       username: staff.username || `staff-${Date.now()}`,
+//       role: staff.role || "CASHIER",
+//       isActive: staff.isActive !== undefined ? staff.isActive : true,
+//     }));
+
+//     if (cleanedStaff.length > 0) {
+//       await upsertStaff(cleanedStaff);
+//       return { synced: cleanedStaff.length };
+//     }
+
+//     return { synced: 0 };
+//   } catch (error) {
+//     console.error("❌ Failed to pull staff:", error);
+//     return { synced: 0 };
+//   }
+// }
+// ============================================
+// FILE: services/offline/syncManager.ts
+// ============================================
 
 async function pullStaff(dispatch: AppDispatch) {
   try {
@@ -923,11 +1034,34 @@ async function pullStaff(dispatch: AppDispatch) {
       return handleApiError(error, "Staff");
     }
 
-    const staffData = data?.staff || data?.data || data || [];
+    // ✅ Handle different response formats
+    let staffData = data?.staff || data?.data || data || [];
 
-    if (staffData.length > 0) {
-      await upsertStaff(staffData);
-      return { synced: staffData.length };
+    // ✅ Ensure staffData is an array
+    if (!Array.isArray(staffData)) {
+      staffData = [];
+    }
+
+    // ✅ Clean staff data - ensure all fields are valid
+    const cleanedStaff = staffData.map((staff: any) => ({
+      id: staff.id || `staff-${Date.now()}`,
+      remoteId: staff.remoteId || null,
+      tenantId: staff.tenantId || "default",
+      storeId: staff.storeId || null,
+      username:
+        staff.username || staff.email?.split("@")[0] || `staff-${Date.now()}`,
+      email: staff.email || null,
+      name: staff.name || staff.username || "Unknown Staff",
+      role: staff.role || "CASHIER",
+      permissions: Array.isArray(staff.permissions) ? staff.permissions : [],
+      isActive: staff.isActive !== undefined ? staff.isActive : true,
+      createdAt: staff.createdAt || new Date().toISOString(),
+      updatedAt: staff.updatedAt || new Date().toISOString(),
+    }));
+
+    if (cleanedStaff.length > 0) {
+      await upsertStaff(cleanedStaff);
+      return { synced: cleanedStaff.length };
     }
 
     return { synced: 0 };
@@ -937,49 +1071,145 @@ async function pullStaff(dispatch: AppDispatch) {
   }
 }
 
-// Also add upsertStaff function:
-export async function upsertStaff(remoteStaff: any[]) {
+// // Also add upsertStaff function:
+// export async function upsertStaff(remoteStaff: any[]) {
+//   if (!remoteStaff.length) return;
+//   const now = new Date().toISOString();
+
+//   const db = getOfflineDb();
+//   for (const staff of remoteStaff) {
+//     try {
+//       await db
+//         .insert(staff)
+//         .values({
+//           id: staff.id,
+//           remoteId: staff.remoteId,
+//           tenantId: staff.tenantId,
+//           storeId: staff.storeId,
+//           username: staff.username,
+//           email: staff.email,
+//           name: staff.name,
+//           role: staff.role || "CASHIER",
+//           permissions: staff.permissions || [],
+//           isActive: staff.isActive ?? true,
+//           syncStatus: "synced",
+//           syncError: null,
+//           createdAt: staff.createdAt ?? now,
+//           updatedAt: staff.updatedAt ?? now,
+//           lastSyncedAt: now,
+//         })
+//         .onConflictDoUpdate({
+//           target: staff.id,
+//           set: {
+//             storeId: sql`excluded.store_id`,
+//             username: sql`excluded.username`,
+//             email: sql`excluded.email`,
+//             name: sql`excluded.name`,
+//             role: sql`excluded.role`,
+//             permissions: sql`excluded.permissions`,
+//             isActive: sql`excluded.is_active`,
+//             syncStatus: "synced",
+//             syncError: null,
+//             updatedAt: sql`excluded.updated_at`,
+//             lastSyncedAt: now,
+//           },
+//         });
+//     } catch (error) {
+//       console.error(`Failed to upsert staff ${staff.id}:`, error);
+//     }
+//   }
+// }
+
+// ============================================
+// FILE: services/offline/syncManager.ts
+// ============================================
+
+// ✅ REPLACE the entire upsertStaff function with this:
+
+async function upsertStaff(remoteStaff: any[]) {
   if (!remoteStaff.length) return;
   const now = new Date().toISOString();
 
   const db = getOfflineDb();
+
+  // Check if staff table has permissions column
+  let hasPermissions = false;
+  try {
+    const tableInfo = await db.all<{ name: string }>(
+      "PRAGMA table_info(staff)",
+    );
+    hasPermissions = tableInfo.some((col) => col.name === "permissions");
+  } catch (e) {
+    console.log("⚠️ Could not check staff table schema:", e);
+  }
+
   for (const staff of remoteStaff) {
     try {
-      await db
-        .insert(staff)
-        .values({
-          id: staff.id,
-          remoteId: staff.remoteId,
-          tenantId: staff.tenantId,
-          storeId: staff.storeId,
-          username: staff.username,
-          email: staff.email,
-          name: staff.name,
-          role: staff.role || "CASHIER",
-          permissions: staff.permissions || [],
-          isActive: staff.isActive ?? true,
+      // ✅ Safely handle permissions
+      let permissionsValue = "[]";
+      if (staff.permissions !== undefined && staff.permissions !== null) {
+        if (Array.isArray(staff.permissions)) {
+          permissionsValue = JSON.stringify(staff.permissions);
+        } else if (typeof staff.permissions === "string") {
+          permissionsValue = staff.permissions;
+        }
+      }
+
+      // ✅ Build values object with only existing columns
+      const values: any = {
+        id: staff.id || `staff-${Date.now()}`,
+        remoteId: staff.remoteId || null,
+        tenantId: staff.tenantId || "default",
+        storeId: staff.storeId || null,
+        username: staff.username || `user-${Date.now().toString(36)}`,
+        email: staff.email || null,
+        name: staff.name || "Unknown Staff",
+        role: staff.role || "CASHIER",
+        isActive: staff.isActive !== undefined ? staff.isActive : true,
+        syncStatus: "synced",
+        syncError: null,
+        createdAt: staff.createdAt || now,
+        updatedAt: staff.updatedAt || now,
+        lastSyncedAt: now,
+      };
+
+      // ✅ Only add permissions if column exists
+      if (hasPermissions) {
+        values.permissions = permissionsValue;
+      }
+
+      // ✅ Check if staff exists
+      const [existing] = await db
+        .select()
+        .from(staff)
+        .where(eq(staff.id, staff.id || ""))
+        .limit(1);
+
+      if (existing) {
+        // Update existing
+        const updateData: any = {
+          storeId: staff.storeId || null,
+          username: staff.username || existing.username,
+          email: staff.email || null,
+          name: staff.name || existing.name,
+          role: staff.role || existing.role,
+          isActive:
+            staff.isActive !== undefined ? staff.isActive : existing.isActive,
           syncStatus: "synced",
           syncError: null,
-          createdAt: staff.createdAt ?? now,
-          updatedAt: staff.updatedAt ?? now,
+          updatedAt: now,
           lastSyncedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: staff.id,
-          set: {
-            storeId: sql`excluded.store_id`,
-            username: sql`excluded.username`,
-            email: sql`excluded.email`,
-            name: sql`excluded.name`,
-            role: sql`excluded.role`,
-            permissions: sql`excluded.permissions`,
-            isActive: sql`excluded.is_active`,
-            syncStatus: "synced",
-            syncError: null,
-            updatedAt: sql`excluded.updated_at`,
-            lastSyncedAt: now,
-          },
-        });
+        };
+
+        if (hasPermissions) {
+          updateData.permissions = permissionsValue;
+        }
+
+        await db.update(staff).set(updateData).where(eq(staff.id, staff.id));
+      } else {
+        // Insert new
+        await db.insert(staff).values(values);
+      }
     } catch (error) {
       console.error(`Failed to upsert staff ${staff.id}:`, error);
     }

@@ -242,7 +242,7 @@ Authorization: Bearer {{authToken}}
 }
 ###
 # @storeId = {{createStore.response.body.id}}
-@storeId = cmraloeev000101pfcus8l3dg
+@storeId = cmrg6mtxi000101qd3voszrum
 # @storeId =cmranp0l5000p01k0ifve9yx0
 
 ### Get All Stores
@@ -334,7 +334,7 @@ Authorization: Bearer {{authToken}}
 ###
 
 # @categoryId = {{createCategory.response.body.id}}
-@categoryId = cmralpnd7000801pfbk9u9fc7
+@categoryId = cmrg6opsm000401qdt8rrilgb
 
 ### Get Category by ID
 # @name getCategoryById

@@ -604,6 +604,209 @@ export async function upsertBrands(remoteBrands: any[]) {
   }
 }
 
+// // ✅ FIX: Add upsertStaff function with proper null/undefined handling
+// export async function upsertStaff(remoteStaff: any[]) {
+//   if (!remoteStaff.length) return;
+//   const now = new Date().toISOString();
+
+//   const db = getOfflineDb();
+//   for (const staff of remoteStaff) {
+//     try {
+//       // ✅ Ensure permissions is always an array
+//       const permissions = Array.isArray(staff.permissions)
+//         ? staff.permissions
+//         : [];
+
+//       await db
+//         .insert(staff)
+//         .values({
+//           id: staff.id || `staff-${Date.now()}`,
+//           remoteId: staff.remoteId || null,
+//           tenantId: staff.tenantId || "default",
+//           storeId: staff.storeId || null,
+//           username: staff.username || `user-${Date.now().toString(36)}`,
+//           email: staff.email || null,
+//           name: staff.name || "Unknown Staff",
+//           role: staff.role || "CASHIER",
+//           permissions: JSON.stringify(permissions), // ✅ Ensure it's a string
+//           isActive: staff.isActive !== undefined ? staff.isActive : true,
+//           syncStatus: "synced",
+//           syncError: null,
+//           createdAt: staff.createdAt || now,
+//           updatedAt: staff.updatedAt || now,
+//           lastSyncedAt: now,
+//         })
+//         .onConflictDoUpdate({
+//           target: staff.id,
+//           set: {
+//             storeId: sql`excluded.store_id`,
+//             username: sql`excluded.username`,
+//             email: sql`excluded.email`,
+//             name: sql`excluded.name`,
+//             role: sql`excluded.role`,
+//             permissions: sql`excluded.permissions`,
+//             isActive: sql`excluded.is_active`,
+//             syncStatus: "synced",
+//             syncError: null,
+//             updatedAt: sql`excluded.updated_at`,
+//             lastSyncedAt: now,
+//           },
+//         });
+//     } catch (error) {
+//       console.error(`Failed to upsert staff ${staff.id}:`, error);
+//     }
+//   }
+// }
+
+// ============================================
+// FILE: services/offline/repository.ts
+// ============================================
+
+// // ✅ FIX: upsertStaff with proper null/undefined handling
+// export async function upsertStaff(remoteStaff: any[]) {
+//   if (!remoteStaff.length) return;
+//   const now = new Date().toISOString();
+
+//   const db = getOfflineDb();
+
+//   // Check if permissions column exists
+//   const tableInfo = await db.all<{ name: string }>("PRAGMA table_info(staff)");
+//   const hasPermissions = tableInfo.some((col) => col.name === "permissions");
+
+//   for (const staff of remoteStaff) {
+//     try {
+//       // ✅ Ensure permissions is always a valid array or null
+//       let permissionsValue = null;
+//       if (staff.permissions !== undefined && staff.permissions !== null) {
+//         permissionsValue = Array.isArray(staff.permissions)
+//           ? JSON.stringify(staff.permissions)
+//           : JSON.stringify([]);
+//       }
+
+//       const values: any = {
+//         id: staff.id || `staff-${Date.now()}`,
+//         remoteId: staff.remoteId || null,
+//         tenantId: staff.tenantId || "default",
+//         storeId: staff.storeId || null,
+//         username: staff.username || `user-${Date.now().toString(36)}`,
+//         email: staff.email || null,
+//         name: staff.name || "Unknown Staff",
+//         role: staff.role || "CASHIER",
+//         isActive: staff.isActive !== undefined ? staff.isActive : true,
+//         syncStatus: "synced",
+//         syncError: null,
+//         createdAt: staff.createdAt || now,
+//         updatedAt: staff.updatedAt || now,
+//         lastSyncedAt: now,
+//       };
+
+//       // Only add permissions if column exists and value is valid
+//       if (hasPermissions) {
+//         values.permissions = permissionsValue;
+//       }
+
+//       // Insert or update
+//       await db
+//         .insert(staff)
+//         .values(values)
+//         .onConflictDoUpdate({
+//           target: staff.id,
+//           set: {
+//             storeId: sql`excluded.store_id`,
+//             username: sql`excluded.username`,
+//             email: sql`excluded.email`,
+//             name: sql`excluded.name`,
+//             role: sql`excluded.role`,
+//             ...(hasPermissions
+//               ? { permissions: sql`excluded.permissions` }
+//               : {}),
+//             isActive: sql`excluded.is_active`,
+//             syncStatus: "synced",
+//             syncError: null,
+//             updatedAt: sql`excluded.updated_at`,
+//             lastSyncedAt: now,
+//           },
+//         });
+//     } catch (error) {
+//       console.error(`Failed to upsert staff ${staff.id}:`, error);
+//     }
+//   }
+// }
+
+// ============================================
+// FILE: services/offline/repository.ts
+// ============================================
+
+export async function upsertStaff(remoteStaff: any[]) {
+  if (!remoteStaff.length) return;
+  const now = new Date().toISOString();
+
+  const db = getOfflineDb();
+
+  for (const staff of remoteStaff) {
+    try {
+      // ✅ Safe permissions handling
+      let permissions = "[]";
+      if (staff.permissions) {
+        if (Array.isArray(staff.permissions)) {
+          permissions = JSON.stringify(staff.permissions);
+        } else if (typeof staff.permissions === "string") {
+          permissions = staff.permissions;
+        }
+      }
+
+      // Check if staff exists
+      const [existing] = await db
+        .select()
+        .from(staff)
+        .where(eq(staff.id, staff.id || ""))
+        .limit(1);
+
+      if (existing) {
+        // Update existing staff
+        await db
+          .update(staff)
+          .set({
+            storeId: staff.storeId || null,
+            username: staff.username || existing.username,
+            email: staff.email || null,
+            name: staff.name || existing.name,
+            role: staff.role || existing.role,
+            permissions: permissions,
+            isActive:
+              staff.isActive !== undefined ? staff.isActive : existing.isActive,
+            syncStatus: "synced",
+            syncError: null,
+            updatedAt: now,
+            lastSyncedAt: now,
+          })
+          .where(eq(staff.id, staff.id));
+      } else {
+        // Insert new staff
+        await db.insert(staff).values({
+          id: staff.id || `staff-${Date.now()}`,
+          remoteId: staff.remoteId || null,
+          tenantId: staff.tenantId || "default",
+          storeId: staff.storeId || null,
+          username: staff.username || `user-${Date.now().toString(36)}`,
+          email: staff.email || null,
+          name: staff.name || "Unknown Staff",
+          role: staff.role || "CASHIER",
+          permissions: permissions,
+          isActive: staff.isActive !== undefined ? staff.isActive : true,
+          syncStatus: "synced",
+          syncError: null,
+          createdAt: staff.createdAt || now,
+          updatedAt: staff.updatedAt || now,
+          lastSyncedAt: now,
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to upsert staff ${staff.id}:`, error);
+    }
+  }
+}
+
 export async function upsertCustomers(remoteCustomers: Customer[]) {
   if (!remoteCustomers.length) return;
   const now = new Date().toISOString();
