@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "mini_POS",
-    "slug": "mini-pos",
-    "version": "1.0.0",
+    "name": "akhayar_pos",
+    "slug": "akhayar-pos",
+    "version": "1.5.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mini-pos",
+    "scheme": "akhayar-pos",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
@@ -24,11 +24,15 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN",
+        "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.BLUETOOTH_SCAN",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
       "predictiveBackGestureEnabled": false,
-      "package": "com.htoomyatnyinyi24.minipos"
+      "package": "com.htoomyatnyinyi24.akhayarpos"
     },
     "web": {
       "output": "static",

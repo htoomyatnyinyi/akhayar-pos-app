@@ -1,5 +1,3 @@
-// services/bluetooth/printerService.ts
-
 import {
   BluetoothEscposPrinter,
   BluetoothManager,
@@ -59,7 +57,8 @@ class BluetoothPrinterService {
     try {
       const devices = await BluetoothManager.scanDevices();
       // JSON string ကို parse လုပ်ပါ
-      const parsed = typeof devices === "string" ? JSON.parse(devices) : devices;
+      const parsed =
+        typeof devices === "string" ? JSON.parse(devices) : devices;
       // Handle both { paired: [], found: [] } and flat array formats
       const paired = parsed?.paired || [];
       const found = parsed?.found || [];

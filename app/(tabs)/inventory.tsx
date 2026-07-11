@@ -16,6 +16,7 @@ import {
   useAdjustLocalStockMutation,
   useCreateLocalInventoryMovementMutation,
   useCreateLocalProductMutation,
+  useGetLocalBrandsQuery,
   useGetLocalCategoriesQuery,
   useGetLocalInventoryMovementsQuery,
   useGetLocalInventoryQuery,
@@ -36,6 +37,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type ActiveTab = "stock" | "movements";
 
@@ -48,7 +50,7 @@ export default function InventoryScreen() {
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedInventory, setSelectedInventory] = useState<any>(null);
 
-  // ✅ Use the new inventory table
+  // Queries
   const {
     data: inventoryData,
     isLoading: isInventoryLoading,
@@ -61,8 +63,13 @@ export default function InventoryScreen() {
     refetch: refetchMovements,
   } = useGetLocalInventoryMovementsQuery({});
 
-  // ✅ Get products for display
-  const { data: productsData } = useGetLocalProductsQuery({});
+  const { data: productsData, isLoading: isProductsLoading } =
+    useGetLocalProductsQuery({});
+
+  const { data: categoriesData } = useGetLocalCategoriesQuery({});
+
+  // ✅ Brand query
+  const { data: brandsData } = useGetLocalBrandsQuery({});
 
   // Mutations
   const [createMovement, { isLoading: isCreatingMovement }] =
@@ -71,14 +78,16 @@ export default function InventoryScreen() {
     useAdjustLocalStockMutation();
   const [createProduct, { isLoading: isCreatingProduct }] =
     useCreateLocalProductMutation();
-  const { data: categories } = useGetLocalCategoriesQuery({});
 
-  // ✅ Build inventory items with product details
+  // ✅ Build inventory items with product and brand details
   const inventoryWithDetails = React.useMemo(() => {
     if (!inventoryData || !productsData) return [];
 
     return inventoryData.map((inv: any) => {
       const product = productsData.find((p: any) => p.id === inv.productId);
+      const brand = product?.brandId
+        ? brandsData?.find((b: any) => b.id === product.brandId)
+        : null;
       return {
         ...inv,
         name: product?.name || "Unknown Product",
@@ -86,9 +95,12 @@ export default function InventoryScreen() {
         sellingPrice: product?.sellingPrice || 0,
         costPrice: product?.costPrice || 0,
         categoryId: product?.categoryId,
+        brand: brand,
+        brandName: brand?.name || null,
+        barcode: product?.barcode,
       };
     });
-  }, [inventoryData, productsData]);
+  }, [inventoryData, productsData, brandsData]);
 
   // Computed values
   const filteredInventory = inventoryWithDetails.filter((item: any) => {
@@ -96,7 +108,9 @@ export default function InventoryScreen() {
     const q = searchQuery.toLowerCase();
     return (
       item.name?.toLowerCase().includes(q) ||
-      item.sku?.toLowerCase().includes(q)
+      item.sku?.toLowerCase().includes(q) ||
+      item.brandName?.toLowerCase().includes(q) ||
+      item.barcode?.toLowerCase().includes(q)
     );
   });
 
@@ -247,6 +261,11 @@ export default function InventoryScreen() {
               <Text className="text-white font-bold text-sm" numberOfLines={1}>
                 {item.name}
               </Text>
+              {item.brandName && (
+                <Text className="text-sky-300/60 text-[9px] font-medium mt-0.5">
+                  {item.brandName}
+                </Text>
+              )}
               <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mt-0.5">
                 {item.sku}
               </Text>
@@ -311,7 +330,7 @@ export default function InventoryScreen() {
     );
   };
 
-  if (isInventoryLoading) {
+  if (isInventoryLoading || isProductsLoading) {
     return (
       <Screen>
         <View className="flex-1 items-center justify-center">
@@ -394,7 +413,7 @@ export default function InventoryScreen() {
             <MaterialIcons name="search" size={20} color="#94a3b8" />
             <TextInput
               className="flex-1 ml-3 text-white text-sm font-medium"
-              placeholder="Search by name or SKU..."
+              placeholder="Search by name, SKU, or brand..."
               placeholderTextColor="#64748b"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -504,7 +523,8 @@ export default function InventoryScreen() {
       {/* ============================================ */}
       <NewProductModal
         visible={showProductModal}
-        categories={categories ?? []}
+        categories={categoriesData ?? []}
+        brands={brandsData ?? []}
         isLoading={isCreatingProduct}
         onClose={() => setShowProductModal(false)}
         onSubmit={handleCreateProduct}
@@ -577,6 +597,12 @@ function AdjustStockModal({
                 <StatRow label="Product" value={inventory.name} />
                 <Divider />
                 <StatRow label="SKU" value={inventory.sku} />
+                {inventory.brandName && (
+                  <>
+                    <Divider />
+                    <StatRow label="Brand" value={inventory.brandName} />
+                  </>
+                )}
                 <Divider />
                 <StatRow
                   label="Current Stock"
@@ -679,7 +705,8 @@ function NewMovementModal({
     const q = productSearch.toLowerCase();
     return (
       item.name?.toLowerCase().includes(q) ||
-      item.sku?.toLowerCase().includes(q)
+      item.sku?.toLowerCase().includes(q) ||
+      item.brandName?.toLowerCase().includes(q)
     );
   });
 
@@ -778,6 +805,11 @@ function NewMovementModal({
                       <Text className="text-white font-bold">
                         {selectedItem.name}
                       </Text>
+                      {selectedItem.brandName && (
+                        <Text className="text-sky-300/60 text-[10px] font-medium mt-0.5">
+                          {selectedItem.brandName}
+                        </Text>
+                      )}
                       <Text className="text-sky-300/60 text-xs mt-0.5">
                         {selectedItem.sku} — Stock: {selectedItem.quantity}
                       </Text>
@@ -823,9 +855,16 @@ function NewMovementModal({
                             size={16}
                             color="#64748b"
                           />
-                          <Text className="text-slate-200 font-medium ml-2 flex-1 text-sm">
-                            {item.name}
-                          </Text>
+                          <View className="flex-1 ml-2">
+                            <Text className="text-slate-200 font-medium text-sm">
+                              {item.name}
+                            </Text>
+                            {item.brandName && (
+                              <Text className="text-sky-300/60 text-[9px]">
+                                {item.brandName}
+                              </Text>
+                            )}
+                          </View>
                           <Text className="text-slate-500 text-xs">
                             Qty: {item.quantity}
                           </Text>
@@ -912,12 +951,14 @@ function NewMovementModal({
 function NewProductModal({
   visible,
   categories,
+  brands,
   isLoading,
   onClose,
   onSubmit,
 }: {
   visible: boolean;
   categories: any[];
+  brands: any[];
   isLoading: boolean;
   onClose: () => void;
   onSubmit: (payload: {
@@ -928,6 +969,7 @@ function NewProductModal({
     sellingPrice: number;
     stockQuantity: number;
     categoryId: string;
+    brandId?: string;
   }) => void;
 }) {
   const [name, setName] = useState("");
@@ -937,6 +979,7 @@ function NewProductModal({
   const [sellingPrice, setSellingPrice] = useState("");
   const [stockQuantity, setStockQuantity] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [brandId, setBrandId] = useState("");
 
   const handleOpen = useCallback(() => {
     setName("");
@@ -946,6 +989,7 @@ function NewProductModal({
     setSellingPrice("");
     setStockQuantity("");
     setCategoryId("");
+    setBrandId("");
   }, []);
 
   return (
@@ -1052,6 +1096,43 @@ function NewProductModal({
                 </View>
               </View>
 
+              {/* Brand Selection */}
+              {brands && brands.length > 0 && (
+                <>
+                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                    Brand (Optional)
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    className="mb-4"
+                    contentContainerStyle={{ paddingRight: 20 }}
+                  >
+                    {brands.map((brand: any) => (
+                      <TouchableOpacity
+                        key={brand.id}
+                        className={`mr-2 px-4 py-2 rounded-full border ${
+                          brandId === brand.id
+                            ? "bg-sky-500/20 border-sky-500/40"
+                            : "bg-white/5 border-white/10"
+                        }`}
+                        onPress={() => setBrandId(brand.id)}
+                      >
+                        <Text
+                          className={`font-semibold text-sm ${
+                            brandId === brand.id
+                              ? "text-sky-400"
+                              : "text-slate-300"
+                          }`}
+                        >
+                          {brand.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
+
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
                 Category
               </Text>
@@ -1097,6 +1178,7 @@ function NewProductModal({
                     sellingPrice: Number(sellingPrice) || 0,
                     stockQuantity: Number(stockQuantity) || 0,
                     categoryId,
+                    brandId: brandId || undefined,
                   })
                 }
                 disabled={isLoading || !name || !sellingPrice}
@@ -1117,3 +1199,1123 @@ function NewProductModal({
     </Modal>
   );
 }
+// // ============================================
+// // FILE: app/(tabs)/inventory.tsx
+// // ============================================
+
+// import {
+//   Card,
+//   Divider,
+//   Header,
+//   MetricCard,
+//   Pill,
+//   Screen,
+//   StatRow,
+// } from "@/components/app-ui";
+// import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
+// import {
+//   useAdjustLocalStockMutation,
+//   useCreateLocalInventoryMovementMutation,
+//   useCreateLocalProductMutation,
+//   useGetLocalCategoriesQuery,
+//   useGetLocalInventoryMovementsQuery,
+//   useGetLocalInventoryQuery,
+//   useGetLocalProductsQuery,
+// } from "@/services/features/offline/localApi";
+// import { MaterialIcons } from "@expo/vector-icons";
+// import React, { useCallback, useState } from "react";
+// import {
+//   ActivityIndicator,
+//   Alert,
+//   FlatList,
+//   KeyboardAvoidingView,
+//   Modal,
+//   Platform,
+//   ScrollView,
+//   Text,
+//   TextInput,
+//   TouchableOpacity,
+//   View,
+// } from "react-native";
+// import { SafeAreaView } from "react-native-safe-area-context";
+
+// type ActiveTab = "stock" | "movements";
+
+// export default function InventoryScreen() {
+//   const [activeTab, setActiveTab] = useState<ActiveTab>("stock");
+//   const [searchQuery, setSearchQuery] = useState("");
+//   const [showAdjustModal, setShowAdjustModal] = useState(false);
+//   const [showMovementModal, setShowMovementModal] = useState(false);
+//   const [showProductModal, setShowProductModal] = useState(false);
+//   const [showScannerModal, setShowScannerModal] = useState(false);
+//   const [selectedInventory, setSelectedInventory] = useState<any>(null);
+
+//   // ✅ Use the new inventory table
+//   const {
+//     data: inventoryData,
+//     isLoading: isInventoryLoading,
+//     refetch: refetchInventory,
+//   } = useGetLocalInventoryQuery({});
+
+//   const {
+//     data: movementsData,
+//     isLoading: isMovementsLoading,
+//     refetch: refetchMovements,
+//   } = useGetLocalInventoryMovementsQuery({});
+
+//   // ✅ Get products for display
+//   const { data: productsData } = useGetLocalProductsQuery({});
+
+//   // Mutations
+//   const [createMovement, { isLoading: isCreatingMovement }] =
+//     useCreateLocalInventoryMovementMutation();
+//   const [adjustStock, { isLoading: isAdjusting }] =
+//     useAdjustLocalStockMutation();
+//   const [createProduct, { isLoading: isCreatingProduct }] =
+//     useCreateLocalProductMutation();
+//   const { data: categories } = useGetLocalCategoriesQuery({});
+
+//   // ✅ Build inventory items with product details
+//   const inventoryWithDetails = React.useMemo(() => {
+//     if (!inventoryData || !productsData) return [];
+
+//     return inventoryData.map((inv: any) => {
+//       const product = productsData.find((p: any) => p.id === inv.productId);
+//       return {
+//         ...inv,
+//         name: product?.name || "Unknown Product",
+//         sku: product?.sku || "N/A",
+//         sellingPrice: product?.sellingPrice || 0,
+//         costPrice: product?.costPrice || 0,
+//         categoryId: product?.categoryId,
+//       };
+//     });
+//   }, [inventoryData, productsData]);
+
+//   // Computed values
+//   const filteredInventory = inventoryWithDetails.filter((item: any) => {
+//     if (!searchQuery) return true;
+//     const q = searchQuery.toLowerCase();
+//     return (
+//       item.name?.toLowerCase().includes(q) ||
+//       item.sku?.toLowerCase().includes(q)
+//     );
+//   });
+
+//   const totalProducts = inventoryWithDetails.length;
+//   const lowStockCount = inventoryWithDetails.filter(
+//     (p: any) => p.quantity <= 10 && p.quantity > 0,
+//   ).length;
+//   const outOfStockCount = inventoryWithDetails.filter(
+//     (p: any) => p.quantity === 0,
+//   ).length;
+
+//   // ============================================
+//   // HANDLERS
+//   // ============================================
+
+//   const handleAdjustStock = useCallback(
+//     async (newQty: number, reason: string) => {
+//       if (!selectedInventory) return;
+//       try {
+//         await adjustStock({
+//           productId: selectedInventory.productId,
+//           storeId: selectedInventory.storeId,
+//           variantId: selectedInventory.variantId || undefined,
+//           newQuantity: newQty,
+//           reason,
+//         }).unwrap();
+//         setShowAdjustModal(false);
+//         setSelectedInventory(null);
+//         refetchInventory();
+//         refetchMovements();
+//         Alert.alert("Success", "Stock adjusted successfully");
+//       } catch (err: any) {
+//         Alert.alert("Error", err?.message ?? "Failed to adjust stock");
+//       }
+//     },
+//     [selectedInventory, adjustStock, refetchInventory, refetchMovements],
+//   );
+
+//   const handleCreateMovement = useCallback(
+//     async (payload: {
+//       productId: string;
+//       variantId?: string;
+//       quantity: number;
+//       type: "IN" | "OUT";
+//       reason: string;
+//     }) => {
+//       try {
+//         await createMovement({
+//           storeId: "default", // TODO: Get from context
+//           productId: payload.productId,
+//           variantId: payload.variantId,
+//           quantity: payload.quantity,
+//           type: payload.type,
+//           referenceId: `manual-${Date.now()}`,
+//           referenceType: "MANUAL",
+//           reason: payload.reason,
+//         }).unwrap();
+//         setShowMovementModal(false);
+//         refetchInventory();
+//         refetchMovements();
+//         Alert.alert("Success", "Movement recorded successfully");
+//       } catch (err: any) {
+//         Alert.alert("Error", err?.message ?? "Failed to create movement");
+//       }
+//     },
+//     [createMovement, refetchInventory, refetchMovements],
+//   );
+
+//   const handleCreateProduct = useCallback(
+//     async (payload: any) => {
+//       try {
+//         await createProduct({
+//           ...payload,
+//           storeId: "default", // TODO: Get from context
+//         }).unwrap();
+//         setShowProductModal(false);
+//         refetchInventory();
+//         Alert.alert("Success", "Product created successfully");
+//       } catch (err: any) {
+//         Alert.alert("Error", err?.message ?? "Failed to create product");
+//       }
+//     },
+//     [createProduct, refetchInventory],
+//   );
+
+//   const handleScan = useCallback(
+//     (data: string) => {
+//       setShowScannerModal(false);
+//       const inventory = inventoryWithDetails.find(
+//         (p: any) => p.barcode === data || p.sku === data || p.id === data,
+//       );
+//       if (inventory) {
+//         setSelectedInventory(inventory);
+//         setShowAdjustModal(true);
+//       } else {
+//         Alert.alert(
+//           "Not Found",
+//           `No local product found for barcode/SKU:\n${data}`,
+//         );
+//       }
+//     },
+//     [inventoryWithDetails],
+//   );
+
+//   // ============================================
+//   // RENDER HELPERS
+//   // ============================================
+
+//   const getStockBadge = (qty: number) => {
+//     if (qty === 0) return { label: "OUT OF STOCK", tone: "rose" as const };
+//     if (qty <= 10) return { label: "LOW STOCK", tone: "amber" as const };
+//     return { label: "IN STOCK", tone: "emerald" as const };
+//   };
+
+//   const getMovementIcon = (type: string) => {
+//     switch (type) {
+//       case "IN":
+//         return { name: "arrow-downward" as const, color: "#34d399" };
+//       case "OUT":
+//         return { name: "arrow-upward" as const, color: "#f87171" };
+//       case "ADJUSTMENT":
+//         return { name: "tune" as const, color: "#fbbf24" };
+//       case "COUNT":
+//         return { name: "fact-check" as const, color: "#60a5fa" };
+//       case "TRANSFER":
+//         return { name: "swap-horiz" as const, color: "#a78bfa" };
+//       default:
+//         return { name: "circle" as const, color: "#94a3b8" };
+//     }
+//   };
+
+//   const renderStockItem = ({ item }: { item: any }) => {
+//     const badge = getStockBadge(item.quantity);
+//     return (
+//       <TouchableOpacity
+//         activeOpacity={0.8}
+//         onPress={() => {
+//           setSelectedInventory(item);
+//           setShowAdjustModal(true);
+//         }}
+//       >
+//         <Card className="mb-3">
+//           <View className="flex-row items-center">
+//             <View className="h-12 w-12 rounded-2xl bg-white/8 items-center justify-center mr-3 border border-white/5">
+//               <MaterialIcons name="inventory-2" size={22} color="#94a3b8" />
+//             </View>
+//             <View className="flex-1">
+//               <Text className="text-white font-bold text-sm" numberOfLines={1}>
+//                 {item.name}
+//               </Text>
+//               <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mt-0.5">
+//                 {item.sku}
+//               </Text>
+//               {item.variantId && (
+//                 <Text className="text-slate-500 text-[9px] mt-0.5">
+//                   Variant: {item.variantId}
+//                 </Text>
+//               )}
+//             </View>
+//             <View className="items-end">
+//               <Text className="text-white font-black text-lg">
+//                 {item.quantity}
+//               </Text>
+//               <Pill label={badge.label} tone={badge.tone} />
+//             </View>
+//           </View>
+//         </Card>
+//       </TouchableOpacity>
+//     );
+//   };
+
+//   const renderMovementItem = ({ item }: { item: any }) => {
+//     const icon = getMovementIcon(item.type);
+//     const isIn = ["IN", "TRANSFER_IN"].includes(item.type);
+//     return (
+//       <Card className="mb-3">
+//         <View className="flex-row items-center">
+//           <View
+//             className="h-10 w-10 rounded-xl items-center justify-center mr-3"
+//             style={{ backgroundColor: `${icon.color}20` }}
+//           >
+//             <MaterialIcons name={icon.name} size={20} color={icon.color} />
+//           </View>
+//           <View className="flex-1">
+//             <Text className="text-white font-semibold text-sm">
+//               {item.type} — {item.referenceType}
+//             </Text>
+//             <Text className="text-slate-400 text-xs mt-0.5">
+//               {item.reason ?? "No reason"}
+//             </Text>
+//             {item.variantId && (
+//               <Text className="text-slate-500 text-[9px] mt-0.5">
+//                 Variant: {item.variantId}
+//               </Text>
+//             )}
+//           </View>
+//           <View className="items-end">
+//             <Text
+//               className={`font-black text-base ${
+//                 isIn ? "text-emerald-400" : "text-rose-400"
+//               }`}
+//             >
+//               {isIn ? "+" : "-"}
+//               {item.quantity}
+//             </Text>
+//             <Text className="text-slate-500 text-[10px] mt-0.5">
+//               {new Date(item.createdAt).toLocaleDateString()}
+//             </Text>
+//           </View>
+//         </View>
+//       </Card>
+//     );
+//   };
+
+//   if (isInventoryLoading) {
+//     return (
+//       <Screen>
+//         <View className="flex-1 items-center justify-center">
+//           <ActivityIndicator size="large" color="#38bdf8" />
+//           <Text className="text-slate-400 mt-4">Loading inventory...</Text>
+//         </View>
+//       </Screen>
+//     );
+//   }
+
+//   return (
+//     <Screen padded={false}>
+//       <View className="px-5 pt-6 pb-2">
+//         <Header
+//           eyebrow="Warehouse"
+//           title="Inventory"
+//           subtitle="Track stock levels and movements"
+//           right={
+//             <TouchableOpacity
+//               className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30 flex-row items-center"
+//               onPress={() => setShowProductModal(true)}
+//             >
+//               <MaterialIcons name="add" size={16} color="#38bdf8" />
+//               <Text className="text-sky-400 font-bold text-xs ml-1">
+//                 Product
+//               </Text>
+//             </TouchableOpacity>
+//           }
+//         />
+//       </View>
+
+//       {/* Metrics */}
+//       <View className="flex-row gap-3 px-5 mb-5">
+//         <MetricCard
+//           icon="inventory"
+//           label="Total"
+//           value={totalProducts.toString()}
+//           tone="sky"
+//         />
+//         <MetricCard
+//           icon="warning"
+//           label="Low Stock"
+//           value={lowStockCount.toString()}
+//           tone={lowStockCount > 0 ? "amber" : "emerald"}
+//         />
+//         <MetricCard
+//           icon="remove-shopping-cart"
+//           label="Out"
+//           value={outOfStockCount.toString()}
+//           tone={outOfStockCount > 0 ? "rose" : "emerald"}
+//         />
+//       </View>
+
+//       {/* Tabs */}
+//       <View className="flex-row px-5 mb-4">
+//         <TouchableOpacity
+//           className="mr-2"
+//           onPress={() => setActiveTab("stock")}
+//         >
+//           <Pill
+//             label="Stock Levels"
+//             tone={activeTab === "stock" ? "sky" : "amber"}
+//           />
+//         </TouchableOpacity>
+//         <TouchableOpacity
+//           className="mr-2"
+//           onPress={() => setActiveTab("movements")}
+//         >
+//           <Pill
+//             label="Movements"
+//             tone={activeTab === "movements" ? "sky" : "amber"}
+//           />
+//         </TouchableOpacity>
+//       </View>
+
+//       {/* Search (Stock tab only) */}
+//       {activeTab === "stock" && (
+//         <View className="px-5 mb-4">
+//           <View className="flex-row items-center bg-white/5 rounded-[20px] px-4 py-3 border border-white/10">
+//             <MaterialIcons name="search" size={20} color="#94a3b8" />
+//             <TextInput
+//               className="flex-1 ml-3 text-white text-sm font-medium"
+//               placeholder="Search by name or SKU..."
+//               placeholderTextColor="#64748b"
+//               value={searchQuery}
+//               onChangeText={setSearchQuery}
+//             />
+//             {searchQuery.length > 0 ? (
+//               <TouchableOpacity
+//                 onPress={() => setSearchQuery("")}
+//                 className="bg-white/10 p-1.5 rounded-full"
+//               >
+//                 <MaterialIcons name="close" size={14} color="#cbd5e1" />
+//               </TouchableOpacity>
+//             ) : (
+//               <TouchableOpacity
+//                 onPress={() => setShowScannerModal(true)}
+//                 className="bg-sky-500/20 p-1.5 rounded-full border border-sky-500/30"
+//               >
+//                 <MaterialIcons
+//                   name="qr-code-scanner"
+//                   size={16}
+//                   color="#38bdf8"
+//                 />
+//               </TouchableOpacity>
+//             )}
+//           </View>
+//         </View>
+//       )}
+
+//       {/* Content */}
+//       {activeTab === "stock" ? (
+//         <FlatList
+//           data={filteredInventory}
+//           keyExtractor={(item) => item.id}
+//           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
+//           renderItem={renderStockItem}
+//           ListEmptyComponent={
+//             <View className="items-center justify-center mt-16">
+//               <View className="h-20 w-20 bg-white/5 rounded-full items-center justify-center border border-white/10">
+//                 <MaterialIcons name="inventory" size={32} color="#64748b" />
+//               </View>
+//               <Text className="text-white mt-4 text-lg font-bold">
+//                 No inventory items
+//               </Text>
+//               <Text className="text-slate-500 mt-2 text-sm text-center px-10">
+//                 Sync products from the server or create them locally.
+//               </Text>
+//             </View>
+//           }
+//         />
+//       ) : (
+//         <FlatList
+//           data={movementsData ?? []}
+//           keyExtractor={(item: any) => item.id}
+//           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
+//           renderItem={renderMovementItem}
+//           ListEmptyComponent={
+//             <View className="items-center justify-center mt-16">
+//               <View className="h-20 w-20 bg-white/5 rounded-full items-center justify-center border border-white/10">
+//                 <MaterialIcons name="swap-vert" size={32} color="#64748b" />
+//               </View>
+//               <Text className="text-white mt-4 text-lg font-bold">
+//                 No movements yet
+//               </Text>
+//               <Text className="text-slate-500 mt-2 text-sm text-center px-10">
+//                 Stock adjustments and movements will appear here.
+//               </Text>
+//             </View>
+//           }
+//         />
+//       )}
+
+//       {/* FAB — New Movement */}
+//       <TouchableOpacity
+//         className="absolute bottom-6 right-5 h-14 w-14 bg-sky-500 rounded-full items-center justify-center shadow-lg shadow-sky-500/30 border border-sky-400"
+//         activeOpacity={0.8}
+//         onPress={() => setShowMovementModal(true)}
+//       >
+//         <MaterialIcons name="add" size={28} color="#fff" />
+//       </TouchableOpacity>
+
+//       {/* ============================================ */}
+//       {/* ADJUST STOCK MODAL */}
+//       {/* ============================================ */}
+//       <AdjustStockModal
+//         visible={showAdjustModal}
+//         inventory={selectedInventory}
+//         isLoading={isAdjusting}
+//         onClose={() => {
+//           setShowAdjustModal(false);
+//           setSelectedInventory(null);
+//         }}
+//         onSubmit={handleAdjustStock}
+//       />
+
+//       {/* ============================================ */}
+//       {/* NEW MOVEMENT MODAL */}
+//       {/* ============================================ */}
+//       <NewMovementModal
+//         visible={showMovementModal}
+//         inventoryItems={inventoryWithDetails}
+//         isLoading={isCreatingMovement}
+//         onClose={() => setShowMovementModal(false)}
+//         onSubmit={handleCreateMovement}
+//       />
+
+//       {/* ============================================ */}
+//       {/* NEW PRODUCT MODAL */}
+//       {/* ============================================ */}
+//       <NewProductModal
+//         visible={showProductModal}
+//         categories={categories ?? []}
+//         isLoading={isCreatingProduct}
+//         onClose={() => setShowProductModal(false)}
+//         onSubmit={handleCreateProduct}
+//       />
+
+//       {/* ============================================ */}
+//       {/* SCANNER MODAL */}
+//       {/* ============================================ */}
+//       <BarcodeScannerModal
+//         visible={showScannerModal}
+//         onClose={() => setShowScannerModal(false)}
+//         onScan={handleScan}
+//       />
+//     </Screen>
+//   );
+// }
+
+// // ============================================
+// // ADJUST STOCK MODAL COMPONENT
+// // ============================================
+// function AdjustStockModal({
+//   visible,
+//   inventory,
+//   isLoading,
+//   onClose,
+//   onSubmit,
+// }: {
+//   visible: boolean;
+//   inventory: any;
+//   isLoading: boolean;
+//   onClose: () => void;
+//   onSubmit: (qty: number, reason: string) => void;
+// }) {
+//   const [newQty, setNewQty] = useState("");
+//   const [reason, setReason] = useState("");
+
+//   const handleOpen = useCallback(() => {
+//     setNewQty(inventory?.quantity?.toString() ?? "0");
+//     setReason("");
+//   }, [inventory]);
+
+//   return (
+//     <Modal
+//       visible={visible}
+//       transparent
+//       animationType="slide"
+//       onShow={handleOpen}
+//       onRequestClose={onClose}
+//     >
+//       <KeyboardAvoidingView
+//         behavior={Platform.OS === "ios" ? "padding" : "height"}
+//         className="flex-1"
+//       >
+//         <View className="flex-1 justify-end bg-black/60">
+//           <View className="bg-slate-900 rounded-t-[32px] border-t border-white/10 p-6">
+//             <View className="flex-row items-center justify-between mb-6">
+//               <Text className="text-white font-black text-xl">
+//                 Adjust Stock
+//               </Text>
+//               <TouchableOpacity
+//                 onPress={onClose}
+//                 className="bg-white/10 p-2 rounded-full"
+//               >
+//                 <MaterialIcons name="close" size={18} color="#94a3b8" />
+//               </TouchableOpacity>
+//             </View>
+
+//             {inventory && (
+//               <Card className="mb-5">
+//                 <StatRow label="Product" value={inventory.name} />
+//                 <Divider />
+//                 <StatRow label="SKU" value={inventory.sku} />
+//                 <Divider />
+//                 <StatRow
+//                   label="Current Stock"
+//                   value={inventory.quantity?.toString() ?? "0"}
+//                 />
+//                 {inventory.variantId && (
+//                   <>
+//                     <Divider />
+//                     <StatRow label="Variant" value={inventory.variantId} />
+//                   </>
+//                 )}
+//               </Card>
+//             )}
+
+//             <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//               New Quantity
+//             </Text>
+//             <TextInput
+//               className="bg-white/5 text-white text-lg font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//               keyboardType="number-pad"
+//               value={newQty}
+//               onChangeText={setNewQty}
+//               placeholder="0"
+//               placeholderTextColor="#64748b"
+//             />
+
+//             <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//               Reason
+//             </Text>
+//             <TextInput
+//               className="bg-white/5 text-white text-sm rounded-2xl px-4 py-3 border border-white/10 mb-6"
+//               value={reason}
+//               onChangeText={setReason}
+//               placeholder="e.g. Physical count correction"
+//               placeholderTextColor="#64748b"
+//               multiline
+//             />
+
+//             <TouchableOpacity
+//               className={`bg-sky-500 rounded-2xl py-4 items-center border border-sky-400 ${
+//                 isLoading ? "opacity-60" : ""
+//               }`}
+//               onPress={() => onSubmit(Number(newQty), reason)}
+//               disabled={isLoading || !newQty}
+//               activeOpacity={0.8}
+//             >
+//               {isLoading ? (
+//                 <ActivityIndicator color="white" />
+//               ) : (
+//                 <Text className="text-white font-bold text-lg">
+//                   Confirm Adjustment
+//                 </Text>
+//               )}
+//             </TouchableOpacity>
+//           </View>
+//         </View>
+//       </KeyboardAvoidingView>
+//     </Modal>
+//   );
+// }
+
+// // ============================================
+// // NEW MOVEMENT MODAL COMPONENT
+// // ============================================
+// function NewMovementModal({
+//   visible,
+//   inventoryItems,
+//   isLoading,
+//   onClose,
+//   onSubmit,
+// }: {
+//   visible: boolean;
+//   inventoryItems: any[];
+//   isLoading: boolean;
+//   onClose: () => void;
+//   onSubmit: (payload: {
+//     productId: string;
+//     variantId?: string;
+//     quantity: number;
+//     type: "IN" | "OUT";
+//     reason: string;
+//   }) => void;
+// }) {
+//   const [selectedInventoryId, setSelectedInventoryId] = useState("");
+//   const [quantity, setQuantity] = useState("");
+//   const [movementType, setMovementType] = useState<"IN" | "OUT">("IN");
+//   const [reason, setReason] = useState("");
+//   const [productSearch, setProductSearch] = useState("");
+
+//   const handleOpen = useCallback(() => {
+//     setSelectedInventoryId("");
+//     setQuantity("");
+//     setMovementType("IN");
+//     setReason("");
+//     setProductSearch("");
+//   }, []);
+
+//   const filteredItems = inventoryItems.filter((item: any) => {
+//     if (!productSearch) return true;
+//     const q = productSearch.toLowerCase();
+//     return (
+//       item.name?.toLowerCase().includes(q) ||
+//       item.sku?.toLowerCase().includes(q)
+//     );
+//   });
+
+//   const selectedItem = inventoryItems.find(
+//     (item: any) => item.id === selectedInventoryId,
+//   );
+
+//   return (
+//     <Modal
+//       visible={visible}
+//       transparent
+//       animationType="slide"
+//       onShow={handleOpen}
+//       onRequestClose={onClose}
+//     >
+//       <KeyboardAvoidingView
+//         behavior={Platform.OS === "ios" ? "padding" : "height"}
+//         className="flex-1"
+//       >
+//         <View className="flex-1 justify-end bg-black/60">
+//           <View className="bg-slate-900 rounded-t-[32px] border-t border-white/10 p-6 max-h-[85%]">
+//             <View className="flex-row items-center justify-between mb-6">
+//               <Text className="text-white font-black text-xl">
+//                 New Movement
+//               </Text>
+//               <TouchableOpacity
+//                 onPress={onClose}
+//                 className="bg-white/10 p-2 rounded-full"
+//               >
+//                 <MaterialIcons name="close" size={18} color="#94a3b8" />
+//               </TouchableOpacity>
+//             </View>
+
+//             <ScrollView showsVerticalScrollIndicator={false}>
+//               {/* Movement Type */}
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Type
+//               </Text>
+//               <View className="flex-row gap-3 mb-5">
+//                 <TouchableOpacity
+//                   className={`flex-1 rounded-2xl py-3 items-center border ${
+//                     movementType === "IN"
+//                       ? "bg-emerald-500/20 border-emerald-500/40"
+//                       : "bg-white/5 border-white/10"
+//                   }`}
+//                   onPress={() => setMovementType("IN")}
+//                 >
+//                   <MaterialIcons
+//                     name="arrow-downward"
+//                     size={20}
+//                     color={movementType === "IN" ? "#34d399" : "#64748b"}
+//                   />
+//                   <Text
+//                     className={`font-bold text-sm mt-1 ${
+//                       movementType === "IN"
+//                         ? "text-emerald-400"
+//                         : "text-slate-400"
+//                     }`}
+//                   >
+//                     Stock In
+//                   </Text>
+//                 </TouchableOpacity>
+//                 <TouchableOpacity
+//                   className={`flex-1 rounded-2xl py-3 items-center border ${
+//                     movementType === "OUT"
+//                       ? "bg-rose-500/20 border-rose-500/40"
+//                       : "bg-white/5 border-white/10"
+//                   }`}
+//                   onPress={() => setMovementType("OUT")}
+//                 >
+//                   <MaterialIcons
+//                     name="arrow-upward"
+//                     size={20}
+//                     color={movementType === "OUT" ? "#f87171" : "#64748b"}
+//                   />
+//                   <Text
+//                     className={`font-bold text-sm mt-1 ${
+//                       movementType === "OUT"
+//                         ? "text-rose-400"
+//                         : "text-slate-400"
+//                     }`}
+//                   >
+//                     Stock Out
+//                   </Text>
+//                 </TouchableOpacity>
+//               </View>
+
+//               {/* Product Selection */}
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Product
+//               </Text>
+//               {selectedItem ? (
+//                 <Card className="mb-4">
+//                   <View className="flex-row items-center justify-between">
+//                     <View className="flex-1">
+//                       <Text className="text-white font-bold">
+//                         {selectedItem.name}
+//                       </Text>
+//                       <Text className="text-sky-300/60 text-xs mt-0.5">
+//                         {selectedItem.sku} — Stock: {selectedItem.quantity}
+//                       </Text>
+//                       {selectedItem.variantId && (
+//                         <Text className="text-slate-500 text-[10px] mt-0.5">
+//                           Variant: {selectedItem.variantId}
+//                         </Text>
+//                       )}
+//                     </View>
+//                     <TouchableOpacity
+//                       onPress={() => setSelectedInventoryId("")}
+//                       className="bg-white/10 p-1.5 rounded-full"
+//                     >
+//                       <MaterialIcons name="close" size={14} color="#94a3b8" />
+//                     </TouchableOpacity>
+//                   </View>
+//                 </Card>
+//               ) : (
+//                 <>
+//                   <View className="flex-row items-center bg-white/5 rounded-2xl px-4 py-2 border border-white/10 mb-2">
+//                     <MaterialIcons name="search" size={18} color="#64748b" />
+//                     <TextInput
+//                       className="flex-1 ml-2 text-white text-sm"
+//                       placeholder="Search products..."
+//                       placeholderTextColor="#64748b"
+//                       value={productSearch}
+//                       onChangeText={setProductSearch}
+//                     />
+//                   </View>
+//                   <View className="max-h-40 mb-4">
+//                     <ScrollView nestedScrollEnabled>
+//                       {filteredItems.slice(0, 10).map((item: any) => (
+//                         <TouchableOpacity
+//                           key={item.id}
+//                           className="flex-row items-center py-2.5 px-3 rounded-xl active:bg-white/5"
+//                           onPress={() => {
+//                             setSelectedInventoryId(item.id);
+//                             setProductSearch("");
+//                           }}
+//                         >
+//                           <MaterialIcons
+//                             name="inventory-2"
+//                             size={16}
+//                             color="#64748b"
+//                           />
+//                           <Text className="text-slate-200 font-medium ml-2 flex-1 text-sm">
+//                             {item.name}
+//                           </Text>
+//                           <Text className="text-slate-500 text-xs">
+//                             Qty: {item.quantity}
+//                           </Text>
+//                         </TouchableOpacity>
+//                       ))}
+//                     </ScrollView>
+//                   </View>
+//                 </>
+//               )}
+
+//               {/* Quantity */}
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Quantity
+//               </Text>
+//               <TextInput
+//                 className="bg-white/5 text-white text-lg font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                 keyboardType="number-pad"
+//                 value={quantity}
+//                 onChangeText={setQuantity}
+//                 placeholder="0"
+//                 placeholderTextColor="#64748b"
+//               />
+
+//               {/* Reason */}
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Reason
+//               </Text>
+//               <TextInput
+//                 className="bg-white/5 text-white text-sm rounded-2xl px-4 py-3 border border-white/10 mb-6"
+//                 value={reason}
+//                 onChangeText={setReason}
+//                 placeholder="e.g. New shipment received"
+//                 placeholderTextColor="#64748b"
+//                 multiline
+//               />
+
+//               {/* Submit */}
+//               <TouchableOpacity
+//                 className={`rounded-2xl py-4 items-center border mb-4 ${
+//                   movementType === "IN"
+//                     ? "bg-emerald-500 border-emerald-400"
+//                     : "bg-rose-500 border-rose-400"
+//                 } ${
+//                   isLoading || !selectedInventoryId || !quantity
+//                     ? "opacity-50"
+//                     : ""
+//                 }`}
+//                 onPress={() => {
+//                   const product = inventoryItems.find(
+//                     (item: any) => item.id === selectedInventoryId,
+//                   );
+//                   onSubmit({
+//                     productId: product?.productId || selectedInventoryId,
+//                     variantId: product?.variantId || undefined,
+//                     quantity: Number(quantity),
+//                     type: movementType,
+//                     reason,
+//                   });
+//                 }}
+//                 disabled={isLoading || !selectedInventoryId || !quantity}
+//                 activeOpacity={0.8}
+//               >
+//                 {isLoading ? (
+//                   <ActivityIndicator color="white" />
+//                 ) : (
+//                   <Text className="text-white font-bold text-lg">
+//                     {movementType === "IN"
+//                       ? "Record Stock In"
+//                       : "Record Stock Out"}
+//                   </Text>
+//                 )}
+//               </TouchableOpacity>
+//             </ScrollView>
+//           </View>
+//         </View>
+//       </KeyboardAvoidingView>
+//     </Modal>
+//   );
+// }
+
+// // ============================================
+// // NEW PRODUCT MODAL COMPONENT
+// // ============================================
+// function NewProductModal({
+//   visible,
+//   categories,
+//   isLoading,
+//   onClose,
+//   onSubmit,
+// }: {
+//   visible: boolean;
+//   categories: any[];
+//   isLoading: boolean;
+//   onClose: () => void;
+//   onSubmit: (payload: {
+//     name: string;
+//     sku: string;
+//     barcode: string;
+//     costPrice: number;
+//     sellingPrice: number;
+//     stockQuantity: number;
+//     categoryId: string;
+//   }) => void;
+// }) {
+//   const [name, setName] = useState("");
+//   const [sku, setSku] = useState("");
+//   const [barcode, setBarcode] = useState("");
+//   const [costPrice, setCostPrice] = useState("");
+//   const [sellingPrice, setSellingPrice] = useState("");
+//   const [stockQuantity, setStockQuantity] = useState("");
+//   const [categoryId, setCategoryId] = useState("");
+
+//   const handleOpen = useCallback(() => {
+//     setName("");
+//     setSku("");
+//     setBarcode("");
+//     setCostPrice("");
+//     setSellingPrice("");
+//     setStockQuantity("");
+//     setCategoryId("");
+//   }, []);
+
+//   return (
+//     <Modal
+//       visible={visible}
+//       transparent
+//       animationType="slide"
+//       onShow={handleOpen}
+//       onRequestClose={onClose}
+//     >
+//       <KeyboardAvoidingView
+//         behavior={Platform.OS === "ios" ? "padding" : "height"}
+//         className="flex-1"
+//       >
+//         <View className="flex-1 justify-end bg-black/60">
+//           <View className="bg-slate-900 rounded-t-[32px] border-t border-white/10 p-6 max-h-[90%]">
+//             <View className="flex-row items-center justify-between mb-6">
+//               <Text className="text-white font-black text-xl">New Product</Text>
+//               <TouchableOpacity
+//                 onPress={onClose}
+//                 className="bg-white/10 p-2 rounded-full"
+//               >
+//                 <MaterialIcons name="close" size={18} color="#94a3b8" />
+//               </TouchableOpacity>
+//             </View>
+
+//             <ScrollView showsVerticalScrollIndicator={false}>
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Name *
+//               </Text>
+//               <TextInput
+//                 className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                 value={name}
+//                 onChangeText={setName}
+//                 placeholder="Product Name"
+//                 placeholderTextColor="#64748b"
+//               />
+
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Barcode / QR (Optional)
+//               </Text>
+//               <TextInput
+//                 className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                 value={barcode}
+//                 onChangeText={setBarcode}
+//                 placeholder="Scan or leave empty to auto-generate"
+//                 placeholderTextColor="#64748b"
+//               />
+
+//               <View className="flex-row gap-3">
+//                 <View className="flex-1">
+//                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                     SKU (Optional)
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                     value={sku}
+//                     onChangeText={setSku}
+//                     placeholder="Auto-generated"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                 </View>
+//                 <View className="flex-1">
+//                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                     Initial Stock
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                     keyboardType="number-pad"
+//                     value={stockQuantity}
+//                     onChangeText={setStockQuantity}
+//                     placeholder="0"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                 </View>
+//               </View>
+
+//               <View className="flex-row gap-3">
+//                 <View className="flex-1">
+//                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                     Cost Price
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                     keyboardType="decimal-pad"
+//                     value={costPrice}
+//                     onChangeText={setCostPrice}
+//                     placeholder="0.00"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                 </View>
+//                 <View className="flex-1">
+//                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                     Selling Price *
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                     keyboardType="decimal-pad"
+//                     value={sellingPrice}
+//                     onChangeText={setSellingPrice}
+//                     placeholder="0.00"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                 </View>
+//               </View>
+
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Category
+//               </Text>
+//               <ScrollView
+//                 horizontal
+//                 showsHorizontalScrollIndicator={false}
+//                 className="mb-6"
+//                 contentContainerStyle={{ paddingRight: 20 }}
+//               >
+//                 {categories.map((cat: any) => (
+//                   <TouchableOpacity
+//                     key={cat.id}
+//                     className={`mr-2 px-4 py-2 rounded-full border ${
+//                       categoryId === cat.id
+//                         ? "bg-sky-500/20 border-sky-500/40"
+//                         : "bg-white/5 border-white/10"
+//                     }`}
+//                     onPress={() => setCategoryId(cat.id)}
+//                   >
+//                     <Text
+//                       className={`font-semibold text-sm ${
+//                         categoryId === cat.id
+//                           ? "text-sky-400"
+//                           : "text-slate-300"
+//                       }`}
+//                     >
+//                       {cat.name}
+//                     </Text>
+//                   </TouchableOpacity>
+//                 ))}
+//               </ScrollView>
+
+//               <TouchableOpacity
+//                 className={`bg-sky-500 rounded-2xl py-4 items-center border border-sky-400 mb-6 ${
+//                   isLoading || !name || !sellingPrice ? "opacity-50" : ""
+//                 }`}
+//                 onPress={() =>
+//                   onSubmit({
+//                     name,
+//                     sku,
+//                     barcode,
+//                     costPrice: Number(costPrice) || 0,
+//                     sellingPrice: Number(sellingPrice) || 0,
+//                     stockQuantity: Number(stockQuantity) || 0,
+//                     categoryId,
+//                   })
+//                 }
+//                 disabled={isLoading || !name || !sellingPrice}
+//                 activeOpacity={0.8}
+//               >
+//                 {isLoading ? (
+//                   <ActivityIndicator color="white" />
+//                 ) : (
+//                   <Text className="text-white font-bold text-lg">
+//                     Create Product
+//                   </Text>
+//                 )}
+//               </TouchableOpacity>
+//             </ScrollView>
+//           </View>
+//         </View>
+//       </KeyboardAvoidingView>
+//     </Modal>
+//   );
+// }

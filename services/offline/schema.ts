@@ -999,6 +999,7 @@ export type InsertPriceHistory = typeof priceHistory.$inferInsert;
 export type InsertSyncOutbox = typeof syncOutbox.$inferInsert;
 export type InsertSyncState = typeof syncState.$inferInsert;
 export type InsertGenericRecord = typeof genericRecords.$inferInsert;
+
 // current working
 // // ============================================
 // // FILE: services/offline/schema.ts
