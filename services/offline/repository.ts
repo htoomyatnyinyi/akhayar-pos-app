@@ -2084,6 +2084,68 @@ export async function getLocalSessionById(id: string) {
   return row ? toSession(row) : undefined;
 }
 
+export async function openOfflineSession(payload: any) {
+  const db = getOfflineDb();
+  const now = new Date().toISOString();
+
+  const newSession = {
+    id: `sess-${Date.now()}`,
+    userId: payload.userId,
+    tenantId: payload.tenantId || "default",
+    storeId: payload.storeId || null,
+    registerId: null,
+    status: "OPEN" as const,
+    openedAt: now,
+    closedAt: null,
+    openingBalance: Number(payload.openingBalance || 0),
+    closingBalance: null,
+    expectedBalance: null,
+    discrepancy: null,
+    cashSales: 0,
+    cardSales: 0,
+    digitalSales: 0,
+    notes: payload.notes || null,
+    syncStatus: "pending" as const,
+    syncError: null,
+    createdAt: now,
+    updatedAt: now,
+    lastSyncedAt: null,
+  };
+
+  await db.insert(sessions).values(newSession);
+  return toSession(newSession as any);
+}
+
+export async function closeOfflineSession(sessionId: string, data: any) {
+  const db = getOfflineDb();
+  const now = new Date().toISOString();
+
+  await db
+    .update(sessions)
+    .set({
+      status: "CLOSED",
+      closedAt: now,
+      closingBalance: Number(data.closingBalance ?? 0),
+      expectedBalance: Number(data.expectedBalance ?? 0),
+      discrepancy: Number(data.discrepancy ?? 0),
+      cashSales: Number(data.cashSales ?? 0),
+      cardSales: Number(data.cardSales ?? 0),
+      digitalSales: Number(data.digitalSales ?? 0),
+      notes: data.notes || null,
+      syncStatus: "pending",
+      updatedAt: now,
+    })
+    .where(eq(sessions.id, sessionId));
+
+  const [updated] = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+
+  return updated ? toSession(updated) : undefined;
+}
+
 // ============================================
 // ORDER FUNCTIONS
 // ============================================
@@ -2128,6 +2190,198 @@ export async function getLocalOrdersBySession(sessionId: string) {
 
   return Promise.all(rows.map((order) => toOrder(order)));
 }
+
+// update by me
+// ============================================
+// FILE: services/offline/repository.ts
+// ============================================
+
+// ... (imports and other code)
+
+// ============================================
+// CREATE OFFLINE FUNCTIONS (Push to Server later)
+// ============================================
+
+export async function createOfflineOrder(
+  payload: CreateOrderPayload,
+): Promise<Order> {
+  const db = getOfflineDb();
+  const sqlite = getSqliteDatabase();
+  const now = new Date().toISOString();
+  const orderId = createLocalId("ord");
+
+  // Ensure all required fields have proper values
+  const cleanPayload = {
+    ...payload,
+    tenantId: payload.tenantId || "default",
+    subTotal: Number(payload.subTotal) || 0,
+    taxAmount: Number(payload.taxAmount) || 0,
+    discountAmount: Number(payload.discountAmount) || 0,
+    grandTotal: Number(payload.grandTotal) || 0,
+    paidAmount: Number(payload.paidAmount) || 0,
+    changeAmount: Number(payload.changeAmount) || 0,
+    items: (payload.items || []).map((item: any) => ({
+      ...item,
+      productId: item.productId || "unknown",
+      quantity: Number(item.quantity) || 0,
+      unitPrice: Number(item.unitPrice) || 0,
+      subTotal: Number(item.subTotal) || 0,
+      discountAmount: Number(item.discountAmount) || 0,
+    })),
+  };
+
+  // Validate required fields
+  if (!cleanPayload.userId) {
+    throw new Error("userId is required to create an order");
+  }
+  if (!cleanPayload.storeId) {
+    throw new Error("storeId is required to create an order");
+  }
+  if (!cleanPayload.sessionId) {
+    throw new Error("sessionId is required to create an order");
+  }
+
+  sqlite.withTransactionSync(() => {
+    // Insert order
+    sqlite.runSync(
+      `INSERT INTO orders (
+        id, tenant_id, store_id, register_id, user_id, customer_id, session_id, 
+        status, payment_status, payment_method, sub_total, tax_amount, 
+        discount_amount, grand_total, paid_amount, change_amount, 
+        payment_breakdown, sync_status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        orderId,
+        cleanPayload.tenantId,
+        cleanPayload.storeId,
+        cleanPayload.registerId || null,
+        cleanPayload.userId,
+        cleanPayload.customerId || null,
+        cleanPayload.sessionId,
+        "COMPLETED",
+        cleanPayload.paymentStatus || "PAID",
+        cleanPayload.paymentMethod || "CASH",
+        cleanPayload.subTotal,
+        cleanPayload.taxAmount,
+        cleanPayload.discountAmount,
+        cleanPayload.grandTotal,
+        cleanPayload.paidAmount,
+        cleanPayload.changeAmount,
+        JSON.stringify(cleanPayload.paymentBreakdown || []),
+        "pending",
+        now,
+        now,
+      ],
+    );
+
+    // Insert order items
+    for (const item of cleanPayload.items) {
+      const itemId = createLocalId("item");
+      sqlite.runSync(
+        `INSERT INTO order_items (
+          id, order_id, product_id, variant_id, product_name, quantity, unit_price,
+          discount_amount, sub_total, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          itemId,
+          orderId,
+          item.productId,
+          item.variantId || null,
+          item.productName || null,
+          item.quantity,
+          item.unitPrice,
+          item.discountAmount || 0,
+          item.subTotal,
+          now,
+        ],
+      );
+
+      // Update inventory quantity
+      const variantCondition = item.variantId
+        ? `AND variant_id = '${item.variantId}'`
+        : `AND variant_id IS NULL`;
+
+      sqlite.runSync(
+        `UPDATE inventory SET quantity = MAX(quantity - ?, 0), updated_at = ? 
+         WHERE product_id = ? AND store_id = ? ${variantCondition}`,
+        [item.quantity, now, item.productId, cleanPayload.storeId],
+      );
+    }
+
+    // Enqueue sync mutation
+    sqlite.runSync(
+      `INSERT INTO sync_outbox (
+        id, entity, entity_id, operation, endpoint, method, payload, status,
+        attempts, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        createLocalId("outbox"),
+        "orders",
+        orderId,
+        "create",
+        "/api/tenant/orders",
+        "POST",
+        JSON.stringify(cleanPayload),
+        "pending",
+        0,
+        now,
+        now,
+        now,
+      ],
+    );
+  });
+
+  // Fetch the created order with items
+  const [created] = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  const items = await db
+    .select()
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+
+  return {
+    id: created.id,
+    grandTotal: created.grandTotal,
+    status: created.status as Order["status"],
+    createdAt: created.createdAt,
+    subTotal: created.subTotal,
+    taxAmount: created.taxAmount,
+    discountAmount: created.discountAmount,
+    paidAmount: created.paidAmount,
+    changeAmount: created.changeAmount,
+    paymentMethod: created.paymentMethod as Order["paymentMethod"],
+    paymentStatus: created.paymentStatus as Order["paymentStatus"],
+    paymentBreakdown: parsePaymentBreakdown(
+      created.paymentBreakdown ?? cleanPayload.paymentBreakdown,
+    ),
+    customerId: created.customerId ?? undefined,
+    storeId: created.storeId ?? undefined,
+    userId: created.userId,
+    items: items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      variantId: item.variantId ?? undefined,
+      productName: item.productName ?? "",
+      price: item.unitPrice,
+      quantity: item.quantity,
+      product: {
+        name: item.productName ?? "",
+        sellingPrice: String(item.unitPrice),
+      },
+    })),
+  };
+}
+
+// // Make sure this is exported
+// export { createOfflineOrder };
+
+// ============================================
+// Also fix the createOfflineOrder function in localApi.ts
+// ============================================
 
 // ============================================
 // INVENTORY MOVEMENT FUNCTIONS
@@ -2377,7 +2631,134 @@ export async function createOfflineProduct(
   return toProduct(row);
 }
 
-// ... (rest of the create/update/delete functions remain the same)
+//by me
+// ============================================
+// FILE: services/offline/repository.ts
+// ============================================
+
+// ... (other code)
+
+// ============================================
+// CREATE OFFLINE INVENTORY MOVEMENT
+// ============================================
+
+export async function createOfflineInventoryMovement(
+  payload: CreateMovementPayload,
+) {
+  const now = new Date().toISOString();
+  const id = createLocalId("mov");
+  const sqlite = getSqliteDatabase();
+  const db = getOfflineDb();
+
+  // Clean the payload
+  const cleanPayload = {
+    ...payload,
+    tenantId: payload.tenantId || "default",
+    quantity: Number(payload.quantity) || 0,
+    productId: payload.productId || "unknown",
+    storeId: payload.storeId || "unknown",
+    type: payload.type || "OUT",
+    referenceId: payload.referenceId || `manual-${Date.now()}`,
+    referenceType: payload.referenceType || "MANUAL",
+  };
+
+  // Validate required fields
+  if (!cleanPayload.productId || cleanPayload.productId === "unknown") {
+    throw new Error("productId is required for inventory movement");
+  }
+  if (!cleanPayload.storeId || cleanPayload.storeId === "unknown") {
+    throw new Error("storeId is required for inventory movement");
+  }
+
+  sqlite.withTransactionSync(() => {
+    // Insert inventory movement
+    sqlite.runSync(
+      `INSERT INTO inventory_movements (
+        id, tenant_id, store_id, product_id, variant_id, quantity, type,
+        reference_id, reference_type, reason, sync_status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        cleanPayload.tenantId,
+        cleanPayload.storeId,
+        cleanPayload.productId,
+        cleanPayload.variantId || null,
+        cleanPayload.quantity,
+        cleanPayload.type,
+        cleanPayload.referenceId,
+        cleanPayload.referenceType,
+        cleanPayload.reason || null,
+        "pending",
+        now,
+        now,
+      ],
+    );
+
+    // Update inventory quantity
+    const multiplier = ["IN", "TRANSFER_IN"].includes(cleanPayload.type)
+      ? 1
+      : -1;
+    const newQuantity =
+      multiplier > 0
+        ? `quantity + ${cleanPayload.quantity}`
+        : `MAX(quantity - ${cleanPayload.quantity}, 0)`;
+
+    const variantCondition = cleanPayload.variantId
+      ? `AND variant_id = '${cleanPayload.variantId}'`
+      : `AND variant_id IS NULL`;
+
+    sqlite.runSync(
+      `UPDATE inventory SET quantity = ${newQuantity}, updated_at = ? 
+       WHERE product_id = ? AND store_id = ? ${variantCondition}`,
+      [now, cleanPayload.productId, cleanPayload.storeId],
+    );
+
+    // Enqueue sync mutation
+    sqlite.runSync(
+      `INSERT INTO sync_outbox (
+        id, entity, entity_id, operation, endpoint, method, payload, status,
+        attempts, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        createLocalId("outbox"),
+        "inventory_movements",
+        id,
+        "create",
+        "/api/tenant/inventory/movements",
+        "POST",
+        JSON.stringify(cleanPayload),
+        "pending",
+        0,
+        now,
+        now,
+        now,
+      ],
+    );
+  });
+
+  const [row] = await db
+    .select()
+    .from(inventoryMovements)
+    .where(eq(inventoryMovements.id, id))
+    .limit(1);
+  return row;
+}
+
+// // ============================================
+// // MAKE SURE THIS IS EXPORTED
+// // ============================================
+
+// export {
+//   createOfflineOrder,
+//   createOfflineProduct,
+//   createOfflineCategory,
+//   createOfflineCustomer,
+//   createOfflineStore,
+//   createOfflineInventoryMovement, // ✅ Make sure this is exported
+//   createOfflineInventoryCount,
+//   createOfflineSession,
+//   // ... other exports
+// };
 
 // ============================================
 // HELPER FUNCTIONS (toX conversions)

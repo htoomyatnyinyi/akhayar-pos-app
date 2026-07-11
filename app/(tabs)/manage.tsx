@@ -491,11 +491,16 @@ export default function ManageScreen() {
             try {
               if (!activeSession) return;
               await closeSession({
-                id: activeSession.id,
-                closingBalance: Number(closingBalance || 0),
-                expectedBalance: Number(closingBalance || 0),
-                discrepancy: 0,
-                notes,
+                sessionId: activeSession.id,
+                data: {
+                  closingBalance: Number(closingBalance || 0),
+                  expectedBalance: Number(closingBalance || 0),
+                  discrepancy: 0,
+                  cashSales: 0,
+                  cardSales: 0,
+                  digitalSales: 0,
+                  notes,
+                }
               }).unwrap();
               setSessionModal(null);
               await refetchSession();

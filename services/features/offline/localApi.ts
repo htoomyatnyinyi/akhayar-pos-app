@@ -1245,19 +1245,68 @@ export const localApi = createApi({
     }),
 
     closeLocalSession: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+      async queryFn({ sessionId, data }: { sessionId: string; data: any }) {
         try {
           const { closeOfflineSession } =
             await import("@/services/offline/repository");
-          const result = await closeOfflineSession(id, payload);
+          const result = await closeOfflineSession(sessionId, data);
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
         }
       },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalSessions", id },
+      invalidatesTags: (result, error, { sessionId }) => [
+        { type: "LocalSessions", id: sessionId },
         "LocalSessions",
+      ],
+    }),
+    // by me
+    // ✅ FIX: Correctly implement createLocalOrder
+    createLocalOrder: builder.mutation({
+      async queryFn(payload: any) {
+        try {
+          // Dynamic import to avoid circular dependencies
+          const { createOfflineOrder } =
+            await import("@/services/offline/repository");
+          const result = await createOfflineOrder(payload);
+          return { data: result };
+        } catch (error) {
+          console.error("❌ createLocalOrder error:", error);
+          return {
+            error: {
+              message: (error as Error).message || "Failed to create order",
+              data: (error as any)?.data,
+            },
+          };
+        }
+      },
+      invalidatesTags: ["LocalOrders", "LocalInventory", "LocalCustomers"],
+    }),
+
+    // ✅ FIX: Correctly implement createLocalInventoryMovement
+    createLocalInventoryMovement: builder.mutation({
+      async queryFn(payload: any) {
+        try {
+          const { createOfflineInventoryMovement } =
+            await import("@/services/offline/repository");
+          const result = await createOfflineInventoryMovement(payload);
+          return { data: result };
+        } catch (error) {
+          console.error("❌ createLocalInventoryMovement error:", error);
+          return {
+            error: {
+              message:
+                (error as Error).message ||
+                "Failed to create inventory movement",
+              data: (error as any)?.data,
+            },
+          };
+        }
+      },
+      invalidatesTags: [
+        "LocalInventoryMovements",
+        "LocalInventory",
+        "LocalProducts",
       ],
     }),
 
