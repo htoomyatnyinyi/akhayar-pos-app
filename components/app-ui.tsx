@@ -1,7 +1,3 @@
-// ============================================
-// FILE: components/app-ui.tsx
-// ============================================
-
 import { MaterialIcons } from "@expo/vector-icons";
 import { ReactNode } from "react";
 import { Pressable, Text, View, type ViewStyle } from "react-native";

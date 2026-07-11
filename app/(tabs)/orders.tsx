@@ -1,7 +1,3 @@
-// ============================================
-// FILE: app/(tabs)/orders.tsx
-// ============================================
-
 import { Card, Header, MetricCard, Pill, Screen } from "@/components/app-ui";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import {

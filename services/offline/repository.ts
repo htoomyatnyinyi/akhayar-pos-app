@@ -2006,6 +2006,236 @@ export async function getLocalCustomerByCode(code: string) {
   return row ? toCustomer(row) : undefined;
 }
 
+// by me staff
+// ============================================
+// FILE: services/offline/repository.ts
+// ============================================
+
+// Add this function after the stores functions or in the appropriate section:
+
+// ============================================
+// STAFF FUNCTIONS
+// ============================================
+
+export async function getLocalStaff(
+  storeId?: string,
+  isActive?: boolean,
+  role?: string,
+) {
+  const db = getOfflineDb();
+  let query = db.select().from(staff).orderBy(desc(staff.createdAt)).$dynamic();
+
+  if (isActive !== undefined) {
+    query = query.where(eq(staff.isActive, isActive));
+  }
+  if (storeId) {
+    query = query.where(eq(staff.storeId, storeId));
+  }
+  if (role) {
+    query = query.where(eq(staff.role, role));
+  }
+
+  const rows = await query;
+  return rows.map((row) => toStaff(row));
+}
+
+export async function getLocalStaffById(id: string) {
+  const db = getOfflineDb();
+  const [row] = await db.select().from(staff).where(eq(staff.id, id)).limit(1);
+  return row ? toStaff(row) : undefined;
+}
+
+export async function getLocalStaffByUsername(username: string) {
+  const db = getOfflineDb();
+  const [row] = await db
+    .select()
+    .from(staff)
+    .where(eq(staff.username, username))
+    .limit(1);
+  return row ? toStaff(row) : undefined;
+}
+
+// ============================================
+// TO STAFF FUNCTION
+// ============================================
+
+function toStaff(staff: any): any {
+  return {
+    id: staff.id,
+    tenantId: staff.tenantId,
+    storeId: staff.storeId,
+    username: staff.username,
+    email: staff.email,
+    name: staff.name,
+    role: staff.role,
+    permissions: staff.permissions || [],
+    isActive: staff.isActive,
+    createdAt: staff.createdAt,
+    updatedAt: staff.updatedAt,
+  };
+}
+
+// ============================================
+// CREATE OFFLINE STAFF
+// ============================================
+
+export async function createOfflineStaff(payload: any) {
+  const now = new Date().toISOString();
+  const id = createLocalId("stf");
+  const db = getOfflineDb();
+  const sqlite = getSqliteDatabase();
+
+  const cleanPayload = {
+    ...payload,
+    tenantId: payload.tenantId || "default",
+    username:
+      payload.username || `staff-${Date.now().toString(36).toUpperCase()}`,
+    name: payload.name || "Unknown Staff",
+    email: payload.email || null,
+    role: payload.role || "CASHIER",
+    permissions: payload.permissions || [],
+    storeId: payload.storeId || null,
+    isActive: payload.isActive ?? true,
+  };
+
+  sqlite.withTransactionSync(() => {
+    sqlite.runSync(
+      `INSERT INTO staff (
+        id, tenant_id, store_id, username, email, name, role, permissions,
+        is_active, sync_status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        cleanPayload.tenantId,
+        cleanPayload.storeId,
+        cleanPayload.username,
+        cleanPayload.email,
+        cleanPayload.name,
+        cleanPayload.role,
+        JSON.stringify(cleanPayload.permissions),
+        cleanPayload.isActive ? 1 : 0,
+        "pending",
+        now,
+        now,
+      ],
+    );
+
+    // Enqueue sync mutation
+    sqlite.runSync(
+      `INSERT INTO sync_outbox (
+        id, entity, entity_id, operation, endpoint, method, payload, status,
+        attempts, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        createLocalId("outbox"),
+        "staff",
+        id,
+        "create",
+        "/api/tenant/staff",
+        "POST",
+        JSON.stringify(cleanPayload),
+        "pending",
+        0,
+        now,
+        now,
+        now,
+      ],
+    );
+  });
+
+  const [row] = await db.select().from(staff).where(eq(staff.id, id)).limit(1);
+
+  return toStaff(row);
+}
+
+// ============================================
+// UPDATE OFFLINE STAFF
+// ============================================
+
+export async function updateOfflineStaff(id: string, payload: any) {
+  const now = new Date().toISOString();
+  const db = getOfflineDb();
+
+  await db
+    .update(staff)
+    .set({
+      ...payload,
+      updatedAt: now,
+      syncStatus: "pending",
+    })
+    .where(eq(staff.id, id));
+
+  // Enqueue sync mutation
+  const sqlite = getSqliteDatabase();
+  sqlite.runSync(
+    `INSERT INTO sync_outbox (
+      id, entity, entity_id, operation, endpoint, method, payload, status,
+      attempts, next_attempt_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      createLocalId("outbox"),
+      "staff",
+      id,
+      "update",
+      `/api/tenant/staff/${id}`,
+      "PUT",
+      JSON.stringify(payload),
+      "pending",
+      0,
+      now,
+      now,
+      now,
+    ],
+  );
+
+  const [row] = await db.select().from(staff).where(eq(staff.id, id)).limit(1);
+
+  return toStaff(row);
+}
+
+// ============================================
+// DELETE OFFLINE STAFF
+// ============================================
+
+export async function deleteOfflineStaff(id: string) {
+  const now = new Date().toISOString();
+  const db = getOfflineDb();
+
+  await db
+    .update(staff)
+    .set({
+      isActive: false,
+      syncStatus: "pending",
+      updatedAt: now,
+    })
+    .where(eq(staff.id, id));
+
+  // Enqueue sync mutation
+  const sqlite = getSqliteDatabase();
+  sqlite.runSync(
+    `INSERT INTO sync_outbox (
+      id, entity, entity_id, operation, endpoint, method, payload, status,
+      attempts, next_attempt_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      createLocalId("outbox"),
+      "staff",
+      id,
+      "delete",
+      `/api/tenant/staff/${id}`,
+      "DELETE",
+      JSON.stringify({}),
+      "pending",
+      0,
+      now,
+      now,
+      now,
+    ],
+  );
+
+  return { success: true };
+}
+
 // ============================================
 // STORE FUNCTIONS
 // ============================================
@@ -2202,6 +2432,184 @@ export async function getLocalOrdersBySession(sessionId: string) {
 // CREATE OFFLINE FUNCTIONS (Push to Server later)
 // ============================================
 
+// export async function createOfflineOrder(
+//   payload: CreateOrderPayload,
+// ): Promise<Order> {
+//   const db = getOfflineDb();
+//   const sqlite = getSqliteDatabase();
+//   const now = new Date().toISOString();
+//   const orderId = createLocalId("ord");
+
+//   // Ensure all required fields have proper values
+//   const cleanPayload = {
+//     ...payload,
+//     tenantId: payload.tenantId || "default",
+//     subTotal: Number(payload.subTotal) || 0,
+//     taxAmount: Number(payload.taxAmount) || 0,
+//     discountAmount: Number(payload.discountAmount) || 0,
+//     grandTotal: Number(payload.grandTotal) || 0,
+//     paidAmount: Number(payload.paidAmount) || 0,
+//     changeAmount: Number(payload.changeAmount) || 0,
+//     items: (payload.items || []).map((item: any) => ({
+//       ...item,
+//       productId: item.productId || "unknown",
+//       quantity: Number(item.quantity) || 0,
+//       unitPrice: Number(item.unitPrice) || 0,
+//       subTotal: Number(item.subTotal) || 0,
+//       discountAmount: Number(item.discountAmount) || 0,
+//     })),
+//   };
+
+//   // Validate required fields
+//   if (!cleanPayload.userId) {
+//     throw new Error("userId is required to create an order");
+//   }
+//   if (!cleanPayload.storeId) {
+//     throw new Error("storeId is required to create an order");
+//   }
+//   if (!cleanPayload.sessionId) {
+//     throw new Error("sessionId is required to create an order");
+//   }
+
+//   sqlite.withTransactionSync(() => {
+//     // Insert order
+//     sqlite.runSync(
+//       `INSERT INTO orders (
+//         id, tenant_id, store_id, register_id, user_id, customer_id, session_id,
+//         status, payment_status, payment_method, sub_total, tax_amount,
+//         discount_amount, grand_total, paid_amount, change_amount,
+//         payment_breakdown, sync_status, created_at, updated_at
+//       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         orderId,
+//         cleanPayload.tenantId,
+//         cleanPayload.storeId,
+//         cleanPayload.registerId || null,
+//         cleanPayload.userId,
+//         cleanPayload.customerId || null,
+//         cleanPayload.sessionId,
+//         "COMPLETED",
+//         cleanPayload.paymentStatus || "PAID",
+//         cleanPayload.paymentMethod || "CASH",
+//         cleanPayload.subTotal,
+//         cleanPayload.taxAmount,
+//         cleanPayload.discountAmount,
+//         cleanPayload.grandTotal,
+//         cleanPayload.paidAmount,
+//         cleanPayload.changeAmount,
+//         JSON.stringify(cleanPayload.paymentBreakdown || []),
+//         "pending",
+//         now,
+//         now,
+//       ],
+//     );
+
+//     // Insert order items
+//     for (const item of cleanPayload.items) {
+//       const itemId = createLocalId("item");
+//       sqlite.runSync(
+//         `INSERT INTO order_items (
+//           id, order_id, product_id, variant_id, product_name, quantity, unit_price,
+//           discount_amount, sub_total, created_at
+//         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//         [
+//           itemId,
+//           orderId,
+//           item.productId,
+//           item.variantId || null,
+//           item.productName || null,
+//           item.quantity,
+//           item.unitPrice,
+//           item.discountAmount || 0,
+//           item.subTotal,
+//           now,
+//         ],
+//       );
+
+//       // Update inventory quantity
+//       const variantCondition = item.variantId
+//         ? `AND variant_id = '${item.variantId}'`
+//         : `AND variant_id IS NULL`;
+
+//       sqlite.runSync(
+//         `UPDATE inventory SET quantity = MAX(quantity - ?, 0), updated_at = ?
+//          WHERE product_id = ? AND store_id = ? ${variantCondition}`,
+//         [item.quantity, now, item.productId, cleanPayload.storeId],
+//       );
+//     }
+
+//     // Enqueue sync mutation
+//     sqlite.runSync(
+//       `INSERT INTO sync_outbox (
+//         id, entity, entity_id, operation, endpoint, method, payload, status,
+//         attempts, next_attempt_at, created_at, updated_at
+//       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         createLocalId("outbox"),
+//         "orders",
+//         orderId,
+//         "create",
+//         "/api/tenant/orders",
+//         "POST",
+//         JSON.stringify(cleanPayload),
+//         "pending",
+//         0,
+//         now,
+//         now,
+//         now,
+//       ],
+//     );
+//   });
+
+//   // Fetch the created order with items
+//   const [created] = await db
+//     .select()
+//     .from(orders)
+//     .where(eq(orders.id, orderId))
+//     .limit(1);
+
+//   const items = await db
+//     .select()
+//     .from(orderItems)
+//     .where(eq(orderItems.orderId, orderId));
+
+//   return {
+//     id: created.id,
+//     grandTotal: created.grandTotal,
+//     status: created.status as Order["status"],
+//     createdAt: created.createdAt,
+//     subTotal: created.subTotal,
+//     taxAmount: created.taxAmount,
+//     discountAmount: created.discountAmount,
+//     paidAmount: created.paidAmount,
+//     changeAmount: created.changeAmount,
+//     paymentMethod: created.paymentMethod as Order["paymentMethod"],
+//     paymentStatus: created.paymentStatus as Order["paymentStatus"],
+//     paymentBreakdown: parsePaymentBreakdown(
+//       created.paymentBreakdown ?? cleanPayload.paymentBreakdown,
+//     ),
+//     customerId: created.customerId ?? undefined,
+//     storeId: created.storeId ?? undefined,
+//     userId: created.userId,
+//     items: items.map((item) => ({
+//       id: item.id,
+//       productId: item.productId,
+//       variantId: item.variantId ?? undefined,
+//       productName: item.productName ?? "",
+//       price: item.unitPrice,
+//       quantity: item.quantity,
+//       product: {
+//         name: item.productName ?? "",
+//         sellingPrice: String(item.unitPrice),
+//       },
+//     })),
+//   };
+// }
+
+// ============================================
+// FILE: services/offline/repository.ts
+// ============================================
+
 export async function createOfflineOrder(
   payload: CreateOrderPayload,
 ): Promise<Order> {
@@ -2210,7 +2618,7 @@ export async function createOfflineOrder(
   const now = new Date().toISOString();
   const orderId = createLocalId("ord");
 
-  // Ensure all required fields have proper values
+  // ✅ Clean the payload - convert null to empty string for server
   const cleanPayload = {
     ...payload,
     tenantId: payload.tenantId || "default",
@@ -2220,9 +2628,18 @@ export async function createOfflineOrder(
     grandTotal: Number(payload.grandTotal) || 0,
     paidAmount: Number(payload.paidAmount) || 0,
     changeAmount: Number(payload.changeAmount) || 0,
+    // ✅ CRITICAL: Convert null to empty string for customerId
+    customerId: payload.customerId ? String(payload.customerId) : "",
+    userId: payload.userId ? String(payload.userId) : "unknown",
+    storeId: payload.storeId ? String(payload.storeId) : "",
+    sessionId: payload.sessionId ? String(payload.sessionId) : "",
+    registerId: payload.registerId ? String(payload.registerId) : "",
+    paymentMethod: payload.paymentMethod || "CASH",
+    paymentStatus: payload.paymentStatus || "PAID",
     items: (payload.items || []).map((item: any) => ({
       ...item,
-      productId: item.productId || "unknown",
+      productId: item.productId ? String(item.productId) : "unknown",
+      variantId: item.variantId ? String(item.variantId) : "",
       quantity: Number(item.quantity) || 0,
       unitPrice: Number(item.unitPrice) || 0,
       subTotal: Number(item.subTotal) || 0,
@@ -2231,7 +2648,7 @@ export async function createOfflineOrder(
   };
 
   // Validate required fields
-  if (!cleanPayload.userId) {
+  if (!cleanPayload.userId || cleanPayload.userId === "unknown") {
     throw new Error("userId is required to create an order");
   }
   if (!cleanPayload.storeId) {
@@ -2242,12 +2659,12 @@ export async function createOfflineOrder(
   }
 
   sqlite.withTransactionSync(() => {
-    // Insert order
+    // Insert order - store null in local DB, but server will get empty string
     sqlite.runSync(
       `INSERT INTO orders (
-        id, tenant_id, store_id, register_id, user_id, customer_id, session_id, 
-        status, payment_status, payment_method, sub_total, tax_amount, 
-        discount_amount, grand_total, paid_amount, change_amount, 
+        id, tenant_id, store_id, register_id, user_id, customer_id, session_id,
+        status, payment_status, payment_method, sub_total, tax_amount,
+        discount_amount, grand_total, paid_amount, change_amount,
         payment_breakdown, sync_status, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -2256,7 +2673,7 @@ export async function createOfflineOrder(
         cleanPayload.storeId,
         cleanPayload.registerId || null,
         cleanPayload.userId,
-        cleanPayload.customerId || null,
+        cleanPayload.customerId || null, // Keep null in local DB
         cleanPayload.sessionId,
         "COMPLETED",
         cleanPayload.paymentStatus || "PAID",
@@ -2295,20 +2712,35 @@ export async function createOfflineOrder(
           now,
         ],
       );
-
-      // Update inventory quantity
-      const variantCondition = item.variantId
-        ? `AND variant_id = '${item.variantId}'`
-        : `AND variant_id IS NULL`;
-
-      sqlite.runSync(
-        `UPDATE inventory SET quantity = MAX(quantity - ?, 0), updated_at = ? 
-         WHERE product_id = ? AND store_id = ? ${variantCondition}`,
-        [item.quantity, now, item.productId, cleanPayload.storeId],
-      );
     }
 
-    // Enqueue sync mutation
+    // ✅ Build server payload - clean null values
+    const serverPayload = {
+      ...cleanPayload,
+      // Convert null to empty string for server
+      customerId: cleanPayload.customerId || "",
+      registerId: cleanPayload.registerId || "",
+      // Remove undefined values
+      ...(cleanPayload.registerId ? {} : { registerId: undefined }),
+      // Clean items
+      items: cleanPayload.items.map((item: any) => ({
+        productId: item.productId,
+        variantId: item.variantId || "",
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discountAmount: item.discountAmount || 0,
+        subTotal: item.subTotal,
+      })),
+    };
+
+    // Remove undefined values from server payload
+    Object.keys(serverPayload).forEach((key) => {
+      if (serverPayload[key] === undefined) {
+        delete serverPayload[key];
+      }
+    });
+
+    // Enqueue sync mutation with cleaned payload
     sqlite.runSync(
       `INSERT INTO sync_outbox (
         id, entity, entity_id, operation, endpoint, method, payload, status,
@@ -2321,7 +2753,7 @@ export async function createOfflineOrder(
         "create",
         "/api/tenant/orders",
         "POST",
-        JSON.stringify(cleanPayload),
+        JSON.stringify(serverPayload),
         "pending",
         0,
         now,
@@ -2331,7 +2763,7 @@ export async function createOfflineOrder(
     );
   });
 
-  // Fetch the created order with items
+  // Fetch and return the order
   const [created] = await db
     .select()
     .from(orders)
@@ -2642,6 +3074,112 @@ export async function createOfflineProduct(
 // CREATE OFFLINE INVENTORY MOVEMENT
 // ============================================
 
+// export async function createOfflineInventoryMovement(
+//   payload: CreateMovementPayload,
+// ) {
+//   const now = new Date().toISOString();
+//   const id = createLocalId("mov");
+//   const sqlite = getSqliteDatabase();
+//   const db = getOfflineDb();
+
+//   // Clean the payload
+//   const cleanPayload = {
+//     ...payload,
+//     tenantId: payload.tenantId || "default",
+//     quantity: Number(payload.quantity) || 0,
+//     productId: payload.productId || "unknown",
+//     storeId: payload.storeId || "unknown",
+//     type: payload.type || "OUT",
+//     referenceId: payload.referenceId || `manual-${Date.now()}`,
+//     referenceType: payload.referenceType || "MANUAL",
+//   };
+
+//   // Validate required fields
+//   if (!cleanPayload.productId || cleanPayload.productId === "unknown") {
+//     throw new Error("productId is required for inventory movement");
+//   }
+//   if (!cleanPayload.storeId || cleanPayload.storeId === "unknown") {
+//     throw new Error("storeId is required for inventory movement");
+//   }
+
+//   sqlite.withTransactionSync(() => {
+//     // Insert inventory movement
+//     sqlite.runSync(
+//       `INSERT INTO inventory_movements (
+//         id, tenant_id, store_id, product_id, variant_id, quantity, type,
+//         reference_id, reference_type, reason, sync_status, created_at, updated_at
+//       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         id,
+//         cleanPayload.tenantId,
+//         cleanPayload.storeId,
+//         cleanPayload.productId,
+//         cleanPayload.variantId || null,
+//         cleanPayload.quantity,
+//         cleanPayload.type,
+//         cleanPayload.referenceId,
+//         cleanPayload.referenceType,
+//         cleanPayload.reason || null,
+//         "pending",
+//         now,
+//         now,
+//       ],
+//     );
+
+//     // Update inventory quantity
+//     const multiplier = ["IN", "TRANSFER_IN"].includes(cleanPayload.type)
+//       ? 1
+//       : -1;
+//     const newQuantity =
+//       multiplier > 0
+//         ? `quantity + ${cleanPayload.quantity}`
+//         : `MAX(quantity - ${cleanPayload.quantity}, 0)`;
+
+//     const variantCondition = cleanPayload.variantId
+//       ? `AND variant_id = '${cleanPayload.variantId}'`
+//       : `AND variant_id IS NULL`;
+
+//     sqlite.runSync(
+//       `UPDATE inventory SET quantity = ${newQuantity}, updated_at = ?
+//        WHERE product_id = ? AND store_id = ? ${variantCondition}`,
+//       [now, cleanPayload.productId, cleanPayload.storeId],
+//     );
+
+//     // Enqueue sync mutation
+//     sqlite.runSync(
+//       `INSERT INTO sync_outbox (
+//         id, entity, entity_id, operation, endpoint, method, payload, status,
+//         attempts, next_attempt_at, created_at, updated_at
+//       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         createLocalId("outbox"),
+//         "inventory_movements",
+//         id,
+//         "create",
+//         "/api/tenant/inventory/movements",
+//         "POST",
+//         JSON.stringify(cleanPayload),
+//         "pending",
+//         0,
+//         now,
+//         now,
+//         now,
+//       ],
+//     );
+//   });
+
+//   const [row] = await db
+//     .select()
+//     .from(inventoryMovements)
+//     .where(eq(inventoryMovements.id, id))
+//     .limit(1);
+//   return row;
+// }
+
+// ============================================
+// FILE: services/offline/repository.ts
+// ============================================
+
 export async function createOfflineInventoryMovement(
   payload: CreateMovementPayload,
 ) {
@@ -2650,14 +3188,15 @@ export async function createOfflineInventoryMovement(
   const sqlite = getSqliteDatabase();
   const db = getOfflineDb();
 
-  // Clean the payload
+  // ✅ Clean the payload - convert movement type to valid enum
   const cleanPayload = {
     ...payload,
     tenantId: payload.tenantId || "default",
     quantity: Number(payload.quantity) || 0,
     productId: payload.productId || "unknown",
     storeId: payload.storeId || "unknown",
-    type: payload.type || "OUT",
+    // ✅ Map frontend types to backend enum
+    type: mapMovementType(payload.type),
     referenceId: payload.referenceId || `manual-${Date.now()}`,
     referenceType: payload.referenceType || "MANUAL",
   };
@@ -2695,9 +3234,13 @@ export async function createOfflineInventoryMovement(
     );
 
     // Update inventory quantity
-    const multiplier = ["IN", "TRANSFER_IN"].includes(cleanPayload.type)
-      ? 1
-      : -1;
+    const isIn = [
+      "PURCHASE",
+      "RETURN_IN",
+      "TRANSFER_IN",
+      "OPENING_STOCK",
+    ].includes(cleanPayload.type);
+    const multiplier = isIn ? 1 : -1;
     const newQuantity =
       multiplier > 0
         ? `quantity + ${cleanPayload.quantity}`
@@ -2708,7 +3251,7 @@ export async function createOfflineInventoryMovement(
       : `AND variant_id IS NULL`;
 
     sqlite.runSync(
-      `UPDATE inventory SET quantity = ${newQuantity}, updated_at = ? 
+      `UPDATE inventory SET quantity = ${newQuantity}, updated_at = ?
        WHERE product_id = ? AND store_id = ? ${variantCondition}`,
       [now, cleanPayload.productId, cleanPayload.storeId],
     );
@@ -2726,7 +3269,12 @@ export async function createOfflineInventoryMovement(
         "create",
         "/api/tenant/inventory/movements",
         "POST",
-        JSON.stringify(cleanPayload),
+        JSON.stringify({
+          ...cleanPayload,
+          // Remove any fields that might cause issues
+          variantId: cleanPayload.variantId || "",
+          type: cleanPayload.type,
+        }),
         "pending",
         0,
         now,
@@ -2742,6 +3290,26 @@ export async function createOfflineInventoryMovement(
     .where(eq(inventoryMovements.id, id))
     .limit(1);
   return row;
+}
+
+// ✅ Helper function to map frontend types to backend enum
+function mapMovementType(type: string): string {
+  const mapping: Record<string, string> = {
+    IN: "PURCHASE",
+    OUT: "SALE",
+    SALE: "SALE",
+    PURCHASE: "PURCHASE",
+    RETURN_IN: "RETURN_IN",
+    RETURN_OUT: "RETURN_OUT",
+    ADJUSTMENT: "ADJUSTMENT",
+    DAMAGE: "DAMAGE",
+    EXPIRED: "EXPIRED",
+    TRANSFER_IN: "TRANSFER_IN",
+    TRANSFER_OUT: "TRANSFER_OUT",
+    OPENING_STOCK: "OPENING_STOCK",
+    COUNTING: "COUNTING",
+  };
+  return mapping[type] || "ADJUSTMENT";
 }
 
 // // ============================================

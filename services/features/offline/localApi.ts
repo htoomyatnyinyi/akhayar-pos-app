@@ -130,6 +130,24 @@ export const localApi = createApi({
     // 1. PRODUCTS
     // ============================================
     getLocalProducts: builder.query({
+      async queryFn({ storeId }: { storeId: string }) {
+        try {
+          const db = getOfflineDb();
+          const result = await db
+            .select()
+            .from(products)
+            .where(eq(products.storeId, storeId))
+            .where(sql`${products.syncStatus} != 'pending_delete'`);
+          return { data: result };
+        } catch (error) {
+          return { error: { message: (error as Error).message } };
+        }
+      },
+      providesTags: ["LocalProducts"],
+    }),
+    /*
+
+     getLocalProducts: builder.query({
       async queryFn({
         search,
         categoryId,
@@ -173,6 +191,7 @@ export const localApi = createApi({
       },
       providesTags: ["LocalProducts"],
     }),
+    */
 
     getLocalProductById: builder.query({
       async queryFn(id: string) {
@@ -851,30 +870,52 @@ export const localApi = createApi({
     // ============================================
     // 7. STAFF
     // ============================================
+    // getLocalStaff: builder.query({
+    //   async queryFn({
+    //     storeId,
+    //     isActive,
+    //     role,
+    //   }: { storeId?: string; isActive?: boolean; role?: string } = {}) {
+    //     try {
+    //       const db = getOfflineDb();
+    //       let query = db
+    //         .select()
+    //         .from(staff)
+    //         .orderBy(desc(staff.createdAt))
+    //         .$dynamic();
+
+    //       if (isActive !== undefined) {
+    //         query = query.where(eq(staff.isActive, isActive));
+    //       }
+    //       if (storeId) {
+    //         query = query.where(eq(staff.storeId, storeId));
+    //       }
+    //       if (role) {
+    //         query = query.where(eq(staff.role, role));
+    //       }
+
+    //       const result = await query;
+    //       return { data: result };
+    //     } catch (error) {
+    //       return { error: { message: (error as Error).message } };
+    //     }
+    //   },
+    //   providesTags: ["LocalStaff"],
+    // }),
+
     getLocalStaff: builder.query({
       async queryFn({
         storeId,
         isActive,
         role,
       }: { storeId?: string; isActive?: boolean; role?: string } = {}) {
+        console.log("payload", storeId, isActive, role);
         try {
           const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(staff)
-            .orderBy(desc(staff.createdAt))
-            .$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(staff.isActive, isActive));
-          }
+          let query = db.select().from(staff).$dynamic();
           if (storeId) {
-            query = query.where(eq(staff.storeId, storeId));
+            query = query.where(eq(staff.storeId, payload.storeId));
           }
-          if (role) {
-            query = query.where(eq(staff.role, role));
-          }
-
           const result = await query;
           return { data: result };
         } catch (error) {

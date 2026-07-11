@@ -120,6 +120,14 @@ export const remoteApi = posApi.injectEndpoints({
       invalidatesTags: ["Products", "Inventory", "ProductVariants"],
     }),
 
+    getRemotePriceHistory: builder.query({
+      query: (params) => ({
+        url: "/tenant/price-history/",
+        params,
+      }),
+      providesTags: ["PriceHistory"],
+    }),
+
     updateRemoteProduct: builder.mutation({
       query: ({ id, ...patch }) => ({
         url: `/tenant/products/${id}`,

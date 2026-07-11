@@ -23,11 +23,14 @@ import { getAuthErrorMessage } from "@/services/features/auth/authUtils";
 
 export default function LoginScreen() {
   const dispatch = useAppDispatch();
+
   const savedTenantCode = useAppSelector((state) => state.auth.lastTenantCode);
+
   const [tenantCode, setTenantCode] = useState(savedTenantCode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
   const [login, { isLoading }] = useLoginMutation();
 
   const handleLogin = async () => {
@@ -49,6 +52,7 @@ export default function LoginScreen() {
         tenantCode: trimmedTenantCode || undefined,
       }).unwrap();
       dispatch(setUser(user));
+      // console.log(user, "user auth");
       router.replace("/");
     } catch (error: unknown) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -63,7 +67,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-950" style={{ flex: 1, backgroundColor: '#020617' }}>
+    <SafeAreaView
+      className="flex-1 bg-slate-950"
+      style={{ flex: 1, backgroundColor: "#020617" }}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
