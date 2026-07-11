@@ -9,6 +9,7 @@ import { Inventory } from "../inventory/inventoryTypes";
 // ============================================
 
 export interface Product {
+  remoteId: null;
   id: string;
   tenantId: string;
   sku: string;

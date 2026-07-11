@@ -53,6 +53,14 @@ export async function runMigrations() {
       `📋 Available migrations: ${Object.keys(migrations.migrations).join(", ")}`,
     );
 
+    // If the table is missing but the migration journal says it's applied, force a rebuild.
+    try {
+      db.execSync("SELECT 1 FROM tenant_store_settings LIMIT 1;");
+    } catch {
+      console.log("⚠️ tenant_store_settings is missing. Forcing database rebuild...");
+      db.execSync("DROP TABLE IF EXISTS __drizzle_migrations;");
+    }
+
     await migrate(drizzleDb, migrations);
     console.log("✅ Database migrations completed successfully!");
   } catch (error) {

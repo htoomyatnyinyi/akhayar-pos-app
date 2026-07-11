@@ -10,3 +10,5 @@ declare const _default: {
   migrations: Record<string, any>;
 };
 export default _default;
+
+// migrations.d.ts
