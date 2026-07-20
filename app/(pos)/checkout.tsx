@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useState } from "react";
 import { useRouter } from "expo-router";
-import { useCart } from "@/hooks/useCard";
+import { useCart } from "@/hooks/useCart";
 import { useCreateOrderMutation } from "@/services/features/order/orderApi";
 import { useAppSelector } from "@/services/store/hooks";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,7 +30,7 @@ const PAYMENT_METHODS: {
 
 export default function Checkout() {
   const router = useRouter();
-  const { cart, totalPrice, customerId, setCustomer, clearCart } = useCart();
+  const { cart, totalPrice, customerId, clearCart } = useCart();
   const storeId = useAppSelector((state) => state.auth.selectedStoreId);
   const userId = useAppSelector((state) => state.auth.user?.id);
 
@@ -38,7 +38,7 @@ export default function Checkout() {
   const [receivedAmount, setReceivedAmount] = useState(totalPrice.toString());
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [createOrder, { isLoading }] = useCreateOrderMutation();
+  const [createOrder] = useCreateOrderMutation();
 
   if (cart.length === 0) {
     return (
@@ -119,12 +119,13 @@ export default function Checkout() {
 
   return (
     <ScrollView className="flex-1 bg-gray-50 p-4">
+      {/* Order Summary Card */}
       <View className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-        <Text className="text-xl font-bold mb-4">Checkout</Text>
+        <Text className="text-xl font-bold mb-4">Order Summary</Text>
 
         {/* Customer Selection */}
         <TouchableOpacity
-          onPress={() => router.push("/customers/search")}
+          onPress={() => router.push("/customer")}
           className="border border-gray-200 rounded-lg p-3 mb-4 flex-row items-center justify-between"
         >
           <View className="flex-row items-center">
@@ -138,16 +139,18 @@ export default function Checkout() {
 
         {/* Cart Items Summary */}
         <View className="mb-4">
-          <Text className="text-sm font-semibold text-gray-500">Items</Text>
+          <Text className="text-sm font-semibold text-gray-500 mb-2">
+            Items
+          </Text>
           {cart.map((item) => (
             <View
               key={item.id}
-              className="flex-row justify-between py-1 border-b border-gray-50"
+              className="flex-row justify-between py-1.5 border-b border-gray-50"
             >
-              <Text className="text-gray-700">
+              <Text className="text-gray-700 flex-1" numberOfLines={1}>
                 {item.quantity}x {item.name}
               </Text>
-              <Text className="text-gray-900">
+              <Text className="text-gray-900 font-medium ml-2">
                 ${(item.sellingPrice * item.quantity).toFixed(2)}
               </Text>
             </View>
@@ -249,7 +252,10 @@ export default function Checkout() {
         <TouchableOpacity
           onPress={handleComplete}
           disabled={isProcessing}
-          className="flex-2 bg-indigo-600 py-3 rounded-lg items-center flex-row justify-center"
+          className={`flex-2 py-3 rounded-lg items-center flex-row justify-center ${
+            isProcessing ? "bg-indigo-400" : "bg-indigo-600"
+          }`}
+          style={{ flex: 2 }}
         >
           {isProcessing ? (
             <ActivityIndicator color="white" />
@@ -264,56 +270,3 @@ export default function Checkout() {
     </ScrollView>
   );
 }
-
-// import { View, Text, TouchableOpacity, TextInput, Alert } from "react-native";
-// import { useCart } from "../../hooks/useCart";
-// import { useCreateOrderMutation } from "../../features/orders/ordersApi";
-// import { useAppSelector } from "../../store/hooks";
-
-// export default function Checkout() {
-//   const cart = useCart();
-//   const storeId = useAppSelector((state) => state.auth.selectedStoreId);
-//   const [createOrder, { isLoading }] = useCreateOrderMutation();
-
-//   const handleComplete = async () => {
-//     const payload = {
-//       storeId,
-//       subTotal: cart.totalPrice,
-//       grandTotal: cart.totalPrice,
-//       paymentMethod: "CASH",
-//       paidAmount: cart.totalPrice,
-//       changeAmount: 0,
-//       items: cart.cart.map((item) => ({
-//         productId: item.id,
-//         quantity: item.quantity,
-//         unitPrice: item.sellingPrice,
-//         subTotal: item.sellingPrice * item.quantity,
-//       })),
-//     };
-//     try {
-//       await createOrder(payload).unwrap();
-//       Alert.alert("Success", "Order completed");
-//       cart.clearCart();
-//       // navigate back
-//     } catch (error) {
-//       Alert.alert("Error", error.message);
-//     }
-//   };
-
-//   return (
-//     <View className="flex-1 p-4">
-//       <Text className="text-2xl font-bold">Checkout</Text>
-//       <Text>Total: ${cart.totalPrice.toFixed(2)}</Text>
-//       {/* Payment method buttons */}
-//       <TouchableOpacity
-//         onPress={handleComplete}
-//         className="bg-indigo-600 py-3 rounded-lg mt-4"
-//         disabled={isLoading}
-//       >
-//         <Text className="text-white text-center font-bold">
-//           {isLoading ? "Processing..." : "Complete Sale"}
-//         </Text>
-//       </TouchableOpacity>
-//     </View>
-//   );
-// }

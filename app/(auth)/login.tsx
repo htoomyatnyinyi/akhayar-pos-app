@@ -64,7 +64,7 @@ export default function Login() {
           setCredentials({
             user: userData,
             token: result.token,
-            tenantId: null,
+            tenantId: userData.tenantId,
           }),
         );
       } else {

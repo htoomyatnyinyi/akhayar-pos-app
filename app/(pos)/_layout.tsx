@@ -1,6 +1,5 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-// import { useAppSelector } from "../../store/hooks";
 import { useAppSelector } from "@/services/store/hooks";
 
 export default function PosLayout() {
@@ -50,7 +49,7 @@ export default function PosLayout() {
       />
       {!isPlatform && (
         <Tabs.Screen
-          name="customers"
+          name="customer"
           options={{
             title: "Customers",
             tabBarIcon: ({ color, size }) => (
@@ -66,6 +65,35 @@ export default function PosLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="ellipsis-horizontal" size={size} color={color} />
           ),
+        }}
+      />
+
+      {/* Hidden screens — accessible via navigation but not shown in tabs */}
+      <Tabs.Screen
+        name="checkout"
+        options={{
+          href: null,
+          headerShown: true,
+          headerTitle: "Checkout",
+          headerTintColor: "#6366F1",
+        }}
+      />
+      <Tabs.Screen
+        name="products"
+        options={{
+          href: null,
+          headerShown: true,
+          headerTitle: "Products",
+          headerTintColor: "#6366F1",
+        }}
+      />
+      <Tabs.Screen
+        name="sync"
+        options={{
+          href: null,
+          headerShown: true,
+          headerTitle: "Sync",
+          headerTintColor: "#6366F1",
         }}
       />
     </Tabs>

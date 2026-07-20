@@ -2,7 +2,7 @@ import { baseApi } from "@/services/api/baseApi";
 
 export const productsApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    getProducts: builder.query<any, { storeId?: string; categoryId?: string }>({
+    getProducts: builder.query<any, { storeId?: string; categoryId?: string; search?: string }>({
       query: (params) => ({
         url: "/tenant/products",
         params: { ...params, limit: 100 },
