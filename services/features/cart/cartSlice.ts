@@ -1,92 +1,84 @@
-// services/features/cart/cartSlice.ts
-
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { CartItem } from "./cartTypes";
+
+export interface CartItem {
+  id: string;
+  name: string;
+  sku: string;
+  sellingPrice: number;
+  quantity: number;
+  maxStock?: number;
+}
 
 interface CartState {
   items: CartItem[];
-  lastCheckoutId?: string;
-  lastCheckoutStatus?: "pending" | "synced" | "failed";
+  customerId?: string | null;
+  note?: string;
 }
 
 const initialState: CartState = {
   items: [],
+  customerId: null,
+  note: "",
 };
 
 const cartSlice = createSlice({
   name: "cart",
   initialState,
   reducers: {
-    addToCart: (state, action: PayloadAction<CartItem>) => {
-      const existingItem = state.items.find(
-        (item) => item.id === action.payload.id,
-      );
-      if (existingItem) {
-        existingItem.qty += action.payload.qty || 1;
+    addItem: (state, action: PayloadAction<CartItem>) => {
+      const existing = state.items.find((i) => i.id === action.payload.id);
+      if (existing) {
+        existing.quantity += action.payload.quantity || 1;
       } else {
-        state.items.push({ ...action.payload, qty: action.payload.qty || 1 });
+        state.items.push({
+          ...action.payload,
+          quantity: action.payload.quantity || 1,
+        });
       }
     },
-
-    // ✅ ADD THIS - For updating quantity directly
+    removeItem: (state, action: PayloadAction<string>) => {
+      state.items = state.items.filter((i) => i.id !== action.payload);
+    },
     updateQuantity: (
       state,
-      action: PayloadAction<{ id: string; qty: number }>,
+      action: PayloadAction<{ id: string; quantity: number }>,
     ) => {
       const item = state.items.find((i) => i.id === action.payload.id);
       if (item) {
-        if (action.payload.qty <= 0) {
+        if (action.payload.quantity <= 0) {
           state.items = state.items.filter((i) => i.id !== action.payload.id);
         } else {
-          item.qty = action.payload.qty;
+          item.quantity = action.payload.quantity;
         }
       }
     },
-
-    decreaseQty: (state, action: PayloadAction<string>) => {
-      const item = state.items.find((i) => i.id === action.payload);
-      if (!item) return;
-      if (item.qty > 1) {
-        item.qty -= 1;
-      } else {
-        state.items = state.items.filter((i) => i.id !== action.payload);
-      }
-    },
-
-    removeFromCart: (state, action: PayloadAction<string>) => {
-      state.items = state.items.filter((item) => item.id !== action.payload);
-    },
-
     clearCart: (state) => {
       state.items = [];
+      state.customerId = null;
+      state.note = "";
     },
-
-    setCheckoutState: (
-      state,
-      action: PayloadAction<{
-        checkoutId?: string;
-        status?: "pending" | "synced" | "failed";
-      }>,
-    ) => {
-      state.lastCheckoutId = action.payload.checkoutId;
-      state.lastCheckoutStatus = action.payload.status;
+    setCustomer: (state, action: PayloadAction<string | null>) => {
+      state.customerId = action.payload;
+    },
+    setNote: (state, action: PayloadAction<string>) => {
+      state.note = action.payload;
     },
   },
 });
 
 export const {
-  addToCart,
-  decreaseQty,
-  removeFromCart,
+  addItem,
+  removeItem,
+  updateQuantity,
   clearCart,
-  setCheckoutState,
-  updateQuantity, // ✅ EXPORT THIS
+  setCustomer,
+  setNote,
 } = cartSlice.actions;
-
 export default cartSlice.reducer;
 
-// import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+// // services/features/cart/cartSlice.ts
 
+// import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 // import { CartItem } from "./cartTypes";
 
 // interface CartState {
@@ -101,27 +93,37 @@ export default cartSlice.reducer;
 
 // const cartSlice = createSlice({
 //   name: "cart",
-
 //   initialState,
-
 //   reducers: {
 //     addToCart: (state, action: PayloadAction<CartItem>) => {
 //       const existingItem = state.items.find(
 //         (item) => item.id === action.payload.id,
 //       );
-
 //       if (existingItem) {
-//         existingItem.qty += 1;
+//         existingItem.qty += action.payload.qty || 1;
 //       } else {
-//         state.items.push(action.payload);
+//         state.items.push({ ...action.payload, qty: action.payload.qty || 1 });
+//       }
+//     },
+
+//     // ✅ ADD THIS - For updating quantity directly
+//     updateQuantity: (
+//       state,
+//       action: PayloadAction<{ id: string; qty: number }>,
+//     ) => {
+//       const item = state.items.find((i) => i.id === action.payload.id);
+//       if (item) {
+//         if (action.payload.qty <= 0) {
+//           state.items = state.items.filter((i) => i.id !== action.payload.id);
+//         } else {
+//           item.qty = action.payload.qty;
+//         }
 //       }
 //     },
 
 //     decreaseQty: (state, action: PayloadAction<string>) => {
 //       const item = state.items.find((i) => i.id === action.payload);
-
 //       if (!item) return;
-
 //       if (item.qty > 1) {
 //         item.qty -= 1;
 //       } else {
@@ -136,6 +138,7 @@ export default cartSlice.reducer;
 //     clearCart: (state) => {
 //       state.items = [];
 //     },
+
 //     setCheckoutState: (
 //       state,
 //       action: PayloadAction<{
@@ -155,6 +158,81 @@ export default cartSlice.reducer;
 //   removeFromCart,
 //   clearCart,
 //   setCheckoutState,
+//   updateQuantity, // ✅ EXPORT THIS
 // } = cartSlice.actions;
 
 // export default cartSlice.reducer;
+
+// // import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+
+// // import { CartItem } from "./cartTypes";
+
+// // interface CartState {
+// //   items: CartItem[];
+// //   lastCheckoutId?: string;
+// //   lastCheckoutStatus?: "pending" | "synced" | "failed";
+// // }
+
+// // const initialState: CartState = {
+// //   items: [],
+// // };
+
+// // const cartSlice = createSlice({
+// //   name: "cart",
+
+// //   initialState,
+
+// //   reducers: {
+// //     addToCart: (state, action: PayloadAction<CartItem>) => {
+// //       const existingItem = state.items.find(
+// //         (item) => item.id === action.payload.id,
+// //       );
+
+// //       if (existingItem) {
+// //         existingItem.qty += 1;
+// //       } else {
+// //         state.items.push(action.payload);
+// //       }
+// //     },
+
+// //     decreaseQty: (state, action: PayloadAction<string>) => {
+// //       const item = state.items.find((i) => i.id === action.payload);
+
+// //       if (!item) return;
+
+// //       if (item.qty > 1) {
+// //         item.qty -= 1;
+// //       } else {
+// //         state.items = state.items.filter((i) => i.id !== action.payload);
+// //       }
+// //     },
+
+// //     removeFromCart: (state, action: PayloadAction<string>) => {
+// //       state.items = state.items.filter((item) => item.id !== action.payload);
+// //     },
+
+// //     clearCart: (state) => {
+// //       state.items = [];
+// //     },
+// //     setCheckoutState: (
+// //       state,
+// //       action: PayloadAction<{
+// //         checkoutId?: string;
+// //         status?: "pending" | "synced" | "failed";
+// //       }>,
+// //     ) => {
+// //       state.lastCheckoutId = action.payload.checkoutId;
+// //       state.lastCheckoutStatus = action.payload.status;
+// //     },
+// //   },
+// // });
+
+// // export const {
+// //   addToCart,
+// //   decreaseQty,
+// //   removeFromCart,
+// //   clearCart,
+// //   setCheckoutState,
+// // } = cartSlice.actions;
+
+// // export default cartSlice.reducer;

@@ -10,19 +10,14 @@ import {
   PURGE,
   REGISTER,
 } from "redux-persist";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import syncReducer from "@/services/features/sync/syncSlice";
 import authReducer from "@/services/features/auth/authSlice";
 import cartReducer from "@/services/features/cart/cartSlice";
-import settingsReducer from "@/services/features/settings/settingsSlice";
 
-// import offlineReducer from "@/services/offline/offlineSlice";
-import offlineReducer from "@/services/features/offline/offlineSlice";
-
-import { posApi } from "@/services/api/posApi";
-
-// import { remoteApi } from "@/services/api/remoteApi";
-import { localApi } from "@/services/features/offline/localApi";
+import { baseApi } from "@/services/api/baseApi";
 
 const persistConfig = {
   key: "root",
@@ -34,11 +29,9 @@ const persistConfig = {
 const rootReducer = combineReducers({
   auth: authReducer,
   cart: cartReducer,
-  settings: settingsReducer,
-  offline: offlineReducer,
-  [posApi.reducerPath]: posApi.reducer,
-  [localApi.reducerPath]: localApi.reducer,
-  // [remoteApi.reducerPath]: remoteApi.reducer,
+  sync: syncReducer,
+
+  [baseApi.reducerPath]: baseApi.reducer,
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
@@ -50,10 +43,7 @@ export const store = configureStore({
       serializableCheck: {
         ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
       },
-    })
-      .concat(posApi.middleware)
-      .concat(localApi.middleware),
-  // .concat(remoteApi.middleware, localApi.middleware),
+    }).concat(baseApi.middleware),
 });
 
 export const persistor = persistStore(store);

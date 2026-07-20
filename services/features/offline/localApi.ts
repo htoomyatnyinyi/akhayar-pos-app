@@ -1,2978 +1,2978 @@
-// ============================================
-// FILE: services/offline/localApi.ts
-// ============================================
-
-import { getOfflineDb } from "@/services/offline/db";
-import {
-  categories,
-  customers,
-  inventory,
-  inventoryCountItems,
-  inventoryCounts,
-  inventoryMovements,
-  orderItems,
-  orders,
-  priceHistory,
-  products,
-  productVariants,
-  sessions,
-  staff,
-  stores,
-  suppliers,
-  syncOutbox,
-  brands,
-  promotions,
-  taxRates,
-  expenses,
-  expenseCategories,
-  cashRegisters,
-  giftCards,
-  giftCardTransactions,
-  wallets,
-  walletTransactions,
-  supplierPayments,
-  purchaseOrders,
-  purchaseOrderItems,
-  stockTransfers,
-  stockTransferItems,
-  webhooks,
-  apiKeys,
-  notifications,
-  tenantStoreSettings,
-  auditLogs,
-} from "@/services/offline/schema";
-import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
-import { and, desc, eq, sql } from "drizzle-orm";
-
-// ============================================
-// TAG TYPES
-// ============================================
-export type LocalTagTypes =
-  | "LocalProducts"
-  | "LocalProductVariants"
-  | "LocalCategories"
-  | "LocalBrands"
-  | "LocalCustomers"
-  | "LocalStores"
-  | "LocalSessions"
-  | "LocalOrders"
-  | "LocalInventory"
-  | "LocalInventoryMovements"
-  | "LocalInventoryCounts"
-  | "LocalPriceHistory"
-  | "LocalSyncOutbox"
-  | "LocalStaff"
-  | "LocalSuppliers"
-  | "LocalPromotions"
-  | "LocalTaxRates"
-  | "LocalExpenses"
-  | "LocalExpenseCategories"
-  | "LocalCashRegisters"
-  | "LocalGiftCards"
-  | "LocalGiftCardTransactions"
-  | "LocalWallets"
-  | "LocalWalletTransactions"
-  | "LocalSupplierPayments"
-  | "LocalPurchaseOrders"
-  | "LocalPurchaseOrderItems"
-  | "LocalStockTransfers"
-  | "LocalStockTransferItems"
-  | "LocalWebhooks"
-  | "LocalApiKeys"
-  | "LocalNotifications"
-  | "LocalTenantStoreSettings"
-  | "LocalAuditLogs";
-
-// ============================================
-// LOCAL API
-// ============================================
-export const localApi = createApi({
-  reducerPath: "localApi",
-  baseQuery: fakeBaseQuery<{ message: string }>(),
-  tagTypes: [
-    "LocalProducts",
-    "LocalProductVariants",
-    "LocalCategories",
-    "LocalBrands",
-    "LocalCustomers",
-    "LocalStores",
-    "LocalSessions",
-    "LocalOrders",
-    "LocalInventory",
-    "LocalInventoryMovements",
-    "LocalInventoryCounts",
-    "LocalPriceHistory",
-    "LocalSyncOutbox",
-    "LocalStaff",
-    "LocalSuppliers",
-    "LocalPromotions",
-    "LocalTaxRates",
-    "LocalExpenses",
-    "LocalExpenseCategories",
-    "LocalCashRegisters",
-    "LocalGiftCards",
-    "LocalGiftCardTransactions",
-    "LocalWallets",
-    "LocalWalletTransactions",
-    "LocalSupplierPayments",
-    "LocalPurchaseOrders",
-    "LocalPurchaseOrderItems",
-    "LocalStockTransfers",
-    "LocalStockTransferItems",
-    "LocalWebhooks",
-    "LocalApiKeys",
-    "LocalNotifications",
-    "LocalTenantStoreSettings",
-    "LocalAuditLogs",
-  ] as const,
-  endpoints: (builder) => ({
-    // ============================================
-    // 1. PRODUCTS
-    // ============================================
-    getLocalProducts: builder.query({
-      async queryFn({ storeId }: { storeId: string }) {
-        try {
-          const db = getOfflineDb();
-          const result = await db
-            .select()
-            .from(products)
-            .where(eq(products.storeId, storeId))
-            .where(sql`${products.syncStatus} != 'pending_delete'`);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalProducts"],
-    }),
-    /*
-
-     getLocalProducts: builder.query({
-      async queryFn({
-        search,
-        categoryId,
-        storeId,
-        isActive,
-      }: {
-        search?: string;
-        categoryId?: string;
-        storeId?: string;
-        isActive?: boolean;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(products)
-            .where(sql`${products.syncStatus} != 'pending_delete'`)
-            .orderBy(desc(products.createdAt))
-            .$dynamic();
-
-          if (search) {
-            query = query.where(
-              sql`${products.name} LIKE ${`%${search}%`} OR ${products.sku} LIKE ${`%${search}%`} OR ${products.barcode} LIKE ${`%${search}%`}`,
-            );
-          }
-          if (categoryId) {
-            query = query.where(eq(products.categoryId, categoryId));
-          }
-          if (storeId) {
-            query = query.where(eq(products.storeId, storeId));
-          }
-          if (isActive !== undefined) {
-            query = query.where(eq(products.isActive, isActive));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalProducts"],
-    }),
-    */
-
-    getLocalProductById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(products)
-            .where(eq(products.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalProducts", id }],
-    }),
-
-    getLocalProductByBarcode: builder.query({
-      async queryFn(barcode: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(products)
-            .where(eq(products.barcode, barcode));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalProducts"],
-    }),
-
-    getLocalProductBySku: builder.query({
-      async queryFn(sku: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(products)
-            .where(eq(products.sku, sku));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalProducts"],
-    }),
-
-    createLocalProduct: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { createOfflineProduct } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineProduct(payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: [
-        "LocalProducts",
-        "LocalProductVariants",
-        "LocalInventory",
-      ],
-    }),
-
-    updateLocalProduct: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const { updateOfflineProduct } =
-            await import("@/services/offline/repository");
-          const result = await updateOfflineProduct(id, payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalProducts", id },
-        "LocalProducts",
-      ],
-    }),
-
-    deleteLocalProduct: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const { deleteOfflineProduct } =
-            await import("@/services/offline/repository");
-          await deleteOfflineProduct(id);
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalProducts", id },
-        "LocalProducts",
-        "LocalInventory",
-      ],
-    }),
-
-    // ============================================
-    // 2. PRODUCT VARIANTS
-    // ============================================
-    getLocalVariants: builder.query({
-      async queryFn(productId?: string) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(productVariants)
-            .where(eq(productVariants.isActive, true))
-            .$dynamic();
-
-          if (productId) {
-            query = query.where(eq(productVariants.productId, productId));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalProductVariants"],
-    }),
-
-    getLocalVariantById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(productVariants)
-            .where(eq(productVariants.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [
-        { type: "LocalProductVariants", id },
-      ],
-    }),
-
-    getLocalVariantByBarcode: builder.query({
-      async queryFn(barcode: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(productVariants)
-            .where(eq(productVariants.barcode, barcode));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalProductVariants"],
-    }),
-
-    createLocalVariant: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const variantId = createLocalId("var");
-
-          await db.insert(productVariants).values({
-            id: variantId,
-            productId: payload.productId,
-            tenantId: payload.tenantId,
-            name: payload.name,
-            sku: payload.sku,
-            barcode: payload.barcode,
-            price: payload.price,
-            costPrice: payload.costPrice,
-            color: payload.color,
-            size: payload.size,
-            weight: payload.weight,
-            isActive: payload.isActive ?? true,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-          });
-
-          return { data: { id: variantId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: [
-        "LocalProductVariants",
-        "LocalProducts",
-        "LocalInventory",
-      ],
-    }),
-
-    updateLocalVariant: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(productVariants)
-            .set({
-              ...payload,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(productVariants.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalProductVariants", id },
-        "LocalProductVariants",
-        "LocalProducts",
-      ],
-    }),
-
-    deleteLocalVariant: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          await db
-            .update(productVariants)
-            .set({
-              isActive: false,
-              syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(productVariants.id, id));
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalProductVariants", id },
-        "LocalProductVariants",
-        "LocalInventory",
-      ],
-    }),
-
-    // ============================================
-    // 3. CATEGORIES
-    // ============================================
-    getLocalCategories: builder.query({
-      async queryFn({
-        storeId,
-        isActive,
-      }: { storeId?: string; isActive?: boolean } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(categories)
-            .orderBy(categories.sortOrder)
-            .$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(categories.isActive, isActive));
-          }
-          if (storeId) {
-            query = query.where(eq(categories.storeId, storeId));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalCategories"],
-    }),
-
-    getLocalCategoryById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(categories)
-            .where(eq(categories.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalCategories", id }],
-    }),
-
-    createLocalCategory: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { createOfflineCategory } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineCategory(payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalCategories"],
-    }),
-
-    updateLocalCategory: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const { updateOfflineCategory } =
-            await import("@/services/offline/repository");
-          const result = await updateOfflineCategory(id, payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalCategories", id },
-        "LocalCategories",
-      ],
-    }),
-
-    deleteLocalCategory: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const { deleteOfflineCategory } =
-            await import("@/services/offline/repository");
-          await deleteOfflineCategory(id);
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalCategories", id },
-        "LocalCategories",
-        "LocalProducts",
-      ],
-    }),
-
-    // ============================================
-    // 4. BRANDS
-    // ============================================
-    getLocalBrands: builder.query({
-      async queryFn({ isActive }: { isActive?: boolean } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db.select().from(brands).orderBy(brands.name).$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(brands.isActive, isActive));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalBrands"],
-    }),
-
-    getLocalBrandById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(brands)
-            .where(eq(brands.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalBrands", id }],
-    }),
-
-    createLocalBrand: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const brandId = createLocalId("brd");
-
-          await db.insert(brands).values({
-            id: brandId,
-            tenantId: payload.tenantId,
-            name: payload.name,
-            description: payload.description,
-            isActive: payload.isActive ?? true,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { id: brandId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalBrands"],
-    }),
-
-    updateLocalBrand: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(brands)
-            .set({
-              ...payload,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(brands.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalBrands", id },
-        "LocalBrands",
-      ],
-    }),
-
-    deleteLocalBrand: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          await db
-            .update(brands)
-            .set({
-              isActive: false,
-              syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(brands.id, id));
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalBrands", id },
-        "LocalBrands",
-        "LocalProducts",
-      ],
-    }),
-
-    // ============================================
-    // 5. CUSTOMERS
-    // ============================================
-    getLocalCustomers: builder.query({
-      async queryFn({
-        search,
-        tier,
-        isActive,
-      }: {
-        search?: string;
-        tier?: string;
-        isActive?: boolean;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(customers)
-            .orderBy(desc(customers.createdAt))
-            .$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(customers.isActive, isActive));
-          }
-          if (search) {
-            query = query.where(
-              sql`${customers.name} LIKE ${`%${search}%`} OR ${customers.code} LIKE ${`%${search}%`} OR ${customers.phone} LIKE ${`%${search}%`}`,
-            );
-          }
-          if (tier) {
-            query = query.where(eq(customers.tier, tier));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalCustomers"],
-    }),
-
-    getLocalCustomerById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(customers)
-            .where(eq(customers.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalCustomers", id }],
-    }),
-
-    getLocalCustomerByPhone: builder.query({
-      async queryFn(phone: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(customers)
-            .where(eq(customers.phone, phone));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalCustomers"],
-    }),
-
-    createLocalCustomer: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { createOfflineCustomer } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineCustomer(payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalCustomers"],
-    }),
-
-    updateLocalCustomer: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const { updateOfflineCustomer } =
-            await import("@/services/offline/repository");
-          const result = await updateOfflineCustomer(id, payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalCustomers", id },
-        "LocalCustomers",
-      ],
-    }),
-
-    deleteLocalCustomer: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const { deleteOfflineCustomer } =
-            await import("@/services/offline/repository");
-          await deleteOfflineCustomer(id);
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalCustomers", id },
-        "LocalCustomers",
-      ],
-    }),
-
-    // ============================================
-    // 6. STORES
-    // ============================================
-    getLocalStores: builder.query({
-      async queryFn({ isActive }: { isActive?: boolean } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db.select().from(stores).$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(stores.isActive, isActive));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalStores"],
-    }),
-
-    getLocalStoreById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(stores)
-            .where(eq(stores.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalStores", id }],
-    }),
-
-    createLocalStore: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { createOfflineStore } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineStore(payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalStores"],
-    }),
-
-    updateLocalStore: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const { updateOfflineStore } =
-            await import("@/services/offline/repository");
-          const result = await updateOfflineStore(id, payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalStores", id },
-        "LocalStores",
-      ],
-    }),
-
-    deleteLocalStore: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const { deleteOfflineStore } =
-            await import("@/services/offline/repository");
-          await deleteOfflineStore(id);
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalStores", id },
-        "LocalStores",
-        "LocalInventory",
-      ],
-    }),
-
-    // ============================================
-    // 7. STAFF
-    // ============================================
-    // getLocalStaff: builder.query({
-    //   async queryFn({
-    //     storeId,
-    //     isActive,
-    //     role,
-    //   }: { storeId?: string; isActive?: boolean; role?: string } = {}) {
-    //     try {
-    //       const db = getOfflineDb();
-    //       let query = db
-    //         .select()
-    //         .from(staff)
-    //         .orderBy(desc(staff.createdAt))
-    //         .$dynamic();
-
-    //       if (isActive !== undefined) {
-    //         query = query.where(eq(staff.isActive, isActive));
-    //       }
-    //       if (storeId) {
-    //         query = query.where(eq(staff.storeId, storeId));
-    //       }
-    //       if (role) {
-    //         query = query.where(eq(staff.role, role));
-    //       }
-
-    //       const result = await query;
-    //       return { data: result };
-    //     } catch (error) {
-    //       return { error: { message: (error as Error).message } };
-    //     }
-    //   },
-    //   providesTags: ["LocalStaff"],
-    // }),
-
-    getLocalStaff: builder.query({
-      async queryFn({
-        storeId,
-        isActive,
-        role,
-      }: { storeId?: string; isActive?: boolean; role?: string } = {}) {
-        console.log("payload", storeId, isActive, role);
-        try {
-          const db = getOfflineDb();
-          let query = db.select().from(staff).$dynamic();
-          if (storeId) {
-            query = query.where(eq(staff.storeId, payload.storeId));
-          }
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalStaff"],
-    }),
-
-    getLocalStaffById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(staff)
-            .where(eq(staff.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalStaff", id }],
-    }),
-
-    createLocalStaff: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const staffId = createLocalId("stf");
-
-          await db.insert(staff).values({
-            id: staffId,
-            tenantId: payload.tenantId,
-            storeId: payload.storeId,
-            username: payload.username,
-            email: payload.email,
-            name: payload.name,
-            role: payload.role || "CASHIER",
-            permissions: payload.permissions || [],
-            isActive: payload.isActive ?? true,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { id: staffId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalStaff"],
-    }),
-
-    updateLocalStaff: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(staff)
-            .set({
-              ...payload,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(staff.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalStaff", id },
-        "LocalStaff",
-      ],
-    }),
-
-    deleteLocalStaff: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          await db
-            .update(staff)
-            .set({
-              isActive: false,
-              syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(staff.id, id));
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalStaff", id },
-        "LocalStaff",
-      ],
-    }),
-
-    // ============================================
-    // 8. SUPPLIERS
-    // ============================================
-    getLocalSuppliers: builder.query({
-      async queryFn({
-        storeId,
-        isActive,
-        search,
-      }: { storeId?: string; isActive?: boolean; search?: string } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(suppliers)
-            .orderBy(desc(suppliers.createdAt))
-            .$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(suppliers.isActive, isActive));
-          }
-          if (storeId) {
-            query = query.where(eq(suppliers.storeId, storeId));
-          }
-          if (search) {
-            query = query.where(
-              sql`${suppliers.name} LIKE ${`%${search}%`} OR ${suppliers.code} LIKE ${`%${search}%`} OR ${suppliers.phone} LIKE ${`%${search}%`}`,
-            );
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalSuppliers"],
-    }),
-
-    getLocalSupplierById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(suppliers)
-            .where(eq(suppliers.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalSuppliers", id }],
-    }),
-
-    createLocalSupplier: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const supplierId = createLocalId("sup");
-
-          await db.insert(suppliers).values({
-            id: supplierId,
-            tenantId: payload.tenantId,
-            storeId: payload.storeId,
-            code: payload.code,
-            name: payload.name,
-            contactName: payload.contactName,
-            phone: payload.phone,
-            email: payload.email,
-            address: payload.address,
-            taxNumber: payload.taxNumber,
-            paymentTerms: payload.paymentTerms,
-            creditLimit: payload.creditLimit,
-            currentBalance: payload.currentBalance || 0,
-            isActive: payload.isActive ?? true,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { id: supplierId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalSuppliers"],
-    }),
-
-    updateLocalSupplier: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(suppliers)
-            .set({
-              ...payload,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(suppliers.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalSuppliers", id },
-        "LocalSuppliers",
-      ],
-    }),
-
-    deleteLocalSupplier: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          await db
-            .update(suppliers)
-            .set({
-              isActive: false,
-              syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(suppliers.id, id));
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalSuppliers", id },
-        "LocalSuppliers",
-      ],
-    }),
-
-    // ============================================
-    // 9. SESSIONS
-    // ============================================
-    getLocalSessions: builder.query({
-      async queryFn({
-        storeId,
-        status,
-        userId,
-      }: {
-        storeId?: string;
-        status?: string;
-        userId?: string;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(sessions)
-            .orderBy(desc(sessions.createdAt))
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(sessions.storeId, storeId));
-          }
-          if (status) {
-            query = query.where(eq(sessions.status, status));
-          }
-          if (userId) {
-            query = query.where(eq(sessions.userId, userId));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalSessions"],
-    }),
-
-    getLocalSessionById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(sessions)
-            .where(eq(sessions.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalSessions", id }],
-    }),
-
-    // getActiveSession: builder.query({
-    //   async queryFn({ userId, storeId }: { userId: string; storeId?: string }) {
-    //     try {
-    //       const db = getOfflineDb();
-    //       let query = db
-    //         .select()
-    //         .from(sessions)
-    //         .where(
-    //           and(eq(sessions.userId, userId), eq(sessions.status, "OPEN")),
-    //         )
-    //         .$dynamic();
-
-    //       if (storeId) {
-    //         query = query.where(eq(sessions.storeId, storeId));
-    //       }
-
-    //       const [result] = await query;
-    //       return { data: result };
-    //     } catch (error) {
-    //       return { error: { message: (error as Error).message } };
-    //     }
-    //   },
-    //   providesTags: ["LocalSessions"],
-    // }),
-
-    getActiveSession: builder.query({
-      async queryFn({ userId, storeId }: { userId: string; storeId?: string }) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(sessions)
-            .where(
-              and(eq(sessions.userId, userId), eq(sessions.status, "OPEN")),
-            )
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(sessions.storeId, storeId));
-          }
-
-          const [result] = await query;
-          // ✅ Return null instead of undefined when no session found
-          return { data: result || null };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalSessions"],
-    }),
-
-    openLocalSession: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { openOfflineSession } =
-            await import("@/services/offline/repository");
-          const result = await openOfflineSession(payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalSessions"],
-    }),
-
-    closeLocalSession: builder.mutation({
-      async queryFn({ sessionId, data }: { sessionId: string; data: any }) {
-        try {
-          const { closeOfflineSession } =
-            await import("@/services/offline/repository");
-          const result = await closeOfflineSession(sessionId, data);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { sessionId }) => [
-        { type: "LocalSessions", id: sessionId },
-        "LocalSessions",
-      ],
-    }),
-    // by me
-    // ✅ FIX: Correctly implement createLocalOrder
-    createLocalOrder: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          // Dynamic import to avoid circular dependencies
-          const { createOfflineOrder } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineOrder(payload);
-          return { data: result };
-        } catch (error) {
-          console.error("❌ createLocalOrder error:", error);
-          return {
-            error: {
-              message: (error as Error).message || "Failed to create order",
-              data: (error as any)?.data,
-            },
-          };
-        }
-      },
-      invalidatesTags: ["LocalOrders", "LocalInventory", "LocalCustomers"],
-    }),
-
-    // ✅ FIX: Correctly implement createLocalInventoryMovement
-    createLocalInventoryMovement: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { createOfflineInventoryMovement } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineInventoryMovement(payload);
-          return { data: result };
-        } catch (error) {
-          console.error("❌ createLocalInventoryMovement error:", error);
-          return {
-            error: {
-              message:
-                (error as Error).message ||
-                "Failed to create inventory movement",
-              data: (error as any)?.data,
-            },
-          };
-        }
-      },
-      invalidatesTags: [
-        "LocalInventoryMovements",
-        "LocalInventory",
-        "LocalProducts",
-      ],
-    }),
-
-    // ============================================
-    // 10. ORDERS
-    // ============================================
-    getLocalOrders: builder.query({
-      async queryFn({
-        storeId,
-        status,
-        sessionId,
-        customerId,
-        page,
-        limit,
-      }: {
-        storeId?: string;
-        status?: string;
-        sessionId?: string;
-        customerId?: string;
-        page?: number;
-        limit?: number;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(orders)
-            .orderBy(desc(orders.createdAt))
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(orders.storeId, storeId));
-          }
-          if (status) {
-            query = query.where(eq(orders.status, status));
-          }
-          if (sessionId) {
-            query = query.where(eq(orders.sessionId, sessionId));
-          }
-          if (customerId) {
-            query = query.where(eq(orders.customerId, customerId));
-          }
-
-          if (page && limit) {
-            query = query.limit(limit).offset((page - 1) * limit);
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalOrders"],
-    }),
-
-    getLocalOrderById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [order] = await db
-            .select()
-            .from(orders)
-            .where(eq(orders.id, id));
-
-          if (!order) {
-            return { data: null };
-          }
-
-          const items = await db
-            .select()
-            .from(orderItems)
-            .where(eq(orderItems.orderId, id));
-
-          return { data: { ...order, items } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalOrders", id }],
-    }),
-
-    createLocalOrder: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { createOfflineOrder } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineOrder(payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalOrders", "LocalInventory", "LocalCustomers"],
-    }),
-
-    updateLocalOrderStatus: builder.mutation({
-      async queryFn({ id, status }: { id: string; status: string }) {
-        try {
-          const { updateOfflineOrderStatus } =
-            await import("@/services/offline/repository");
-          const result = await updateOfflineOrderStatus(id, status);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalOrders", id },
-        "LocalOrders",
-      ],
-    }),
-
-    deleteLocalOrder: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const { deleteOfflineOrder } =
-            await import("@/services/offline/repository");
-          await deleteOfflineOrder(id);
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalOrders", id },
-        "LocalOrders",
-        "LocalInventory",
-      ],
-    }),
-
-    // ============================================
-    // 11. INVENTORY
-    // ============================================
-    getLocalInventory: builder.query({
-      async queryFn({
-        storeId,
-        productId,
-        variantId,
-      }: {
-        storeId?: string;
-        productId?: string;
-        variantId?: string;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db.select().from(inventory).$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
-          }
-          if (productId) {
-            query = query.where(eq(inventory.productId, productId));
-          }
-          if (variantId) {
-            query = query.where(eq(inventory.variantId, variantId));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalInventory"],
-    }),
-
-    getLocalInventoryByProduct: builder.query({
-      async queryFn({
-        productId,
-        storeId,
-      }: {
-        productId: string;
-        storeId?: string;
-      }) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.productId, productId))
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalInventory"],
-    }),
-
-    getLocalInventoryByVariant: builder.query({
-      async queryFn({
-        variantId,
-        storeId,
-      }: {
-        variantId: string;
-        storeId?: string;
-      }) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.variantId, variantId))
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalInventory"],
-    }),
-
-    getLocalInventoryItem: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalInventory", id }],
-    }),
-
-    // ============================================
-    // 12. INVENTORY MOVEMENTS
-    // ============================================
-    getLocalInventoryMovements: builder.query({
-      async queryFn({
-        storeId,
-        type,
-        productId,
-        variantId,
-        page,
-        limit,
-      }: {
-        storeId?: string;
-        type?: string;
-        productId?: string;
-        variantId?: string;
-        page?: number;
-        limit?: number;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(inventoryMovements)
-            .orderBy(desc(inventoryMovements.createdAt))
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(inventoryMovements.storeId, storeId));
-          }
-          if (type) {
-            query = query.where(eq(inventoryMovements.type, type));
-          }
-          if (productId) {
-            query = query.where(eq(inventoryMovements.productId, productId));
-          }
-          if (variantId) {
-            query = query.where(eq(inventoryMovements.variantId, variantId));
-          }
-
-          if (page && limit) {
-            query = query.limit(limit).offset((page - 1) * limit);
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalInventoryMovements"],
-    }),
-
-    createLocalInventoryMovement: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { createOfflineInventoryMovement } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineInventoryMovement(payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: [
-        "LocalInventoryMovements",
-        "LocalInventory",
-        "LocalProducts",
-      ],
-    }),
-
-    adjustLocalStock: builder.mutation({
-      async queryFn(payload: {
-        productId: string;
-        storeId: string;
-        variantId?: string;
-        newQuantity: number;
-        reason?: string;
-        tenantId?: string;
-      }) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          let query = db
-            .select()
-            .from(inventory)
-            .where(
-              and(
-                eq(inventory.productId, payload.productId),
-                eq(inventory.storeId, payload.storeId),
-              ),
-            )
-            .$dynamic();
-
-          if (payload.variantId) {
-            query = query.where(eq(inventory.variantId, payload.variantId));
-          } else {
-            query = query.where(sql`${inventory.variantId} IS NULL`);
-          }
-
-          const [existingInventory] = await query;
-
-          if (!existingInventory) {
-            return {
-              error: {
-                message: `Inventory not found for product ${payload.productId} in store ${payload.storeId}`,
-              },
-            };
-          }
-
-          const currentQuantity = existingInventory.quantity;
-          const diff = payload.newQuantity - currentQuantity;
-
-          if (diff === 0) {
-            return {
-              data: {
-                ...existingInventory,
-                message: "No change in quantity",
-              },
-            };
-          }
-
-          await db
-            .update(inventory)
-            .set({
-              quantity: payload.newQuantity,
-              updatedAt: now,
-              syncStatus: "pending",
-              version: (existingInventory.version || 0) + 1,
-            })
-            .where(eq(inventory.id, existingInventory.id));
-
-          const { createLocalId } = await import("@/services/offline/ids");
-          const movementId = createLocalId("mov");
-          const movementType = diff > 0 ? "IN" : "OUT";
-
-          await db.insert(inventoryMovements).values({
-            id: movementId,
-            tenantId: payload.tenantId || existingInventory.tenantId,
-            storeId: payload.storeId,
-            productId: payload.productId,
-            variantId: payload.variantId || null,
-            quantity: Math.abs(diff),
-            type: movementType,
-            referenceId: `adj-${Date.now()}`,
-            referenceType: "STOCK_ADJUSTMENT",
-            reason:
-              payload.reason ??
-              `Stock adjusted from ${currentQuantity} to ${payload.newQuantity}`,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          const [updatedInventory] = await db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.id, existingInventory.id));
-
-          await db.insert(syncOutbox).values({
-            id: createLocalId("outbox"),
-            entity: "inventory",
-            entityId: updatedInventory.id,
-            operation: "update",
-            endpoint: `/api/tenant/inventory/${updatedInventory.id}`,
-            method: "PUT",
-            payload: {
-              id: updatedInventory.id,
-              quantity: updatedInventory.quantity,
-              version: updatedInventory.version,
-            },
-            status: "pending",
-            attempts: 0,
-            nextAttemptAt: now,
-            lastError: null,
-            createdAt: now,
-            updatedAt: now,
-          });
-
-          await db.insert(syncOutbox).values({
-            id: createLocalId("outbox"),
-            entity: "inventory_movements",
-            entityId: movementId,
-            operation: "create",
-            endpoint: "/api/tenant/inventory/movements",
-            method: "POST",
-            payload: {
-              tenantId: payload.tenantId || existingInventory.tenantId,
-              storeId: payload.storeId,
-              productId: payload.productId,
-              variantId: payload.variantId || null,
-              quantity: Math.abs(diff),
-              type: movementType,
-              referenceId: `adj-${Date.now()}`,
-              referenceType: "STOCK_ADJUSTMENT",
-              reason:
-                payload.reason ??
-                `Stock adjusted from ${currentQuantity} to ${payload.newQuantity}`,
-            },
-            status: "pending",
-            attempts: 0,
-            nextAttemptAt: now,
-            lastError: null,
-            createdAt: now,
-            updatedAt: now,
-          });
-
-          return {
-            data: updatedInventory,
-          };
-        } catch (error) {
-          console.error("❌ Adjust stock failed:", error);
-          return {
-            error: {
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "Failed to adjust stock",
-            },
-          };
-        }
-      },
-      invalidatesTags: [
-        "LocalInventory",
-        "LocalInventoryMovements",
-        "LocalProducts",
-      ],
-    }),
-
-    // ============================================
-    // 13. INVENTORY COUNTS
-    // ============================================
-    getLocalInventoryCounts: builder.query({
-      async queryFn({
-        storeId,
-        status,
-        page,
-        limit,
-      }: {
-        storeId?: string;
-        status?: string;
-        page?: number;
-        limit?: number;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(inventoryCounts)
-            .orderBy(desc(inventoryCounts.createdAt))
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(inventoryCounts.storeId, storeId));
-          }
-          if (status) {
-            query = query.where(eq(inventoryCounts.status, status));
-          }
-
-          if (page && limit) {
-            query = query.limit(limit).offset((page - 1) * limit);
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalInventoryCounts"],
-    }),
-
-    getLocalInventoryCountById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [count] = await db
-            .select()
-            .from(inventoryCounts)
-            .where(eq(inventoryCounts.id, id));
-
-          if (!count) {
-            return { data: null };
-          }
-
-          const items = await db
-            .select()
-            .from(inventoryCountItems)
-            .where(eq(inventoryCountItems.countId, id));
-
-          return { data: { ...count, items } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [
-        { type: "LocalInventoryCounts", id },
-      ],
-    }),
-
-    createLocalInventoryCount: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const { createOfflineInventoryCount } =
-            await import("@/services/offline/repository");
-          const result = await createOfflineInventoryCount(payload);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: [
-        "LocalInventoryCounts",
-        "LocalInventory",
-        "LocalProducts",
-      ],
-    }),
-
-    // ============================================
-    // 14. PRICE HISTORY
-    // ============================================
-    getLocalPriceHistory: builder.query({
-      async queryFn({
-        productId,
-        variantId,
-        limit,
-      }: {
-        productId?: string;
-        variantId?: string;
-        limit?: number;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(priceHistory)
-            .orderBy(desc(priceHistory.createdAt))
-            .$dynamic();
-
-          if (productId) {
-            query = query.where(eq(priceHistory.productId, productId));
-          }
-          if (variantId) {
-            query = query.where(eq(priceHistory.variantId, variantId));
-          }
-
-          if (limit) {
-            query = query.limit(limit);
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalPriceHistory"],
-    }),
-
-    createLocalPriceHistory: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          await db.insert(priceHistory).values({
-            id: createLocalId("ph"),
-            tenantId: payload.tenantId,
-            productId: payload.productId,
-            variantId: payload.variantId,
-            oldPrice: payload.oldPrice,
-            newPrice: payload.newPrice,
-            changedBy: payload.changedBy,
-            reason: payload.reason,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-          });
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: [
-        "LocalPriceHistory",
-        "LocalProducts",
-        "LocalProductVariants",
-      ],
-    }),
-
-    // ============================================
-    // 15. PROMOTIONS
-    // ============================================
-    getLocalPromotions: builder.query({
-      async queryFn({
-        isActive,
-        search,
-      }: { isActive?: boolean; search?: string } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(promotions)
-            .orderBy(desc(promotions.createdAt))
-            .$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(promotions.isActive, isActive));
-          }
-          if (search) {
-            query = query.where(
-              sql`${promotions.name} LIKE ${`%${search}%`} OR ${promotions.code} LIKE ${`%${search}%`}`,
-            );
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalPromotions"],
-    }),
-
-    getLocalPromotionById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(promotions)
-            .where(eq(promotions.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalPromotions", id }],
-    }),
-
-    createLocalPromotion: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const promotionId = createLocalId("pro");
-
-          await db.insert(promotions).values({
-            id: promotionId,
-            tenantId: payload.tenantId,
-            code: payload.code,
-            name: payload.name,
-            description: payload.description,
-            discountType: payload.discountType,
-            discountValue: payload.discountValue,
-            minPurchase: payload.minPurchase,
-            startDate: payload.startDate,
-            endDate: payload.endDate,
-            usageLimit: payload.usageLimit,
-            perUserLimit: payload.perUserLimit,
-            isActive: payload.isActive ?? true,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { id: promotionId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalPromotions"],
-    }),
-
-    updateLocalPromotion: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(promotions)
-            .set({
-              ...payload,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(promotions.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalPromotions", id },
-        "LocalPromotions",
-      ],
-    }),
-
-    deleteLocalPromotion: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          await db
-            .update(promotions)
-            .set({
-              isActive: false,
-              syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(promotions.id, id));
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalPromotions", id },
-        "LocalPromotions",
-      ],
-    }),
-    // ============================================
-    // FILE: services/features/offline/localApi.ts
-    // ============================================
-
-    // ============================================
-    // 16. TAX RATES
-    // ============================================
-    getLocalTaxRates: builder.query({
-      async queryFn({ isActive }: { isActive?: boolean } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db.select().from(taxRates).$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(taxRates.isActive, isActive));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalTaxRates"],
-    }),
-
-    getLocalTaxRateById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(taxRates)
-            .where(eq(taxRates.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalTaxRates", id }],
-    }),
-
-    createLocalTaxRate: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const taxRateId = createLocalId("tax");
-
-          await db.insert(taxRates).values({
-            id: taxRateId,
-            tenantId: payload.tenantId,
-            name: payload.name,
-            rate: payload.rate,
-            isCompound: payload.isCompound ?? false,
-            appliesTo: payload.appliesTo || [],
-            validFrom: payload.validFrom || now,
-            validTo: payload.validTo,
-            isActive: payload.isActive ?? true,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { id: taxRateId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalTaxRates"],
-    }),
-
-    updateLocalTaxRate: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(taxRates)
-            .set({
-              ...payload,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(taxRates.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalTaxRates", id },
-        "LocalTaxRates",
-      ],
-    }),
-
-    deleteLocalTaxRate: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          await db
-            .update(taxRates)
-            .set({
-              isActive: false,
-              syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(taxRates.id, id));
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalTaxRates", id },
-        "LocalTaxRates",
-      ],
-    }),
-
-    // ============================================
-    // 17. EXPENSES
-    // ============================================
-    getLocalExpenseCategories: builder.query({
-      async queryFn({ isActive }: { isActive?: boolean } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db.select().from(expenseCategories).$dynamic();
-
-          if (isActive !== undefined) {
-            query = query.where(eq(expenseCategories.isActive, isActive));
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalExpenseCategories"],
-    }),
-
-    getLocalExpenses: builder.query({
-      async queryFn({
-        storeId,
-        categoryId,
-        startDate,
-        endDate,
-        page,
-        limit,
-      }: {
-        storeId?: string;
-        categoryId?: string;
-        startDate?: string;
-        endDate?: string;
-        page?: number;
-        limit?: number;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(expenses)
-            .orderBy(desc(expenses.expenseDate))
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(expenses.storeId, storeId));
-          }
-          if (categoryId) {
-            query = query.where(eq(expenses.categoryId, categoryId));
-          }
-          if (startDate) {
-            query = query.where(sql`${expenses.expenseDate} >= ${startDate}`);
-          }
-          if (endDate) {
-            query = query.where(sql`${expenses.expenseDate} <= ${endDate}`);
-          }
-
-          if (page && limit) {
-            query = query.limit(limit).offset((page - 1) * limit);
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalExpenses"],
-    }),
-
-    getLocalExpenseById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(expenses)
-            .where(eq(expenses.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalExpenses", id }],
-    }),
-
-    createLocalExpense: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const expenseId = createLocalId("exp");
-
-          await db.insert(expenses).values({
-            id: expenseId,
-            tenantId: payload.tenantId,
-            storeId: payload.storeId,
-            categoryId: payload.categoryId,
-            amount: payload.amount,
-            description: payload.description,
-            receiptUrl: payload.receiptUrl,
-            expenseDate: payload.expenseDate || now,
-            createdById: payload.createdById,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { id: expenseId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalExpenses", "LocalExpenseCategories"],
-    }),
-
-    updateLocalExpense: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(expenses)
-            .set({
-              ...payload,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(expenses.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalExpenses", id },
-        "LocalExpenses",
-      ],
-    }),
-
-    deleteLocalExpense: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          await db
-            .update(expenses)
-            .set({
-              syncStatus: "pending_delete",
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(expenses.id, id));
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalExpenses", id },
-        "LocalExpenses",
-      ],
-    }),
-
-    // ============================================
-    // 18. CASH REGISTERS
-    // ============================================
-    getLocalCashRegisters: builder.query({
-      async queryFn({
-        storeId,
-        status,
-        page,
-        limit,
-      }: {
-        storeId?: string;
-        status?: string;
-        page?: number;
-        limit?: number;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(cashRegisters)
-            .orderBy(desc(cashRegisters.createdAt))
-            .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(cashRegisters.storeId, storeId));
-          }
-          if (status) {
-            query = query.where(eq(cashRegisters.status, status));
-          }
-
-          if (page && limit) {
-            query = query.limit(limit).offset((page - 1) * limit);
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalCashRegisters"],
-    }),
-
-    getLocalCashRegisterById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(cashRegisters)
-            .where(eq(cashRegisters.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalCashRegisters", id }],
-    }),
-
-    createLocalCashRegister: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const registerId = createLocalId("reg");
-
-          await db.insert(cashRegisters).values({
-            id: registerId,
-            storeId: payload.storeId,
-            tenantId: payload.tenantId,
-            name: payload.name,
-            status: payload.status || "CLOSED",
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { id: registerId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalCashRegisters"],
-    }),
-
-    updateLocalCashRegister: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(cashRegisters)
-            .set({
-              ...payload,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(cashRegisters.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalCashRegisters", id },
-        "LocalCashRegisters",
-      ],
-    }),
-
-    deleteLocalCashRegister: builder.mutation({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          await db
-            .update(cashRegisters)
-            .set({
-              status: "CLOSED",
-              syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
-            })
-            .where(eq(cashRegisters.id, id));
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, id) => [
-        { type: "LocalCashRegisters", id },
-        "LocalCashRegisters",
-      ],
-    }),
-
-    // ============================================
-    // 19. GIFT CARDS
-    // ============================================
-    getLocalGiftCards: builder.query({
-      async queryFn({
-        customerId,
-        status,
-        search,
-        page,
-        limit,
-      }: {
-        customerId?: string;
-        status?: string;
-        search?: string;
-        page?: number;
-        limit?: number;
-      } = {}) {
-        try {
-          const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(giftCards)
-            .orderBy(desc(giftCards.createdAt))
-            .$dynamic();
-
-          if (customerId) {
-            query = query.where(eq(giftCards.customerId, customerId));
-          }
-          if (status) {
-            query = query.where(eq(giftCards.status, status));
-          }
-          if (search) {
-            query = query.where(
-              sql`${giftCards.cardNumber} LIKE ${`%${search}%`}`,
-            );
-          }
-
-          if (page && limit) {
-            query = query.limit(limit).offset((page - 1) * limit);
-          }
-
-          const result = await query;
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalGiftCards"],
-    }),
-
-    getLocalGiftCardById: builder.query({
-      async queryFn(id: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(giftCards)
-            .where(eq(giftCards.id, id));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: (result, error, id) => [{ type: "LocalGiftCards", id }],
-    }),
-
-    getLocalGiftCardByNumber: builder.query({
-      async queryFn(cardNumber: string) {
-        try {
-          const db = getOfflineDb();
-          const [result] = await db
-            .select()
-            .from(giftCards)
-            .where(eq(giftCards.cardNumber, cardNumber));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalGiftCards"],
-    }),
-
-    createLocalGiftCard: builder.mutation({
-      async queryFn(payload: any) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const giftCardId = createLocalId("gft");
-
-          await db.insert(giftCards).values({
-            id: giftCardId,
-            tenantId: payload.tenantId,
-            customerId: payload.customerId,
-            cardNumber:
-              payload.cardNumber ||
-              `GC-${Date.now().toString(36).toUpperCase()}`,
-            pinCode: payload.pinCode,
-            initialAmount: payload.initialAmount,
-            currentBalance: payload.initialAmount,
-            expiresAt: payload.expiresAt,
-            status: payload.status || "ACTIVE",
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { id: giftCardId, ...payload } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalGiftCards", "LocalCustomers"],
-    }),
-
-    updateLocalGiftCardStatus: builder.mutation({
-      async queryFn({ id, status }: { id: string; status: string }) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-
-          await db
-            .update(giftCards)
-            .set({
-              status,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(giftCards.id, id));
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalGiftCards", id },
-        "LocalGiftCards",
-      ],
-    }),
-
-    reloadLocalGiftCard: builder.mutation({
-      async queryFn({ id, amount }: { id: string; amount: number }) {
-        try {
-          const db = getOfflineDb();
-          const now = new Date().toISOString();
-          const { createLocalId } = await import("@/services/offline/ids");
-
-          const [giftCard] = await db
-            .select()
-            .from(giftCards)
-            .where(eq(giftCards.id, id));
-
-          if (!giftCard) {
-            return { error: { message: "Gift card not found" } };
-          }
-
-          const newBalance = giftCard.currentBalance + amount;
-
-          await db
-            .update(giftCards)
-            .set({
-              currentBalance: newBalance,
-              updatedAt: now,
-              syncStatus: "pending",
-            })
-            .where(eq(giftCards.id, id));
-
-          await db.insert(giftCardTransactions).values({
-            id: createLocalId("gftt"),
-            tenantId: giftCard.tenantId,
-            giftCardId: id,
-            amount: amount,
-            type: "RELOAD",
-            referenceId: `reload-${Date.now()}`,
-            syncStatus: "pending",
-            createdAt: now,
-            updatedAt: now,
-            lastSyncedAt: null,
-          });
-
-          return { data: { success: true, newBalance } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: (result, error, { id }) => [
-        { type: "LocalGiftCards", id },
-        "LocalGiftCards",
-        "LocalGiftCardTransactions",
-      ],
-    }),
-
-    // ============================================
-    // 20. SYNC OUTBOX STATUS
-    // ============================================
-    getPendingSyncItems: builder.query({
-      async queryFn() {
-        try {
-          const db = getOfflineDb();
-          const result = await db
-            .select()
-            .from(syncOutbox)
-            .where(eq(syncOutbox.status, "pending"))
-            .orderBy(syncOutbox.createdAt);
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalSyncOutbox"],
-    }),
-
-    getFailedSyncItems: builder.query({
-      async queryFn() {
-        try {
-          const db = getOfflineDb();
-          const result = await db
-            .select()
-            .from(syncOutbox)
-            .where(eq(syncOutbox.status, "failed"))
-            .orderBy(desc(syncOutbox.updatedAt));
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalSyncOutbox"],
-    }),
-
-    getSyncQueueSummary: builder.query({
-      async queryFn() {
-        try {
-          const { getSyncQueueSummary } =
-            await import("@/services/offline/repository");
-          const result = await getSyncQueueSummary();
-          return { data: result };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      providesTags: ["LocalSyncOutbox"],
-    }),
-
-    retryFailedSyncItems: builder.mutation({
-      async queryFn(itemIds?: string[]) {
-        try {
-          const { retryAllFailedOutboxItems, retryOutboxItem } =
-            await import("@/services/offline/repository");
-
-          if (itemIds && itemIds.length > 0) {
-            for (const id of itemIds) {
-              await retryOutboxItem(id);
-            }
-          } else {
-            await retryAllFailedOutboxItems();
-          }
-
-          return { data: { success: true } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalSyncOutbox"],
-    }),
-
-    clearSyncedOutboxItems: builder.mutation({
-      async queryFn() {
-        try {
-          const { clearSyncedOutboxItems } =
-            await import("@/services/offline/repository");
-          const count = await clearSyncedOutboxItems();
-          return { data: { cleared: count } };
-        } catch (error) {
-          return { error: { message: (error as Error).message } };
-        }
-      },
-      invalidatesTags: ["LocalSyncOutbox"],
-    }),
-  }),
-});
-
-// ============================================
-// HOOKS EXPORTS
-// ============================================
-export const {
-  // Products
-  useGetLocalProductsQuery,
-  useGetLocalProductByIdQuery,
-  useGetLocalProductByBarcodeQuery,
-  useGetLocalProductBySkuQuery,
-  useCreateLocalProductMutation,
-  useUpdateLocalProductMutation,
-  useDeleteLocalProductMutation,
-
-  // Product Variants
-  useGetLocalVariantsQuery,
-  useGetLocalVariantByIdQuery,
-  useGetLocalVariantByBarcodeQuery,
-  useCreateLocalVariantMutation,
-  useUpdateLocalVariantMutation,
-  useDeleteLocalVariantMutation,
-
-  // Categories
-  useGetLocalCategoriesQuery,
-  useGetLocalCategoryByIdQuery,
-  useCreateLocalCategoryMutation,
-  useUpdateLocalCategoryMutation,
-  useDeleteLocalCategoryMutation,
-
-  // Brands
-  useGetLocalBrandsQuery,
-  useGetLocalBrandByIdQuery,
-  useCreateLocalBrandMutation,
-  useUpdateLocalBrandMutation,
-  useDeleteLocalBrandMutation,
-
-  // Customers
-  useGetLocalCustomersQuery,
-  useGetLocalCustomerByIdQuery,
-  useGetLocalCustomerByPhoneQuery,
-  useCreateLocalCustomerMutation,
-  useUpdateLocalCustomerMutation,
-  useDeleteLocalCustomerMutation,
-
-  // Stores
-  useGetLocalStoresQuery,
-  useGetLocalStoreByIdQuery,
-  useCreateLocalStoreMutation,
-  useUpdateLocalStoreMutation,
-  useDeleteLocalStoreMutation,
-
-  // Staff
-  useGetLocalStaffQuery,
-  useGetLocalStaffByIdQuery,
-  useCreateLocalStaffMutation,
-  useUpdateLocalStaffMutation,
-  useDeleteLocalStaffMutation,
-
-  // Suppliers
-  useGetLocalSuppliersQuery,
-  useGetLocalSupplierByIdQuery,
-  useCreateLocalSupplierMutation,
-  useUpdateLocalSupplierMutation,
-  useDeleteLocalSupplierMutation,
-
-  // Sessions
-  useGetLocalSessionsQuery,
-  useGetLocalSessionByIdQuery,
-  useGetActiveSessionQuery,
-  useOpenLocalSessionMutation,
-  useCloseLocalSessionMutation,
-
-  // Orders
-  useGetLocalOrdersQuery,
-  useGetLocalOrderByIdQuery,
-  useCreateLocalOrderMutation,
-  useUpdateLocalOrderStatusMutation,
-  useDeleteLocalOrderMutation,
-
-  // Inventory
-  useGetLocalInventoryQuery,
-  useGetLocalInventoryByProductQuery,
-  useGetLocalInventoryByVariantQuery,
-  useGetLocalInventoryItemQuery,
-
-  // Inventory Movements
-  useGetLocalInventoryMovementsQuery,
-  useCreateLocalInventoryMovementMutation,
-
-  // Adjust Local Stock
-  useAdjustLocalStockMutation,
-
-  // Inventory Counts
-  useGetLocalInventoryCountsQuery,
-  useGetLocalInventoryCountByIdQuery,
-  useCreateLocalInventoryCountMutation,
-
-  // Price History
-  useGetLocalPriceHistoryQuery,
-  useCreateLocalPriceHistoryMutation,
-
-  // Promotions
-  useGetLocalPromotionsQuery,
-  useGetLocalPromotionByIdQuery,
-  useCreateLocalPromotionMutation,
-  useUpdateLocalPromotionMutation,
-  useDeleteLocalPromotionMutation,
-
-  // Tax Rates
-  useGetLocalTaxRatesQuery,
-  useGetLocalTaxRateByIdQuery,
-  useCreateLocalTaxRateMutation,
-  useUpdateLocalTaxRateMutation,
-  useDeleteLocalTaxRateMutation,
-
-  // Expenses
-  useGetLocalExpensesQuery,
-  useGetLocalExpenseByIdQuery,
-  useGetLocalExpenseCategoriesQuery,
-  useCreateLocalExpenseMutation,
-  useUpdateLocalExpenseMutation,
-  useDeleteLocalExpenseMutation,
-
-  // Cash Registers
-  useGetLocalCashRegistersQuery,
-  useGetLocalCashRegisterByIdQuery,
-  useCreateLocalCashRegisterMutation,
-  useUpdateLocalCashRegisterMutation,
-  useDeleteLocalCashRegisterMutation,
-
-  // Gift Cards
-  useGetLocalGiftCardsQuery,
-  useGetLocalGiftCardByIdQuery,
-  useGetLocalGiftCardByNumberQuery,
-  useCreateLocalGiftCardMutation,
-  useUpdateLocalGiftCardStatusMutation,
-  useReloadLocalGiftCardMutation,
-
-  // Sync Outbox
-  useGetPendingSyncItemsQuery,
-  useGetFailedSyncItemsQuery,
-  useGetSyncQueueSummaryQuery,
-  useRetryFailedSyncItemsMutation,
-  useClearSyncedOutboxItemsMutation,
-} = localApi;
+// // ============================================
+// // FILE: services/offline/localApi.ts
+// // ============================================
+
+// import { getOfflineDb } from "@/services/offline/db";
+// import {
+//   categories,
+//   customers,
+//   inventory,
+//   inventoryCountItems,
+//   inventoryCounts,
+//   inventoryMovements,
+//   orderItems,
+//   orders,
+//   priceHistory,
+//   products,
+//   productVariants,
+//   sessions,
+//   staff,
+//   stores,
+//   suppliers,
+//   syncOutbox,
+//   brands,
+//   promotions,
+//   taxRates,
+//   expenses,
+//   expenseCategories,
+//   cashRegisters,
+//   giftCards,
+//   giftCardTransactions,
+//   wallets,
+//   walletTransactions,
+//   supplierPayments,
+//   purchaseOrders,
+//   purchaseOrderItems,
+//   stockTransfers,
+//   stockTransferItems,
+//   webhooks,
+//   apiKeys,
+//   notifications,
+//   tenantStoreSettings,
+//   auditLogs,
+// } from "@/services/offline/schema";
+// import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
+// import { and, desc, eq, sql } from "drizzle-orm";
+
+// // ============================================
+// // TAG TYPES
+// // ============================================
+// export type LocalTagTypes =
+//   | "LocalProducts"
+//   | "LocalProductVariants"
+//   | "LocalCategories"
+//   | "LocalBrands"
+//   | "LocalCustomers"
+//   | "LocalStores"
+//   | "LocalSessions"
+//   | "LocalOrders"
+//   | "LocalInventory"
+//   | "LocalInventoryMovements"
+//   | "LocalInventoryCounts"
+//   | "LocalPriceHistory"
+//   | "LocalSyncOutbox"
+//   | "LocalStaff"
+//   | "LocalSuppliers"
+//   | "LocalPromotions"
+//   | "LocalTaxRates"
+//   | "LocalExpenses"
+//   | "LocalExpenseCategories"
+//   | "LocalCashRegisters"
+//   | "LocalGiftCards"
+//   | "LocalGiftCardTransactions"
+//   | "LocalWallets"
+//   | "LocalWalletTransactions"
+//   | "LocalSupplierPayments"
+//   | "LocalPurchaseOrders"
+//   | "LocalPurchaseOrderItems"
+//   | "LocalStockTransfers"
+//   | "LocalStockTransferItems"
+//   | "LocalWebhooks"
+//   | "LocalApiKeys"
+//   | "LocalNotifications"
+//   | "LocalTenantStoreSettings"
+//   | "LocalAuditLogs";
+
+// // ============================================
+// // LOCAL API
+// // ============================================
+// export const localApi = createApi({
+//   reducerPath: "localApi",
+//   baseQuery: fakeBaseQuery<{ message: string }>(),
+//   tagTypes: [
+//     "LocalProducts",
+//     "LocalProductVariants",
+//     "LocalCategories",
+//     "LocalBrands",
+//     "LocalCustomers",
+//     "LocalStores",
+//     "LocalSessions",
+//     "LocalOrders",
+//     "LocalInventory",
+//     "LocalInventoryMovements",
+//     "LocalInventoryCounts",
+//     "LocalPriceHistory",
+//     "LocalSyncOutbox",
+//     "LocalStaff",
+//     "LocalSuppliers",
+//     "LocalPromotions",
+//     "LocalTaxRates",
+//     "LocalExpenses",
+//     "LocalExpenseCategories",
+//     "LocalCashRegisters",
+//     "LocalGiftCards",
+//     "LocalGiftCardTransactions",
+//     "LocalWallets",
+//     "LocalWalletTransactions",
+//     "LocalSupplierPayments",
+//     "LocalPurchaseOrders",
+//     "LocalPurchaseOrderItems",
+//     "LocalStockTransfers",
+//     "LocalStockTransferItems",
+//     "LocalWebhooks",
+//     "LocalApiKeys",
+//     "LocalNotifications",
+//     "LocalTenantStoreSettings",
+//     "LocalAuditLogs",
+//   ] as const,
+//   endpoints: (builder) => ({
+//     // ============================================
+//     // 1. PRODUCTS
+//     // ============================================
+//     getLocalProducts: builder.query({
+//       async queryFn({ storeId }: { storeId: string }) {
+//         try {
+//           const db = getOfflineDb();
+//           const result = await db
+//             .select()
+//             .from(products)
+//             .where(eq(products.storeId, storeId))
+//             .where(sql`${products.syncStatus} != 'pending_delete'`);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalProducts"],
+//     }),
+//     /*
+
+//      getLocalProducts: builder.query({
+//       async queryFn({
+//         search,
+//         categoryId,
+//         storeId,
+//         isActive,
+//       }: {
+//         search?: string;
+//         categoryId?: string;
+//         storeId?: string;
+//         isActive?: boolean;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(products)
+//             .where(sql`${products.syncStatus} != 'pending_delete'`)
+//             .orderBy(desc(products.createdAt))
+//             .$dynamic();
+
+//           if (search) {
+//             query = query.where(
+//               sql`${products.name} LIKE ${`%${search}%`} OR ${products.sku} LIKE ${`%${search}%`} OR ${products.barcode} LIKE ${`%${search}%`}`,
+//             );
+//           }
+//           if (categoryId) {
+//             query = query.where(eq(products.categoryId, categoryId));
+//           }
+//           if (storeId) {
+//             query = query.where(eq(products.storeId, storeId));
+//           }
+//           if (isActive !== undefined) {
+//             query = query.where(eq(products.isActive, isActive));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalProducts"],
+//     }),
+//     */
+
+//     getLocalProductById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(products)
+//             .where(eq(products.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalProducts", id }],
+//     }),
+
+//     getLocalProductByBarcode: builder.query({
+//       async queryFn(barcode: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(products)
+//             .where(eq(products.barcode, barcode));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalProducts"],
+//     }),
+
+//     getLocalProductBySku: builder.query({
+//       async queryFn(sku: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(products)
+//             .where(eq(products.sku, sku));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalProducts"],
+//     }),
+
+//     createLocalProduct: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { createOfflineProduct } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineProduct(payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: [
+//         "LocalProducts",
+//         "LocalProductVariants",
+//         "LocalInventory",
+//       ],
+//     }),
+
+//     updateLocalProduct: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const { updateOfflineProduct } =
+//             await import("@/services/offline/repository");
+//           const result = await updateOfflineProduct(id, payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalProducts", id },
+//         "LocalProducts",
+//       ],
+//     }),
+
+//     deleteLocalProduct: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const { deleteOfflineProduct } =
+//             await import("@/services/offline/repository");
+//           await deleteOfflineProduct(id);
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalProducts", id },
+//         "LocalProducts",
+//         "LocalInventory",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 2. PRODUCT VARIANTS
+//     // ============================================
+//     getLocalVariants: builder.query({
+//       async queryFn(productId?: string) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(productVariants)
+//             .where(eq(productVariants.isActive, true))
+//             .$dynamic();
+
+//           if (productId) {
+//             query = query.where(eq(productVariants.productId, productId));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalProductVariants"],
+//     }),
+
+//     getLocalVariantById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(productVariants)
+//             .where(eq(productVariants.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [
+//         { type: "LocalProductVariants", id },
+//       ],
+//     }),
+
+//     getLocalVariantByBarcode: builder.query({
+//       async queryFn(barcode: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(productVariants)
+//             .where(eq(productVariants.barcode, barcode));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalProductVariants"],
+//     }),
+
+//     createLocalVariant: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const variantId = createLocalId("var");
+
+//           await db.insert(productVariants).values({
+//             id: variantId,
+//             productId: payload.productId,
+//             tenantId: payload.tenantId,
+//             name: payload.name,
+//             sku: payload.sku,
+//             barcode: payload.barcode,
+//             price: payload.price,
+//             costPrice: payload.costPrice,
+//             color: payload.color,
+//             size: payload.size,
+//             weight: payload.weight,
+//             isActive: payload.isActive ?? true,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//           });
+
+//           return { data: { id: variantId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: [
+//         "LocalProductVariants",
+//         "LocalProducts",
+//         "LocalInventory",
+//       ],
+//     }),
+
+//     updateLocalVariant: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(productVariants)
+//             .set({
+//               ...payload,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(productVariants.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalProductVariants", id },
+//         "LocalProductVariants",
+//         "LocalProducts",
+//       ],
+//     }),
+
+//     deleteLocalVariant: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           await db
+//             .update(productVariants)
+//             .set({
+//               isActive: false,
+//               syncStatus: "pending",
+//               updatedAt: new Date().toISOString(),
+//             })
+//             .where(eq(productVariants.id, id));
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalProductVariants", id },
+//         "LocalProductVariants",
+//         "LocalInventory",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 3. CATEGORIES
+//     // ============================================
+//     getLocalCategories: builder.query({
+//       async queryFn({
+//         storeId,
+//         isActive,
+//       }: { storeId?: string; isActive?: boolean } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(categories)
+//             .orderBy(categories.sortOrder)
+//             .$dynamic();
+
+//           if (isActive !== undefined) {
+//             query = query.where(eq(categories.isActive, isActive));
+//           }
+//           if (storeId) {
+//             query = query.where(eq(categories.storeId, storeId));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalCategories"],
+//     }),
+
+//     getLocalCategoryById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(categories)
+//             .where(eq(categories.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalCategories", id }],
+//     }),
+
+//     createLocalCategory: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { createOfflineCategory } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineCategory(payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalCategories"],
+//     }),
+
+//     updateLocalCategory: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const { updateOfflineCategory } =
+//             await import("@/services/offline/repository");
+//           const result = await updateOfflineCategory(id, payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalCategories", id },
+//         "LocalCategories",
+//       ],
+//     }),
+
+//     deleteLocalCategory: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const { deleteOfflineCategory } =
+//             await import("@/services/offline/repository");
+//           await deleteOfflineCategory(id);
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalCategories", id },
+//         "LocalCategories",
+//         "LocalProducts",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 4. BRANDS
+//     // ============================================
+//     getLocalBrands: builder.query({
+//       async queryFn({ isActive }: { isActive?: boolean } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db.select().from(brands).orderBy(brands.name).$dynamic();
+
+//           if (isActive !== undefined) {
+//             query = query.where(eq(brands.isActive, isActive));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalBrands"],
+//     }),
+
+//     getLocalBrandById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(brands)
+//             .where(eq(brands.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalBrands", id }],
+//     }),
+
+//     createLocalBrand: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const brandId = createLocalId("brd");
+
+//           await db.insert(brands).values({
+//             id: brandId,
+//             tenantId: payload.tenantId,
+//             name: payload.name,
+//             description: payload.description,
+//             isActive: payload.isActive ?? true,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { id: brandId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalBrands"],
+//     }),
+
+//     updateLocalBrand: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(brands)
+//             .set({
+//               ...payload,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(brands.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalBrands", id },
+//         "LocalBrands",
+//       ],
+//     }),
+
+//     deleteLocalBrand: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           await db
+//             .update(brands)
+//             .set({
+//               isActive: false,
+//               syncStatus: "pending",
+//               updatedAt: new Date().toISOString(),
+//             })
+//             .where(eq(brands.id, id));
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalBrands", id },
+//         "LocalBrands",
+//         "LocalProducts",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 5. CUSTOMERS
+//     // ============================================
+//     getLocalCustomers: builder.query({
+//       async queryFn({
+//         search,
+//         tier,
+//         isActive,
+//       }: {
+//         search?: string;
+//         tier?: string;
+//         isActive?: boolean;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(customers)
+//             .orderBy(desc(customers.createdAt))
+//             .$dynamic();
+
+//           if (isActive !== undefined) {
+//             query = query.where(eq(customers.isActive, isActive));
+//           }
+//           if (search) {
+//             query = query.where(
+//               sql`${customers.name} LIKE ${`%${search}%`} OR ${customers.code} LIKE ${`%${search}%`} OR ${customers.phone} LIKE ${`%${search}%`}`,
+//             );
+//           }
+//           if (tier) {
+//             query = query.where(eq(customers.tier, tier));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalCustomers"],
+//     }),
+
+//     getLocalCustomerById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(customers)
+//             .where(eq(customers.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalCustomers", id }],
+//     }),
+
+//     getLocalCustomerByPhone: builder.query({
+//       async queryFn(phone: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(customers)
+//             .where(eq(customers.phone, phone));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalCustomers"],
+//     }),
+
+//     createLocalCustomer: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { createOfflineCustomer } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineCustomer(payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalCustomers"],
+//     }),
+
+//     updateLocalCustomer: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const { updateOfflineCustomer } =
+//             await import("@/services/offline/repository");
+//           const result = await updateOfflineCustomer(id, payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalCustomers", id },
+//         "LocalCustomers",
+//       ],
+//     }),
+
+//     deleteLocalCustomer: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const { deleteOfflineCustomer } =
+//             await import("@/services/offline/repository");
+//           await deleteOfflineCustomer(id);
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalCustomers", id },
+//         "LocalCustomers",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 6. STORES
+//     // ============================================
+//     getLocalStores: builder.query({
+//       async queryFn({ isActive }: { isActive?: boolean } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db.select().from(stores).$dynamic();
+
+//           if (isActive !== undefined) {
+//             query = query.where(eq(stores.isActive, isActive));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalStores"],
+//     }),
+
+//     getLocalStoreById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(stores)
+//             .where(eq(stores.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalStores", id }],
+//     }),
+
+//     createLocalStore: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { createOfflineStore } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineStore(payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalStores"],
+//     }),
+
+//     updateLocalStore: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const { updateOfflineStore } =
+//             await import("@/services/offline/repository");
+//           const result = await updateOfflineStore(id, payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalStores", id },
+//         "LocalStores",
+//       ],
+//     }),
+
+//     deleteLocalStore: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const { deleteOfflineStore } =
+//             await import("@/services/offline/repository");
+//           await deleteOfflineStore(id);
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalStores", id },
+//         "LocalStores",
+//         "LocalInventory",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 7. STAFF
+//     // ============================================
+//     // getLocalStaff: builder.query({
+//     //   async queryFn({
+//     //     storeId,
+//     //     isActive,
+//     //     role,
+//     //   }: { storeId?: string; isActive?: boolean; role?: string } = {}) {
+//     //     try {
+//     //       const db = getOfflineDb();
+//     //       let query = db
+//     //         .select()
+//     //         .from(staff)
+//     //         .orderBy(desc(staff.createdAt))
+//     //         .$dynamic();
+
+//     //       if (isActive !== undefined) {
+//     //         query = query.where(eq(staff.isActive, isActive));
+//     //       }
+//     //       if (storeId) {
+//     //         query = query.where(eq(staff.storeId, storeId));
+//     //       }
+//     //       if (role) {
+//     //         query = query.where(eq(staff.role, role));
+//     //       }
+
+//     //       const result = await query;
+//     //       return { data: result };
+//     //     } catch (error) {
+//     //       return { error: { message: (error as Error).message } };
+//     //     }
+//     //   },
+//     //   providesTags: ["LocalStaff"],
+//     // }),
+
+//     getLocalStaff: builder.query({
+//       async queryFn({
+//         storeId,
+//         isActive,
+//         role,
+//       }: { storeId?: string; isActive?: boolean; role?: string } = {}) {
+//         console.log("payload", storeId, isActive, role);
+//         try {
+//           const db = getOfflineDb();
+//           let query = db.select().from(staff).$dynamic();
+//           if (storeId) {
+//             query = query.where(eq(staff.storeId, payload.storeId));
+//           }
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalStaff"],
+//     }),
+
+//     getLocalStaffById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(staff)
+//             .where(eq(staff.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalStaff", id }],
+//     }),
+
+//     createLocalStaff: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const staffId = createLocalId("stf");
+
+//           await db.insert(staff).values({
+//             id: staffId,
+//             tenantId: payload.tenantId,
+//             storeId: payload.storeId,
+//             username: payload.username,
+//             email: payload.email,
+//             name: payload.name,
+//             role: payload.role || "CASHIER",
+//             permissions: payload.permissions || [],
+//             isActive: payload.isActive ?? true,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { id: staffId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalStaff"],
+//     }),
+
+//     updateLocalStaff: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(staff)
+//             .set({
+//               ...payload,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(staff.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalStaff", id },
+//         "LocalStaff",
+//       ],
+//     }),
+
+//     deleteLocalStaff: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           await db
+//             .update(staff)
+//             .set({
+//               isActive: false,
+//               syncStatus: "pending",
+//               updatedAt: new Date().toISOString(),
+//             })
+//             .where(eq(staff.id, id));
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalStaff", id },
+//         "LocalStaff",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 8. SUPPLIERS
+//     // ============================================
+//     getLocalSuppliers: builder.query({
+//       async queryFn({
+//         storeId,
+//         isActive,
+//         search,
+//       }: { storeId?: string; isActive?: boolean; search?: string } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(suppliers)
+//             .orderBy(desc(suppliers.createdAt))
+//             .$dynamic();
+
+//           if (isActive !== undefined) {
+//             query = query.where(eq(suppliers.isActive, isActive));
+//           }
+//           if (storeId) {
+//             query = query.where(eq(suppliers.storeId, storeId));
+//           }
+//           if (search) {
+//             query = query.where(
+//               sql`${suppliers.name} LIKE ${`%${search}%`} OR ${suppliers.code} LIKE ${`%${search}%`} OR ${suppliers.phone} LIKE ${`%${search}%`}`,
+//             );
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalSuppliers"],
+//     }),
+
+//     getLocalSupplierById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(suppliers)
+//             .where(eq(suppliers.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalSuppliers", id }],
+//     }),
+
+//     createLocalSupplier: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const supplierId = createLocalId("sup");
+
+//           await db.insert(suppliers).values({
+//             id: supplierId,
+//             tenantId: payload.tenantId,
+//             storeId: payload.storeId,
+//             code: payload.code,
+//             name: payload.name,
+//             contactName: payload.contactName,
+//             phone: payload.phone,
+//             email: payload.email,
+//             address: payload.address,
+//             taxNumber: payload.taxNumber,
+//             paymentTerms: payload.paymentTerms,
+//             creditLimit: payload.creditLimit,
+//             currentBalance: payload.currentBalance || 0,
+//             isActive: payload.isActive ?? true,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { id: supplierId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalSuppliers"],
+//     }),
+
+//     updateLocalSupplier: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(suppliers)
+//             .set({
+//               ...payload,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(suppliers.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalSuppliers", id },
+//         "LocalSuppliers",
+//       ],
+//     }),
+
+//     deleteLocalSupplier: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           await db
+//             .update(suppliers)
+//             .set({
+//               isActive: false,
+//               syncStatus: "pending",
+//               updatedAt: new Date().toISOString(),
+//             })
+//             .where(eq(suppliers.id, id));
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalSuppliers", id },
+//         "LocalSuppliers",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 9. SESSIONS
+//     // ============================================
+//     getLocalSessions: builder.query({
+//       async queryFn({
+//         storeId,
+//         status,
+//         userId,
+//       }: {
+//         storeId?: string;
+//         status?: string;
+//         userId?: string;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(sessions)
+//             .orderBy(desc(sessions.createdAt))
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(sessions.storeId, storeId));
+//           }
+//           if (status) {
+//             query = query.where(eq(sessions.status, status));
+//           }
+//           if (userId) {
+//             query = query.where(eq(sessions.userId, userId));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalSessions"],
+//     }),
+
+//     getLocalSessionById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(sessions)
+//             .where(eq(sessions.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalSessions", id }],
+//     }),
+
+//     // getActiveSession: builder.query({
+//     //   async queryFn({ userId, storeId }: { userId: string; storeId?: string }) {
+//     //     try {
+//     //       const db = getOfflineDb();
+//     //       let query = db
+//     //         .select()
+//     //         .from(sessions)
+//     //         .where(
+//     //           and(eq(sessions.userId, userId), eq(sessions.status, "OPEN")),
+//     //         )
+//     //         .$dynamic();
+
+//     //       if (storeId) {
+//     //         query = query.where(eq(sessions.storeId, storeId));
+//     //       }
+
+//     //       const [result] = await query;
+//     //       return { data: result };
+//     //     } catch (error) {
+//     //       return { error: { message: (error as Error).message } };
+//     //     }
+//     //   },
+//     //   providesTags: ["LocalSessions"],
+//     // }),
+
+//     getActiveSession: builder.query({
+//       async queryFn({ userId, storeId }: { userId: string; storeId?: string }) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(sessions)
+//             .where(
+//               and(eq(sessions.userId, userId), eq(sessions.status, "OPEN")),
+//             )
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(sessions.storeId, storeId));
+//           }
+
+//           const [result] = await query;
+//           // ✅ Return null instead of undefined when no session found
+//           return { data: result || null };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalSessions"],
+//     }),
+
+//     openLocalSession: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { openOfflineSession } =
+//             await import("@/services/offline/repository");
+//           const result = await openOfflineSession(payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalSessions"],
+//     }),
+
+//     closeLocalSession: builder.mutation({
+//       async queryFn({ sessionId, data }: { sessionId: string; data: any }) {
+//         try {
+//           const { closeOfflineSession } =
+//             await import("@/services/offline/repository");
+//           const result = await closeOfflineSession(sessionId, data);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { sessionId }) => [
+//         { type: "LocalSessions", id: sessionId },
+//         "LocalSessions",
+//       ],
+//     }),
+//     // by me
+//     // ✅ FIX: Correctly implement createLocalOrder
+//     createLocalOrder: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           // Dynamic import to avoid circular dependencies
+//           const { createOfflineOrder } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineOrder(payload);
+//           return { data: result };
+//         } catch (error) {
+//           console.error("❌ createLocalOrder error:", error);
+//           return {
+//             error: {
+//               message: (error as Error).message || "Failed to create order",
+//               data: (error as any)?.data,
+//             },
+//           };
+//         }
+//       },
+//       invalidatesTags: ["LocalOrders", "LocalInventory", "LocalCustomers"],
+//     }),
+
+//     // ✅ FIX: Correctly implement createLocalInventoryMovement
+//     createLocalInventoryMovement: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { createOfflineInventoryMovement } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineInventoryMovement(payload);
+//           return { data: result };
+//         } catch (error) {
+//           console.error("❌ createLocalInventoryMovement error:", error);
+//           return {
+//             error: {
+//               message:
+//                 (error as Error).message ||
+//                 "Failed to create inventory movement",
+//               data: (error as any)?.data,
+//             },
+//           };
+//         }
+//       },
+//       invalidatesTags: [
+//         "LocalInventoryMovements",
+//         "LocalInventory",
+//         "LocalProducts",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 10. ORDERS
+//     // ============================================
+//     getLocalOrders: builder.query({
+//       async queryFn({
+//         storeId,
+//         status,
+//         sessionId,
+//         customerId,
+//         page,
+//         limit,
+//       }: {
+//         storeId?: string;
+//         status?: string;
+//         sessionId?: string;
+//         customerId?: string;
+//         page?: number;
+//         limit?: number;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(orders)
+//             .orderBy(desc(orders.createdAt))
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(orders.storeId, storeId));
+//           }
+//           if (status) {
+//             query = query.where(eq(orders.status, status));
+//           }
+//           if (sessionId) {
+//             query = query.where(eq(orders.sessionId, sessionId));
+//           }
+//           if (customerId) {
+//             query = query.where(eq(orders.customerId, customerId));
+//           }
+
+//           if (page && limit) {
+//             query = query.limit(limit).offset((page - 1) * limit);
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalOrders"],
+//     }),
+
+//     getLocalOrderById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [order] = await db
+//             .select()
+//             .from(orders)
+//             .where(eq(orders.id, id));
+
+//           if (!order) {
+//             return { data: null };
+//           }
+
+//           const items = await db
+//             .select()
+//             .from(orderItems)
+//             .where(eq(orderItems.orderId, id));
+
+//           return { data: { ...order, items } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalOrders", id }],
+//     }),
+
+//     createLocalOrder: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { createOfflineOrder } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineOrder(payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalOrders", "LocalInventory", "LocalCustomers"],
+//     }),
+
+//     updateLocalOrderStatus: builder.mutation({
+//       async queryFn({ id, status }: { id: string; status: string }) {
+//         try {
+//           const { updateOfflineOrderStatus } =
+//             await import("@/services/offline/repository");
+//           const result = await updateOfflineOrderStatus(id, status);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalOrders", id },
+//         "LocalOrders",
+//       ],
+//     }),
+
+//     deleteLocalOrder: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const { deleteOfflineOrder } =
+//             await import("@/services/offline/repository");
+//           await deleteOfflineOrder(id);
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalOrders", id },
+//         "LocalOrders",
+//         "LocalInventory",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 11. INVENTORY
+//     // ============================================
+//     getLocalInventory: builder.query({
+//       async queryFn({
+//         storeId,
+//         productId,
+//         variantId,
+//       }: {
+//         storeId?: string;
+//         productId?: string;
+//         variantId?: string;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db.select().from(inventory).$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(inventory.storeId, storeId));
+//           }
+//           if (productId) {
+//             query = query.where(eq(inventory.productId, productId));
+//           }
+//           if (variantId) {
+//             query = query.where(eq(inventory.variantId, variantId));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalInventory"],
+//     }),
+
+//     getLocalInventoryByProduct: builder.query({
+//       async queryFn({
+//         productId,
+//         storeId,
+//       }: {
+//         productId: string;
+//         storeId?: string;
+//       }) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(inventory)
+//             .where(eq(inventory.productId, productId))
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(inventory.storeId, storeId));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalInventory"],
+//     }),
+
+//     getLocalInventoryByVariant: builder.query({
+//       async queryFn({
+//         variantId,
+//         storeId,
+//       }: {
+//         variantId: string;
+//         storeId?: string;
+//       }) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(inventory)
+//             .where(eq(inventory.variantId, variantId))
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(inventory.storeId, storeId));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalInventory"],
+//     }),
+
+//     getLocalInventoryItem: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(inventory)
+//             .where(eq(inventory.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalInventory", id }],
+//     }),
+
+//     // ============================================
+//     // 12. INVENTORY MOVEMENTS
+//     // ============================================
+//     getLocalInventoryMovements: builder.query({
+//       async queryFn({
+//         storeId,
+//         type,
+//         productId,
+//         variantId,
+//         page,
+//         limit,
+//       }: {
+//         storeId?: string;
+//         type?: string;
+//         productId?: string;
+//         variantId?: string;
+//         page?: number;
+//         limit?: number;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(inventoryMovements)
+//             .orderBy(desc(inventoryMovements.createdAt))
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(inventoryMovements.storeId, storeId));
+//           }
+//           if (type) {
+//             query = query.where(eq(inventoryMovements.type, type));
+//           }
+//           if (productId) {
+//             query = query.where(eq(inventoryMovements.productId, productId));
+//           }
+//           if (variantId) {
+//             query = query.where(eq(inventoryMovements.variantId, variantId));
+//           }
+
+//           if (page && limit) {
+//             query = query.limit(limit).offset((page - 1) * limit);
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalInventoryMovements"],
+//     }),
+
+//     createLocalInventoryMovement: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { createOfflineInventoryMovement } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineInventoryMovement(payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: [
+//         "LocalInventoryMovements",
+//         "LocalInventory",
+//         "LocalProducts",
+//       ],
+//     }),
+
+//     adjustLocalStock: builder.mutation({
+//       async queryFn(payload: {
+//         productId: string;
+//         storeId: string;
+//         variantId?: string;
+//         newQuantity: number;
+//         reason?: string;
+//         tenantId?: string;
+//       }) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           let query = db
+//             .select()
+//             .from(inventory)
+//             .where(
+//               and(
+//                 eq(inventory.productId, payload.productId),
+//                 eq(inventory.storeId, payload.storeId),
+//               ),
+//             )
+//             .$dynamic();
+
+//           if (payload.variantId) {
+//             query = query.where(eq(inventory.variantId, payload.variantId));
+//           } else {
+//             query = query.where(sql`${inventory.variantId} IS NULL`);
+//           }
+
+//           const [existingInventory] = await query;
+
+//           if (!existingInventory) {
+//             return {
+//               error: {
+//                 message: `Inventory not found for product ${payload.productId} in store ${payload.storeId}`,
+//               },
+//             };
+//           }
+
+//           const currentQuantity = existingInventory.quantity;
+//           const diff = payload.newQuantity - currentQuantity;
+
+//           if (diff === 0) {
+//             return {
+//               data: {
+//                 ...existingInventory,
+//                 message: "No change in quantity",
+//               },
+//             };
+//           }
+
+//           await db
+//             .update(inventory)
+//             .set({
+//               quantity: payload.newQuantity,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//               version: (existingInventory.version || 0) + 1,
+//             })
+//             .where(eq(inventory.id, existingInventory.id));
+
+//           const { createLocalId } = await import("@/services/offline/ids");
+//           const movementId = createLocalId("mov");
+//           const movementType = diff > 0 ? "IN" : "OUT";
+
+//           await db.insert(inventoryMovements).values({
+//             id: movementId,
+//             tenantId: payload.tenantId || existingInventory.tenantId,
+//             storeId: payload.storeId,
+//             productId: payload.productId,
+//             variantId: payload.variantId || null,
+//             quantity: Math.abs(diff),
+//             type: movementType,
+//             referenceId: `adj-${Date.now()}`,
+//             referenceType: "STOCK_ADJUSTMENT",
+//             reason:
+//               payload.reason ??
+//               `Stock adjusted from ${currentQuantity} to ${payload.newQuantity}`,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           const [updatedInventory] = await db
+//             .select()
+//             .from(inventory)
+//             .where(eq(inventory.id, existingInventory.id));
+
+//           await db.insert(syncOutbox).values({
+//             id: createLocalId("outbox"),
+//             entity: "inventory",
+//             entityId: updatedInventory.id,
+//             operation: "update",
+//             endpoint: `/api/tenant/inventory/${updatedInventory.id}`,
+//             method: "PUT",
+//             payload: {
+//               id: updatedInventory.id,
+//               quantity: updatedInventory.quantity,
+//               version: updatedInventory.version,
+//             },
+//             status: "pending",
+//             attempts: 0,
+//             nextAttemptAt: now,
+//             lastError: null,
+//             createdAt: now,
+//             updatedAt: now,
+//           });
+
+//           await db.insert(syncOutbox).values({
+//             id: createLocalId("outbox"),
+//             entity: "inventory_movements",
+//             entityId: movementId,
+//             operation: "create",
+//             endpoint: "/api/tenant/inventory/movements",
+//             method: "POST",
+//             payload: {
+//               tenantId: payload.tenantId || existingInventory.tenantId,
+//               storeId: payload.storeId,
+//               productId: payload.productId,
+//               variantId: payload.variantId || null,
+//               quantity: Math.abs(diff),
+//               type: movementType,
+//               referenceId: `adj-${Date.now()}`,
+//               referenceType: "STOCK_ADJUSTMENT",
+//               reason:
+//                 payload.reason ??
+//                 `Stock adjusted from ${currentQuantity} to ${payload.newQuantity}`,
+//             },
+//             status: "pending",
+//             attempts: 0,
+//             nextAttemptAt: now,
+//             lastError: null,
+//             createdAt: now,
+//             updatedAt: now,
+//           });
+
+//           return {
+//             data: updatedInventory,
+//           };
+//         } catch (error) {
+//           console.error("❌ Adjust stock failed:", error);
+//           return {
+//             error: {
+//               message:
+//                 error instanceof Error
+//                   ? error.message
+//                   : "Failed to adjust stock",
+//             },
+//           };
+//         }
+//       },
+//       invalidatesTags: [
+//         "LocalInventory",
+//         "LocalInventoryMovements",
+//         "LocalProducts",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 13. INVENTORY COUNTS
+//     // ============================================
+//     getLocalInventoryCounts: builder.query({
+//       async queryFn({
+//         storeId,
+//         status,
+//         page,
+//         limit,
+//       }: {
+//         storeId?: string;
+//         status?: string;
+//         page?: number;
+//         limit?: number;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(inventoryCounts)
+//             .orderBy(desc(inventoryCounts.createdAt))
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(inventoryCounts.storeId, storeId));
+//           }
+//           if (status) {
+//             query = query.where(eq(inventoryCounts.status, status));
+//           }
+
+//           if (page && limit) {
+//             query = query.limit(limit).offset((page - 1) * limit);
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalInventoryCounts"],
+//     }),
+
+//     getLocalInventoryCountById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [count] = await db
+//             .select()
+//             .from(inventoryCounts)
+//             .where(eq(inventoryCounts.id, id));
+
+//           if (!count) {
+//             return { data: null };
+//           }
+
+//           const items = await db
+//             .select()
+//             .from(inventoryCountItems)
+//             .where(eq(inventoryCountItems.countId, id));
+
+//           return { data: { ...count, items } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [
+//         { type: "LocalInventoryCounts", id },
+//       ],
+//     }),
+
+//     createLocalInventoryCount: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const { createOfflineInventoryCount } =
+//             await import("@/services/offline/repository");
+//           const result = await createOfflineInventoryCount(payload);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: [
+//         "LocalInventoryCounts",
+//         "LocalInventory",
+//         "LocalProducts",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 14. PRICE HISTORY
+//     // ============================================
+//     getLocalPriceHistory: builder.query({
+//       async queryFn({
+//         productId,
+//         variantId,
+//         limit,
+//       }: {
+//         productId?: string;
+//         variantId?: string;
+//         limit?: number;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(priceHistory)
+//             .orderBy(desc(priceHistory.createdAt))
+//             .$dynamic();
+
+//           if (productId) {
+//             query = query.where(eq(priceHistory.productId, productId));
+//           }
+//           if (variantId) {
+//             query = query.where(eq(priceHistory.variantId, variantId));
+//           }
+
+//           if (limit) {
+//             query = query.limit(limit);
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalPriceHistory"],
+//     }),
+
+//     createLocalPriceHistory: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           await db.insert(priceHistory).values({
+//             id: createLocalId("ph"),
+//             tenantId: payload.tenantId,
+//             productId: payload.productId,
+//             variantId: payload.variantId,
+//             oldPrice: payload.oldPrice,
+//             newPrice: payload.newPrice,
+//             changedBy: payload.changedBy,
+//             reason: payload.reason,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//           });
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: [
+//         "LocalPriceHistory",
+//         "LocalProducts",
+//         "LocalProductVariants",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 15. PROMOTIONS
+//     // ============================================
+//     getLocalPromotions: builder.query({
+//       async queryFn({
+//         isActive,
+//         search,
+//       }: { isActive?: boolean; search?: string } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(promotions)
+//             .orderBy(desc(promotions.createdAt))
+//             .$dynamic();
+
+//           if (isActive !== undefined) {
+//             query = query.where(eq(promotions.isActive, isActive));
+//           }
+//           if (search) {
+//             query = query.where(
+//               sql`${promotions.name} LIKE ${`%${search}%`} OR ${promotions.code} LIKE ${`%${search}%`}`,
+//             );
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalPromotions"],
+//     }),
+
+//     getLocalPromotionById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(promotions)
+//             .where(eq(promotions.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalPromotions", id }],
+//     }),
+
+//     createLocalPromotion: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const promotionId = createLocalId("pro");
+
+//           await db.insert(promotions).values({
+//             id: promotionId,
+//             tenantId: payload.tenantId,
+//             code: payload.code,
+//             name: payload.name,
+//             description: payload.description,
+//             discountType: payload.discountType,
+//             discountValue: payload.discountValue,
+//             minPurchase: payload.minPurchase,
+//             startDate: payload.startDate,
+//             endDate: payload.endDate,
+//             usageLimit: payload.usageLimit,
+//             perUserLimit: payload.perUserLimit,
+//             isActive: payload.isActive ?? true,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { id: promotionId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalPromotions"],
+//     }),
+
+//     updateLocalPromotion: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(promotions)
+//             .set({
+//               ...payload,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(promotions.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalPromotions", id },
+//         "LocalPromotions",
+//       ],
+//     }),
+
+//     deleteLocalPromotion: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           await db
+//             .update(promotions)
+//             .set({
+//               isActive: false,
+//               syncStatus: "pending",
+//               updatedAt: new Date().toISOString(),
+//             })
+//             .where(eq(promotions.id, id));
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalPromotions", id },
+//         "LocalPromotions",
+//       ],
+//     }),
+//     // ============================================
+//     // FILE: services/features/offline/localApi.ts
+//     // ============================================
+
+//     // ============================================
+//     // 16. TAX RATES
+//     // ============================================
+//     getLocalTaxRates: builder.query({
+//       async queryFn({ isActive }: { isActive?: boolean } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db.select().from(taxRates).$dynamic();
+
+//           if (isActive !== undefined) {
+//             query = query.where(eq(taxRates.isActive, isActive));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalTaxRates"],
+//     }),
+
+//     getLocalTaxRateById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(taxRates)
+//             .where(eq(taxRates.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalTaxRates", id }],
+//     }),
+
+//     createLocalTaxRate: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const taxRateId = createLocalId("tax");
+
+//           await db.insert(taxRates).values({
+//             id: taxRateId,
+//             tenantId: payload.tenantId,
+//             name: payload.name,
+//             rate: payload.rate,
+//             isCompound: payload.isCompound ?? false,
+//             appliesTo: payload.appliesTo || [],
+//             validFrom: payload.validFrom || now,
+//             validTo: payload.validTo,
+//             isActive: payload.isActive ?? true,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { id: taxRateId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalTaxRates"],
+//     }),
+
+//     updateLocalTaxRate: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(taxRates)
+//             .set({
+//               ...payload,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(taxRates.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalTaxRates", id },
+//         "LocalTaxRates",
+//       ],
+//     }),
+
+//     deleteLocalTaxRate: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           await db
+//             .update(taxRates)
+//             .set({
+//               isActive: false,
+//               syncStatus: "pending",
+//               updatedAt: new Date().toISOString(),
+//             })
+//             .where(eq(taxRates.id, id));
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalTaxRates", id },
+//         "LocalTaxRates",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 17. EXPENSES
+//     // ============================================
+//     getLocalExpenseCategories: builder.query({
+//       async queryFn({ isActive }: { isActive?: boolean } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db.select().from(expenseCategories).$dynamic();
+
+//           if (isActive !== undefined) {
+//             query = query.where(eq(expenseCategories.isActive, isActive));
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalExpenseCategories"],
+//     }),
+
+//     getLocalExpenses: builder.query({
+//       async queryFn({
+//         storeId,
+//         categoryId,
+//         startDate,
+//         endDate,
+//         page,
+//         limit,
+//       }: {
+//         storeId?: string;
+//         categoryId?: string;
+//         startDate?: string;
+//         endDate?: string;
+//         page?: number;
+//         limit?: number;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(expenses)
+//             .orderBy(desc(expenses.expenseDate))
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(expenses.storeId, storeId));
+//           }
+//           if (categoryId) {
+//             query = query.where(eq(expenses.categoryId, categoryId));
+//           }
+//           if (startDate) {
+//             query = query.where(sql`${expenses.expenseDate} >= ${startDate}`);
+//           }
+//           if (endDate) {
+//             query = query.where(sql`${expenses.expenseDate} <= ${endDate}`);
+//           }
+
+//           if (page && limit) {
+//             query = query.limit(limit).offset((page - 1) * limit);
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalExpenses"],
+//     }),
+
+//     getLocalExpenseById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(expenses)
+//             .where(eq(expenses.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalExpenses", id }],
+//     }),
+
+//     createLocalExpense: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const expenseId = createLocalId("exp");
+
+//           await db.insert(expenses).values({
+//             id: expenseId,
+//             tenantId: payload.tenantId,
+//             storeId: payload.storeId,
+//             categoryId: payload.categoryId,
+//             amount: payload.amount,
+//             description: payload.description,
+//             receiptUrl: payload.receiptUrl,
+//             expenseDate: payload.expenseDate || now,
+//             createdById: payload.createdById,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { id: expenseId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalExpenses", "LocalExpenseCategories"],
+//     }),
+
+//     updateLocalExpense: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(expenses)
+//             .set({
+//               ...payload,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(expenses.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalExpenses", id },
+//         "LocalExpenses",
+//       ],
+//     }),
+
+//     deleteLocalExpense: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           await db
+//             .update(expenses)
+//             .set({
+//               syncStatus: "pending_delete",
+//               updatedAt: new Date().toISOString(),
+//             })
+//             .where(eq(expenses.id, id));
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalExpenses", id },
+//         "LocalExpenses",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 18. CASH REGISTERS
+//     // ============================================
+//     getLocalCashRegisters: builder.query({
+//       async queryFn({
+//         storeId,
+//         status,
+//         page,
+//         limit,
+//       }: {
+//         storeId?: string;
+//         status?: string;
+//         page?: number;
+//         limit?: number;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(cashRegisters)
+//             .orderBy(desc(cashRegisters.createdAt))
+//             .$dynamic();
+
+//           if (storeId) {
+//             query = query.where(eq(cashRegisters.storeId, storeId));
+//           }
+//           if (status) {
+//             query = query.where(eq(cashRegisters.status, status));
+//           }
+
+//           if (page && limit) {
+//             query = query.limit(limit).offset((page - 1) * limit);
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalCashRegisters"],
+//     }),
+
+//     getLocalCashRegisterById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(cashRegisters)
+//             .where(eq(cashRegisters.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalCashRegisters", id }],
+//     }),
+
+//     createLocalCashRegister: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const registerId = createLocalId("reg");
+
+//           await db.insert(cashRegisters).values({
+//             id: registerId,
+//             storeId: payload.storeId,
+//             tenantId: payload.tenantId,
+//             name: payload.name,
+//             status: payload.status || "CLOSED",
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { id: registerId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalCashRegisters"],
+//     }),
+
+//     updateLocalCashRegister: builder.mutation({
+//       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(cashRegisters)
+//             .set({
+//               ...payload,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(cashRegisters.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalCashRegisters", id },
+//         "LocalCashRegisters",
+//       ],
+//     }),
+
+//     deleteLocalCashRegister: builder.mutation({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           await db
+//             .update(cashRegisters)
+//             .set({
+//               status: "CLOSED",
+//               syncStatus: "pending",
+//               updatedAt: new Date().toISOString(),
+//             })
+//             .where(eq(cashRegisters.id, id));
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, id) => [
+//         { type: "LocalCashRegisters", id },
+//         "LocalCashRegisters",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 19. GIFT CARDS
+//     // ============================================
+//     getLocalGiftCards: builder.query({
+//       async queryFn({
+//         customerId,
+//         status,
+//         search,
+//         page,
+//         limit,
+//       }: {
+//         customerId?: string;
+//         status?: string;
+//         search?: string;
+//         page?: number;
+//         limit?: number;
+//       } = {}) {
+//         try {
+//           const db = getOfflineDb();
+//           let query = db
+//             .select()
+//             .from(giftCards)
+//             .orderBy(desc(giftCards.createdAt))
+//             .$dynamic();
+
+//           if (customerId) {
+//             query = query.where(eq(giftCards.customerId, customerId));
+//           }
+//           if (status) {
+//             query = query.where(eq(giftCards.status, status));
+//           }
+//           if (search) {
+//             query = query.where(
+//               sql`${giftCards.cardNumber} LIKE ${`%${search}%`}`,
+//             );
+//           }
+
+//           if (page && limit) {
+//             query = query.limit(limit).offset((page - 1) * limit);
+//           }
+
+//           const result = await query;
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalGiftCards"],
+//     }),
+
+//     getLocalGiftCardById: builder.query({
+//       async queryFn(id: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(giftCards)
+//             .where(eq(giftCards.id, id));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: (result, error, id) => [{ type: "LocalGiftCards", id }],
+//     }),
+
+//     getLocalGiftCardByNumber: builder.query({
+//       async queryFn(cardNumber: string) {
+//         try {
+//           const db = getOfflineDb();
+//           const [result] = await db
+//             .select()
+//             .from(giftCards)
+//             .where(eq(giftCards.cardNumber, cardNumber));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalGiftCards"],
+//     }),
+
+//     createLocalGiftCard: builder.mutation({
+//       async queryFn(payload: any) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const giftCardId = createLocalId("gft");
+
+//           await db.insert(giftCards).values({
+//             id: giftCardId,
+//             tenantId: payload.tenantId,
+//             customerId: payload.customerId,
+//             cardNumber:
+//               payload.cardNumber ||
+//               `GC-${Date.now().toString(36).toUpperCase()}`,
+//             pinCode: payload.pinCode,
+//             initialAmount: payload.initialAmount,
+//             currentBalance: payload.initialAmount,
+//             expiresAt: payload.expiresAt,
+//             status: payload.status || "ACTIVE",
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { id: giftCardId, ...payload } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalGiftCards", "LocalCustomers"],
+//     }),
+
+//     updateLocalGiftCardStatus: builder.mutation({
+//       async queryFn({ id, status }: { id: string; status: string }) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+
+//           await db
+//             .update(giftCards)
+//             .set({
+//               status,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(giftCards.id, id));
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalGiftCards", id },
+//         "LocalGiftCards",
+//       ],
+//     }),
+
+//     reloadLocalGiftCard: builder.mutation({
+//       async queryFn({ id, amount }: { id: string; amount: number }) {
+//         try {
+//           const db = getOfflineDb();
+//           const now = new Date().toISOString();
+//           const { createLocalId } = await import("@/services/offline/ids");
+
+//           const [giftCard] = await db
+//             .select()
+//             .from(giftCards)
+//             .where(eq(giftCards.id, id));
+
+//           if (!giftCard) {
+//             return { error: { message: "Gift card not found" } };
+//           }
+
+//           const newBalance = giftCard.currentBalance + amount;
+
+//           await db
+//             .update(giftCards)
+//             .set({
+//               currentBalance: newBalance,
+//               updatedAt: now,
+//               syncStatus: "pending",
+//             })
+//             .where(eq(giftCards.id, id));
+
+//           await db.insert(giftCardTransactions).values({
+//             id: createLocalId("gftt"),
+//             tenantId: giftCard.tenantId,
+//             giftCardId: id,
+//             amount: amount,
+//             type: "RELOAD",
+//             referenceId: `reload-${Date.now()}`,
+//             syncStatus: "pending",
+//             createdAt: now,
+//             updatedAt: now,
+//             lastSyncedAt: null,
+//           });
+
+//           return { data: { success: true, newBalance } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: (result, error, { id }) => [
+//         { type: "LocalGiftCards", id },
+//         "LocalGiftCards",
+//         "LocalGiftCardTransactions",
+//       ],
+//     }),
+
+//     // ============================================
+//     // 20. SYNC OUTBOX STATUS
+//     // ============================================
+//     getPendingSyncItems: builder.query({
+//       async queryFn() {
+//         try {
+//           const db = getOfflineDb();
+//           const result = await db
+//             .select()
+//             .from(syncOutbox)
+//             .where(eq(syncOutbox.status, "pending"))
+//             .orderBy(syncOutbox.createdAt);
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalSyncOutbox"],
+//     }),
+
+//     getFailedSyncItems: builder.query({
+//       async queryFn() {
+//         try {
+//           const db = getOfflineDb();
+//           const result = await db
+//             .select()
+//             .from(syncOutbox)
+//             .where(eq(syncOutbox.status, "failed"))
+//             .orderBy(desc(syncOutbox.updatedAt));
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalSyncOutbox"],
+//     }),
+
+//     getSyncQueueSummary: builder.query({
+//       async queryFn() {
+//         try {
+//           const { getSyncQueueSummary } =
+//             await import("@/services/offline/repository");
+//           const result = await getSyncQueueSummary();
+//           return { data: result };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       providesTags: ["LocalSyncOutbox"],
+//     }),
+
+//     retryFailedSyncItems: builder.mutation({
+//       async queryFn(itemIds?: string[]) {
+//         try {
+//           const { retryAllFailedOutboxItems, retryOutboxItem } =
+//             await import("@/services/offline/repository");
+
+//           if (itemIds && itemIds.length > 0) {
+//             for (const id of itemIds) {
+//               await retryOutboxItem(id);
+//             }
+//           } else {
+//             await retryAllFailedOutboxItems();
+//           }
+
+//           return { data: { success: true } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalSyncOutbox"],
+//     }),
+
+//     clearSyncedOutboxItems: builder.mutation({
+//       async queryFn() {
+//         try {
+//           const { clearSyncedOutboxItems } =
+//             await import("@/services/offline/repository");
+//           const count = await clearSyncedOutboxItems();
+//           return { data: { cleared: count } };
+//         } catch (error) {
+//           return { error: { message: (error as Error).message } };
+//         }
+//       },
+//       invalidatesTags: ["LocalSyncOutbox"],
+//     }),
+//   }),
+// });
+
+// // ============================================
+// // HOOKS EXPORTS
+// // ============================================
+// export const {
+//   // Products
+//   useGetLocalProductsQuery,
+//   useGetLocalProductByIdQuery,
+//   useGetLocalProductByBarcodeQuery,
+//   useGetLocalProductBySkuQuery,
+//   useCreateLocalProductMutation,
+//   useUpdateLocalProductMutation,
+//   useDeleteLocalProductMutation,
+
+//   // Product Variants
+//   useGetLocalVariantsQuery,
+//   useGetLocalVariantByIdQuery,
+//   useGetLocalVariantByBarcodeQuery,
+//   useCreateLocalVariantMutation,
+//   useUpdateLocalVariantMutation,
+//   useDeleteLocalVariantMutation,
+
+//   // Categories
+//   useGetLocalCategoriesQuery,
+//   useGetLocalCategoryByIdQuery,
+//   useCreateLocalCategoryMutation,
+//   useUpdateLocalCategoryMutation,
+//   useDeleteLocalCategoryMutation,
+
+//   // Brands
+//   useGetLocalBrandsQuery,
+//   useGetLocalBrandByIdQuery,
+//   useCreateLocalBrandMutation,
+//   useUpdateLocalBrandMutation,
+//   useDeleteLocalBrandMutation,
+
+//   // Customers
+//   useGetLocalCustomersQuery,
+//   useGetLocalCustomerByIdQuery,
+//   useGetLocalCustomerByPhoneQuery,
+//   useCreateLocalCustomerMutation,
+//   useUpdateLocalCustomerMutation,
+//   useDeleteLocalCustomerMutation,
+
+//   // Stores
+//   useGetLocalStoresQuery,
+//   useGetLocalStoreByIdQuery,
+//   useCreateLocalStoreMutation,
+//   useUpdateLocalStoreMutation,
+//   useDeleteLocalStoreMutation,
+
+//   // Staff
+//   useGetLocalStaffQuery,
+//   useGetLocalStaffByIdQuery,
+//   useCreateLocalStaffMutation,
+//   useUpdateLocalStaffMutation,
+//   useDeleteLocalStaffMutation,
+
+//   // Suppliers
+//   useGetLocalSuppliersQuery,
+//   useGetLocalSupplierByIdQuery,
+//   useCreateLocalSupplierMutation,
+//   useUpdateLocalSupplierMutation,
+//   useDeleteLocalSupplierMutation,
+
+//   // Sessions
+//   useGetLocalSessionsQuery,
+//   useGetLocalSessionByIdQuery,
+//   useGetActiveSessionQuery,
+//   useOpenLocalSessionMutation,
+//   useCloseLocalSessionMutation,
+
+//   // Orders
+//   useGetLocalOrdersQuery,
+//   useGetLocalOrderByIdQuery,
+//   useCreateLocalOrderMutation,
+//   useUpdateLocalOrderStatusMutation,
+//   useDeleteLocalOrderMutation,
+
+//   // Inventory
+//   useGetLocalInventoryQuery,
+//   useGetLocalInventoryByProductQuery,
+//   useGetLocalInventoryByVariantQuery,
+//   useGetLocalInventoryItemQuery,
+
+//   // Inventory Movements
+//   useGetLocalInventoryMovementsQuery,
+//   useCreateLocalInventoryMovementMutation,
+
+//   // Adjust Local Stock
+//   useAdjustLocalStockMutation,
+
+//   // Inventory Counts
+//   useGetLocalInventoryCountsQuery,
+//   useGetLocalInventoryCountByIdQuery,
+//   useCreateLocalInventoryCountMutation,
+
+//   // Price History
+//   useGetLocalPriceHistoryQuery,
+//   useCreateLocalPriceHistoryMutation,
+
+//   // Promotions
+//   useGetLocalPromotionsQuery,
+//   useGetLocalPromotionByIdQuery,
+//   useCreateLocalPromotionMutation,
+//   useUpdateLocalPromotionMutation,
+//   useDeleteLocalPromotionMutation,
+
+//   // Tax Rates
+//   useGetLocalTaxRatesQuery,
+//   useGetLocalTaxRateByIdQuery,
+//   useCreateLocalTaxRateMutation,
+//   useUpdateLocalTaxRateMutation,
+//   useDeleteLocalTaxRateMutation,
+
+//   // Expenses
+//   useGetLocalExpensesQuery,
+//   useGetLocalExpenseByIdQuery,
+//   useGetLocalExpenseCategoriesQuery,
+//   useCreateLocalExpenseMutation,
+//   useUpdateLocalExpenseMutation,
+//   useDeleteLocalExpenseMutation,
+
+//   // Cash Registers
+//   useGetLocalCashRegistersQuery,
+//   useGetLocalCashRegisterByIdQuery,
+//   useCreateLocalCashRegisterMutation,
+//   useUpdateLocalCashRegisterMutation,
+//   useDeleteLocalCashRegisterMutation,
+
+//   // Gift Cards
+//   useGetLocalGiftCardsQuery,
+//   useGetLocalGiftCardByIdQuery,
+//   useGetLocalGiftCardByNumberQuery,
+//   useCreateLocalGiftCardMutation,
+//   useUpdateLocalGiftCardStatusMutation,
+//   useReloadLocalGiftCardMutation,
+
+//   // Sync Outbox
+//   useGetPendingSyncItemsQuery,
+//   useGetFailedSyncItemsQuery,
+//   useGetSyncQueueSummaryQuery,
+//   useRetryFailedSyncItemsMutation,
+//   useClearSyncedOutboxItemsMutation,
+// } = localApi;

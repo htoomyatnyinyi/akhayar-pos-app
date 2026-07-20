@@ -1,3 +1,48 @@
+import { baseApi } from "@/services/api/baseApi";
+
+export const ordersApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    getOrders: builder.query<any, { storeId?: string; status?: string }>({
+      query: (params) => ({
+        url: "/tenant/orders",
+        params: { ...params, limit: 100 },
+      }),
+      providesTags: ["Order"],
+    }),
+    createOrder: builder.mutation<any, any>({
+      query: (body) => ({
+        url: "/tenant/orders",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Order"],
+    }),
+    updateOrderStatus: builder.mutation<any, { id: string; status: string }>({
+      query: ({ id, status }) => ({
+        url: `/tenant/orders/${id}/status`,
+        method: "PATCH",
+        body: { status },
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "Order", id }],
+    }),
+    // Pull orders for sync (since timestamp)
+    getOrdersSync: builder.query<any, { since?: number }>({
+      query: ({ since }) => ({
+        url: "/tenant/orders/sync",
+        params: { since },
+      }),
+    }),
+  }),
+  overrideExisting: false,
+});
+
+export const {
+  useGetOrdersQuery,
+  useCreateOrderMutation,
+  useUpdateOrderStatusMutation,
+  useLazyGetOrdersSyncQuery,
+} = ordersApi;
+
 // import { posApi } from "@/services/api/posApi";
 // import {
 //   createOfflineOrder,

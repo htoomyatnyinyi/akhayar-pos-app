@@ -1,3 +1,56 @@
+import { baseApi } from "@/services/api/baseApi";
+
+export const productsApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    getProducts: builder.query<any, { storeId?: string; categoryId?: string }>({
+      query: (params) => ({
+        url: "/tenant/products",
+        params: { ...params, limit: 100 },
+      }),
+      providesTags: ["Product"],
+    }),
+    createProduct: builder.mutation<any, any>({
+      query: (body) => ({
+        url: "/tenant/products",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Product"],
+    }),
+    updateProduct: builder.mutation<any, { id: string; data: any }>({
+      query: ({ id, data }) => ({
+        url: `/tenant/products/${id}`,
+        method: "PUT",
+        body: data,
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "Product", id }],
+    }),
+    deleteProduct: builder.mutation<any, string>({
+      query: (id) => ({
+        url: `/tenant/products/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Product"],
+    }),
+    // Sync endpoint (pull)
+    getProductsSync: builder.query<any, { since?: number }>({
+      query: ({ since }) => ({
+        url: "/tenant/products/sync",
+        params: { since },
+      }),
+    }),
+  }),
+  overrideExisting: false,
+});
+
+export const {
+  useGetProductsQuery,
+  useCreateProductMutation,
+  useUpdateProductMutation,
+  useDeleteProductMutation,
+  useLazyGetProductsSyncQuery,
+} = productsApi;
+
 // import { posApi } from "@/services/api/posApi";
 // import {
 //   createOfflineProduct,

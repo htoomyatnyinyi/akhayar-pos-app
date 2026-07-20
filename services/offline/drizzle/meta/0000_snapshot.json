@@ -1,11 +1,11 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d2590128-a5b1-429a-84c6-fbf635e8d624",
+  "id": "8cde7f2c-4d95-452e-b61c-bed8ef0f50e8",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "api_keys": {
-      "name": "api_keys",
+    "category": {
+      "name": "category",
       "columns": {
         "id": {
           "name": "id",
@@ -14,22 +14,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "remote_id": {
-          "name": "remote_id",
+        "serverId": {
+          "name": "serverId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
+        "tenantId": {
+          "name": "tenantId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -37,600 +30,6 @@
         },
         "name": {
           "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "secret": {
-          "name": "secret",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "permissions": {
-          "name": "permissions",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false,
-          "default": "'[]'"
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "api_keys_remote_id_unique": {
-          "name": "api_keys_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "api_keys_key_unique": {
-          "name": "api_keys_key_unique",
-          "columns": [
-            "key"
-          ],
-          "isUnique": true
-        },
-        "api_keys_key_idx": {
-          "name": "api_keys_key_idx",
-          "columns": [
-            "key"
-          ],
-          "isUnique": true
-        },
-        "api_keys_tenant_idx": {
-          "name": "api_keys_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "api_keys_active_idx": {
-          "name": "api_keys_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "api_keys_user_idx": {
-          "name": "api_keys_user_idx",
-          "columns": [
-            "user_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "audit_logs": {
-      "name": "audit_logs",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "entity": {
-          "name": "entity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "old_data": {
-          "name": "old_data",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "new_data": {
-          "name": "new_data",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "changes": {
-          "name": "changes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "ip_address": {
-          "name": "ip_address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "user_agent": {
-          "name": "user_agent",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "audit_logs_remote_id_unique": {
-          "name": "audit_logs_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "audit_logs_tenant_idx": {
-          "name": "audit_logs_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "audit_logs_user_idx": {
-          "name": "audit_logs_user_idx",
-          "columns": [
-            "user_id"
-          ],
-          "isUnique": false
-        },
-        "audit_logs_entity_idx": {
-          "name": "audit_logs_entity_idx",
-          "columns": [
-            "entity",
-            "entity_id"
-          ],
-          "isUnique": false
-        },
-        "audit_logs_action_idx": {
-          "name": "audit_logs_action_idx",
-          "columns": [
-            "action"
-          ],
-          "isUnique": false
-        },
-        "audit_logs_created_idx": {
-          "name": "audit_logs_created_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "brands": {
-      "name": "brands",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "brands_remote_id_unique": {
-          "name": "brands_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "brands_tenant_name_idx": {
-          "name": "brands_tenant_name_idx",
-          "columns": [
-            "tenant_id",
-            "name"
-          ],
-          "isUnique": true
-        },
-        "brands_active_idx": {
-          "name": "brands_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "brands_tenant_idx": {
-          "name": "brands_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "cash_registers": {
-      "name": "cash_registers",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'CLOSED'"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "cash_registers_remote_id_unique": {
-          "name": "cash_registers_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "cash_registers_store_idx": {
-          "name": "cash_registers_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "cash_registers_status_idx": {
-          "name": "cash_registers_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "cash_registers_tenant_idx": {
-          "name": "cash_registers_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "categories": {
-      "name": "categories",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -643,121 +42,89 @@
           "notNull": false,
           "autoincrement": false
         },
-        "parent_id": {
-          "name": "parent_id",
+        "description": {
+          "name": "description",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sort_order": {
-          "name": "sort_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "sync_status": {
-          "name": "sync_status",
+        "parentId": {
+          "name": "parentId",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sortOrder": {
+          "name": "sortOrder",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": true
+        },
+        "syncStatus": {
+          "name": "syncStatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false,
           "default": "'synced'"
         },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
+        "lastModified": {
+          "name": "lastModified",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
-        "categories_remote_id_unique": {
-          "name": "categories_remote_id_unique",
+        "category_serverId_unique": {
+          "name": "category_serverId_unique",
           "columns": [
-            "remote_id"
+            "serverId"
           ],
           "isUnique": true
-        },
-        "categories_tenant_name_idx": {
-          "name": "categories_tenant_name_idx",
-          "columns": [
-            "tenant_id",
-            "name"
-          ],
-          "isUnique": true
-        },
-        "categories_tenant_slug_idx": {
-          "name": "categories_tenant_slug_idx",
-          "columns": [
-            "tenant_id",
-            "slug"
-          ],
-          "isUnique": true
-        },
-        "categories_parent_idx": {
-          "name": "categories_parent_idx",
-          "columns": [
-            "parent_id"
-          ],
-          "isUnique": false
-        },
-        "categories_active_idx": {
-          "name": "categories_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "categories_store_idx": {
-          "name": "categories_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "category_tenantId_tenant_id_fk": {
+          "name": "category_tenantId_tenant_id_fk",
+          "tableFrom": "category",
+          "tableTo": "tenant",
+          "columnsFrom": [
+            "tenantId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "customers": {
-      "name": "customers",
+    "customer": {
+      "name": "customer",
       "columns": {
         "id": {
           "name": "id",
@@ -766,15 +133,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "remote_id": {
-          "name": "remote_id",
+        "serverId": {
+          "name": "serverId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
+        "tenantId": {
+          "name": "tenantId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -784,14 +151,14 @@
           "name": "code",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "phone": {
@@ -815,9 +182,9 @@
           "notNull": false,
           "autoincrement": false
         },
-        "date_of_birth": {
-          "name": "date_of_birth",
-          "type": "text",
+        "dateOfBirth": {
+          "name": "dateOfBirth",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -829,817 +196,116 @@
           "notNull": false,
           "autoincrement": false
         },
-        "debt_amount": {
-          "name": "debt_amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "loyalty_points": {
-          "name": "loyalty_points",
+        "loyaltyPoints": {
+          "name": "loyaltyPoints",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
         },
-        "total_spent": {
-          "name": "total_spent",
+        "totalSpent": {
+          "name": "totalSpent",
           "type": "real",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
         },
-        "total_orders": {
-          "name": "total_orders",
+        "totalOrders": {
+          "name": "totalOrders",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
+        },
+        "debtAmount": {
+          "name": "debtAmount",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 0
+        },
+        "creditLimit": {
+          "name": "creditLimit",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "tier": {
           "name": "tier",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": "'BRONZE'"
         },
-        "tier_valid_until": {
-          "name": "tier_valid_until",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_active": {
-          "name": "is_active",
+        "tierValidUntil": {
+          "name": "tierValidUntil",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "customers_remote_id_unique": {
-          "name": "customers_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "customers_tenant_code_idx": {
-          "name": "customers_tenant_code_idx",
-          "columns": [
-            "tenant_id",
-            "code"
-          ],
-          "isUnique": true
-        },
-        "customers_tenant_phone_idx": {
-          "name": "customers_tenant_phone_idx",
-          "columns": [
-            "tenant_id",
-            "phone"
-          ],
-          "isUnique": true
-        },
-        "customers_tenant_email_idx": {
-          "name": "customers_tenant_email_idx",
-          "columns": [
-            "tenant_id",
-            "email"
-          ],
-          "isUnique": true
-        },
-        "customers_name_idx": {
-          "name": "customers_name_idx",
-          "columns": [
-            "name"
-          ],
-          "isUnique": false
-        },
-        "customers_active_idx": {
-          "name": "customers_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "expense_categories": {
-      "name": "expense_categories",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_active": {
-          "name": "is_active",
+        "isActive": {
+          "name": "isActive",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
-          "default": "1"
+          "default": true
         },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
+        "syncStatus": {
+          "name": "syncStatus",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "expense_categories_remote_id_unique": {
-          "name": "expense_categories_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "expense_categories_tenant_name_idx": {
-          "name": "expense_categories_tenant_name_idx",
-          "columns": [
-            "tenant_id",
-            "name"
-          ],
-          "isUnique": true
-        },
-        "expense_categories_active_idx": {
-          "name": "expense_categories_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "expense_categories_tenant_idx": {
-          "name": "expense_categories_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "expenses": {
-      "name": "expenses",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "amount": {
-          "name": "amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "receipt_url": {
-          "name": "receipt_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expense_date": {
-          "name": "expense_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_by_id": {
-          "name": "created_by_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false,
           "default": "'synced'"
         },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "expenses_remote_id_unique": {
-          "name": "expenses_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "expenses_tenant_idx": {
-          "name": "expenses_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "expenses_store_idx": {
-          "name": "expenses_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "expenses_category_idx": {
-          "name": "expenses_category_idx",
-          "columns": [
-            "category_id"
-          ],
-          "isUnique": false
-        },
-        "expenses_date_idx": {
-          "name": "expenses_date_idx",
-          "columns": [
-            "expense_date"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "generic_records": {
-      "name": "generic_records",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "entity": {
-          "name": "entity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "data": {
-          "name": "data",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "is_active": {
-          "name": "is_active",
+        "lastModified": {
+          "name": "lastModified",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
-        "generic_entity_idx": {
-          "name": "generic_entity_idx",
+        "customer_serverId_unique": {
+          "name": "customer_serverId_unique",
           "columns": [
-            "entity"
-          ],
-          "isUnique": false
-        },
-        "generic_active_idx": {
-          "name": "generic_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "gift_card_transactions": {
-      "name": "gift_card_transactions",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "gift_card_id": {
-          "name": "gift_card_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "amount": {
-          "name": "amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reference_id": {
-          "name": "reference_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "gift_card_transactions_remote_id_unique": {
-          "name": "gift_card_transactions_remote_id_unique",
-          "columns": [
-            "remote_id"
+            "serverId"
           ],
           "isUnique": true
-        },
-        "gift_card_transactions_gift_card_idx": {
-          "name": "gift_card_transactions_gift_card_idx",
-          "columns": [
-            "gift_card_id"
-          ],
-          "isUnique": false
-        },
-        "gift_card_transactions_tenant_idx": {
-          "name": "gift_card_transactions_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "gift_card_transactions_created_idx": {
-          "name": "gift_card_transactions_created_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "gift_cards": {
-      "name": "gift_cards",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "customer_id": {
-          "name": "customer_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "card_number": {
-          "name": "card_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pin_code": {
-          "name": "pin_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "initial_amount": {
-          "name": "initial_amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "current_balance": {
-          "name": "current_balance",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'ACTIVE'"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+      "foreignKeys": {
+        "customer_tenantId_tenant_id_fk": {
+          "name": "customer_tenantId_tenant_id_fk",
+          "tableFrom": "customer",
+          "tableTo": "tenant",
+          "columnsFrom": [
+            "tenantId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
-      "indexes": {
-        "gift_cards_remote_id_unique": {
-          "name": "gift_cards_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "gift_cards_card_number_unique": {
-          "name": "gift_cards_card_number_unique",
-          "columns": [
-            "card_number"
-          ],
-          "isUnique": true
-        },
-        "gift_cards_card_number_idx": {
-          "name": "gift_cards_card_number_idx",
-          "columns": [
-            "card_number"
-          ],
-          "isUnique": true
-        },
-        "gift_cards_customer_idx": {
-          "name": "gift_cards_customer_idx",
-          "columns": [
-            "customer_id"
-          ],
-          "isUnique": false
-        },
-        "gift_cards_status_idx": {
-          "name": "gift_cards_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "gift_cards_tenant_idx": {
-          "name": "gift_cards_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "gift_cards_expiry_idx": {
-          "name": "gift_cards_expiry_idx",
-          "columns": [
-            "expires_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -1654,36 +320,36 @@
           "notNull": true,
           "autoincrement": false
         },
-        "remote_id": {
-          "name": "remote_id",
+        "serverId": {
+          "name": "serverId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
+        "tenantId": {
+          "name": "tenantId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "store_id": {
-          "name": "store_id",
+        "storeId": {
+          "name": "storeId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "product_id": {
-          "name": "product_id",
+        "productId": {
+          "name": "productId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "variant_id": {
-          "name": "variant_id",
+        "variantId": {
+          "name": "variantId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1693,36 +359,36 @@
           "name": "quantity",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
         },
-        "reserved_qty": {
-          "name": "reserved_qty",
+        "reservedQty": {
+          "name": "reservedQty",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
         },
-        "reorder_point": {
-          "name": "reorder_point",
+        "reorderPoint": {
+          "name": "reorderPoint",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 10
         },
-        "reorder_qty": {
-          "name": "reorder_qty",
+        "reorderQty": {
+          "name": "reorderQty",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
         },
-        "shelf_location": {
-          "name": "shelf_location",
+        "shelfLocation": {
+          "name": "shelfLocation",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1732,112 +398,50 @@
           "name": "version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
         },
-        "sync_status": {
-          "name": "sync_status",
+        "syncStatus": {
+          "name": "syncStatus",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": "'synced'"
         },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
+        "lastModified": {
+          "name": "lastModified",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
-        "inventory_remote_id_unique": {
-          "name": "inventory_remote_id_unique",
+        "inventory_serverId_unique": {
+          "name": "inventory_serverId_unique",
           "columns": [
-            "remote_id"
+            "serverId"
           ],
           "isUnique": true
-        },
-        "store_product_variant_idx": {
-          "name": "store_product_variant_idx",
-          "columns": [
-            "store_id",
-            "product_id",
-            "variant_id"
-          ],
-          "isUnique": true
-        },
-        "inventory_store_quantity_idx": {
-          "name": "inventory_store_quantity_idx",
-          "columns": [
-            "store_id",
-            "quantity"
-          ],
-          "isUnique": false
-        },
-        "inventory_product_store_idx": {
-          "name": "inventory_product_store_idx",
-          "columns": [
-            "product_id",
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "inventory_reorder_idx": {
-          "name": "inventory_reorder_idx",
-          "columns": [
-            "reorder_point",
-            "quantity"
-          ],
-          "isUnique": false
-        },
-        "inventory_quantity_idx": {
-          "name": "inventory_quantity_idx",
-          "columns": [
-            "quantity"
-          ],
-          "isUnique": false
-        },
-        "inventory_tenant_idx": {
-          "name": "inventory_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
-        "inventory_product_id_products_id_fk": {
-          "name": "inventory_product_id_products_id_fk",
+        "inventory_tenantId_tenant_id_fk": {
+          "name": "inventory_tenantId_tenant_id_fk",
           "tableFrom": "inventory",
-          "tableTo": "products",
+          "tableTo": "tenant",
           "columnsFrom": [
-            "product_id"
+            "tenantId"
           ],
           "columnsTo": [
             "id"
@@ -1845,12 +449,38 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "inventory_variant_id_product_variants_id_fk": {
-          "name": "inventory_variant_id_product_variants_id_fk",
+        "inventory_storeId_store_id_fk": {
+          "name": "inventory_storeId_store_id_fk",
           "tableFrom": "inventory",
-          "tableTo": "product_variants",
+          "tableTo": "store",
           "columnsFrom": [
-            "variant_id"
+            "storeId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "inventory_productId_product_id_fk": {
+          "name": "inventory_productId_product_id_fk",
+          "tableFrom": "inventory",
+          "tableTo": "product",
+          "columnsFrom": [
+            "productId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "inventory_variantId_productVariant_id_fk": {
+          "name": "inventory_variantId_productVariant_id_fk",
+          "tableFrom": "inventory",
+          "tableTo": "productVariant",
+          "columnsFrom": [
+            "variantId"
           ],
           "columnsTo": [
             "id"
@@ -1863,8 +493,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "inventory_count_items": {
-      "name": "inventory_count_items",
+    "order": {
+      "name": "order",
       "columns": {
         "id": {
           "name": "id",
@@ -1873,148 +503,139 @@
           "notNull": true,
           "autoincrement": false
         },
-        "count_id": {
-          "name": "count_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "variant_id": {
-          "name": "variant_id",
+        "serverId": {
+          "name": "serverId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "system_quantity": {
-          "name": "system_quantity",
-          "type": "integer",
+        "tenantId": {
+          "name": "tenantId",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "counted_quantity": {
-          "name": "counted_quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "difference": {
-          "name": "difference",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reason": {
-          "name": "reason",
+        "orderNumber": {
+          "name": "orderNumber",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        }
-      },
-      "indexes": {
-        "count_items_count_idx": {
-          "name": "count_items_count_idx",
-          "columns": [
-            "count_id"
-          ],
-          "isUnique": false
-        },
-        "count_items_product_idx": {
-          "name": "count_items_product_idx",
-          "columns": [
-            "product_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "inventory_count_items_count_id_inventory_counts_id_fk": {
-          "name": "inventory_count_items_count_id_inventory_counts_id_fk",
-          "tableFrom": "inventory_count_items",
-          "tableTo": "inventory_counts",
-          "columnsFrom": [
-            "count_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "inventory_counts": {
-      "name": "inventory_counts",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
+        "customerId": {
+          "name": "customerId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
+        "userId": {
+          "name": "userId",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "store_id": {
-          "name": "store_id",
+        "sessionId": {
+          "name": "sessionId",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "storeId": {
+          "name": "storeId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "registerId": {
+          "name": "registerId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "status": {
           "name": "status",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": "'PENDING'"
         },
-        "scheduled_date": {
-          "name": "scheduled_date",
+        "paymentStatus": {
+          "name": "paymentStatus",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'PENDING'"
+        },
+        "subTotal": {
+          "name": "subTotal",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "completed_at": {
-          "name": "completed_at",
+        "taxAmount": {
+          "name": "taxAmount",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "discountAmount": {
+          "name": "discountAmount",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "discountPercent": {
+          "name": "discountPercent",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "grandTotal": {
+          "name": "grandTotal",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "currencyCode": {
+          "name": "currencyCode",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'USD'"
+        },
+        "paymentMethod": {
+          "name": "paymentMethod",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'CASH'"
+        },
+        "paidAmount": {
+          "name": "paidAmount",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "changeAmount": {
+          "name": "changeAmount",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -2026,530 +647,101 @@
           "notNull": false,
           "autoincrement": false
         },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'pending'"
-        },
-        "sync_error": {
-          "name": "sync_error",
+        "voidReason": {
+          "name": "voidReason",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "inventory_counts_remote_id_unique": {
-          "name": "inventory_counts_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "counts_store_idx": {
-          "name": "counts_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "counts_status_idx": {
-          "name": "counts_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "counts_scheduled_idx": {
-          "name": "counts_scheduled_idx",
-          "columns": [
-            "scheduled_date"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "inventory_movements": {
-      "name": "inventory_movements",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "variant_id": {
-          "name": "variant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "quantity": {
-          "name": "quantity",
+        "version": {
+          "name": "version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reference_id": {
-          "name": "reference_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reference_type": {
-          "name": "reference_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'pending'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "inventory_movements_remote_id_unique": {
-          "name": "inventory_movements_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "movements_product_idx": {
-          "name": "movements_product_idx",
-          "columns": [
-            "product_id"
-          ],
-          "isUnique": false
-        },
-        "movements_store_idx": {
-          "name": "movements_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "movements_type_idx": {
-          "name": "movements_type_idx",
-          "columns": [
-            "type"
-          ],
-          "isUnique": false
-        },
-        "movements_reference_idx": {
-          "name": "movements_reference_idx",
-          "columns": [
-            "reference_id",
-            "reference_type"
-          ],
-          "isUnique": false
-        },
-        "movements_created_at_idx": {
-          "name": "movements_created_at_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "notifications": {
-      "name": "notifications",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "message": {
-          "name": "message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "is_read": {
-          "name": "is_read",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "0"
-        },
-        "read_at": {
-          "name": "read_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "metadata": {
-          "name": "metadata",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "notifications_remote_id_unique": {
-          "name": "notifications_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "notifications_user_idx": {
-          "name": "notifications_user_idx",
-          "columns": [
-            "user_id"
-          ],
-          "isUnique": false
-        },
-        "notifications_read_idx": {
-          "name": "notifications_read_idx",
-          "columns": [
-            "is_read"
-          ],
-          "isUnique": false
-        },
-        "notifications_type_idx": {
-          "name": "notifications_type_idx",
-          "columns": [
-            "type"
-          ],
-          "isUnique": false
-        },
-        "notifications_tenant_idx": {
-          "name": "notifications_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "notifications_created_idx": {
-          "name": "notifications_created_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "order_items": {
-      "name": "order_items",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "order_id": {
-          "name": "order_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "variant_id": {
-          "name": "variant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "product_name": {
-          "name": "product_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "unit_price": {
-          "name": "unit_price",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "discount_amount": {
-          "name": "discount_amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false,
           "default": 0
         },
-        "sub_total": {
-          "name": "sub_total",
-          "type": "real",
+        "completedAt": {
+          "name": "completedAt",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "cancelledAt": {
+          "name": "cancelledAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "syncStatus": {
+          "name": "syncStatus",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
+          "default": "'pending'"
+        },
+        "lastModified": {
+          "name": "lastModified",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
-        "order_items_order_idx": {
-          "name": "order_items_order_idx",
+        "order_serverId_unique": {
+          "name": "order_serverId_unique",
           "columns": [
-            "order_id"
+            "serverId"
           ],
-          "isUnique": false
-        },
-        "order_items_product_idx": {
-          "name": "order_items_product_idx",
-          "columns": [
-            "product_id"
-          ],
-          "isUnique": false
-        },
-        "order_items_variant_idx": {
-          "name": "order_items_variant_idx",
-          "columns": [
-            "variant_id"
-          ],
-          "isUnique": false
+          "isUnique": true
         }
       },
       "foreignKeys": {
-        "order_items_order_id_orders_id_fk": {
-          "name": "order_items_order_id_orders_id_fk",
-          "tableFrom": "order_items",
-          "tableTo": "orders",
+        "order_tenantId_tenant_id_fk": {
+          "name": "order_tenantId_tenant_id_fk",
+          "tableFrom": "order",
+          "tableTo": "tenant",
           "columnsFrom": [
-            "order_id"
+            "tenantId"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "order_items_variant_id_product_variants_id_fk": {
-          "name": "order_items_variant_id_product_variants_id_fk",
-          "tableFrom": "order_items",
-          "tableTo": "product_variants",
+        "order_customerId_customer_id_fk": {
+          "name": "order_customerId_customer_id_fk",
+          "tableFrom": "order",
+          "tableTo": "customer",
           "columnsFrom": [
-            "variant_id"
+            "customerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "order_storeId_store_id_fk": {
+          "name": "order_storeId_store_id_fk",
+          "tableFrom": "order",
+          "tableTo": "store",
+          "columnsFrom": [
+            "storeId"
           ],
           "columnsTo": [
             "id"
@@ -2562,8 +754,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "orders": {
-      "name": "orders",
+    "orderItem": {
+      "name": "orderItem",
       "columns": {
         "id": {
           "name": "id",
@@ -2572,403 +764,158 @@
           "notNull": true,
           "autoincrement": false
         },
-        "remote_id": {
-          "name": "remote_id",
+        "serverId": {
+          "name": "serverId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
+        "orderId": {
+          "name": "orderId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "register_id": {
-          "name": "register_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
+        "productId": {
+          "name": "productId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "customer_id": {
-          "name": "customer_id",
+        "variantId": {
+          "name": "variantId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "session_id": {
-          "name": "session_id",
-          "type": "text",
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "order_number": {
-          "name": "order_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'PENDING'"
-        },
-        "payment_status": {
-          "name": "payment_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'PENDING'"
-        },
-        "payment_method": {
-          "name": "payment_method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sub_total": {
-          "name": "sub_total",
+        "unitPrice": {
+          "name": "unitPrice",
           "type": "real",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "tax_amount": {
-          "name": "tax_amount",
+        "discountPercent": {
+          "name": "discountPercent",
           "type": "real",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "discountAmount": {
+          "name": "discountAmount",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "taxAmount": {
+          "name": "taxAmount",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "subTotal": {
+          "name": "subTotal",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "isReturned": {
+          "name": "isReturned",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": false
+        },
+        "returnedQuantity": {
+          "name": "returnedQuantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false,
           "default": 0
         },
-        "discount_amount": {
-          "name": "discount_amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "grand_total": {
-          "name": "grand_total",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "paid_amount": {
-          "name": "paid_amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "change_amount": {
-          "name": "change_amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "payment_breakdown": {
-          "name": "payment_breakdown",
+        "syncStatus": {
+          "name": "syncStatus",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false,
           "default": "'pending'"
         },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
+        "lastModified": {
+          "name": "lastModified",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
-        "orders_remote_id_unique": {
-          "name": "orders_remote_id_unique",
+        "orderItem_serverId_unique": {
+          "name": "orderItem_serverId_unique",
           "columns": [
-            "remote_id"
+            "serverId"
           ],
           "isUnique": true
-        },
-        "orders_tenant_order_idx": {
-          "name": "orders_tenant_order_idx",
-          "columns": [
-            "tenant_id",
-            "order_number"
-          ],
-          "isUnique": true
-        },
-        "orders_store_idx": {
-          "name": "orders_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "orders_customer_idx": {
-          "name": "orders_customer_idx",
-          "columns": [
-            "customer_id"
-          ],
-          "isUnique": false
-        },
-        "orders_session_idx": {
-          "name": "orders_session_idx",
-          "columns": [
-            "session_id"
-          ],
-          "isUnique": false
-        },
-        "orders_status_idx": {
-          "name": "orders_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "orders_payment_status_idx": {
-          "name": "orders_payment_status_idx",
-          "columns": [
-            "payment_status"
-          ],
-          "isUnique": false
-        },
-        "orders_created_at_idx": {
-          "name": "orders_created_at_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "price_history": {
-      "name": "price_history",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "variant_id": {
-          "name": "variant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "old_price": {
-          "name": "old_price",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "new_price": {
-          "name": "new_price",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "changed_by": {
-          "name": "changed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "price_history_remote_id_unique": {
-          "name": "price_history_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "price_history_product_idx": {
-          "name": "price_history_product_idx",
-          "columns": [
-            "product_id"
-          ],
-          "isUnique": false
-        },
-        "price_history_variant_idx": {
-          "name": "price_history_variant_idx",
-          "columns": [
-            "variant_id"
-          ],
-          "isUnique": false
-        },
-        "price_history_tenant_idx": {
-          "name": "price_history_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "price_history_created_idx": {
-          "name": "price_history_created_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
-        "price_history_product_id_products_id_fk": {
-          "name": "price_history_product_id_products_id_fk",
-          "tableFrom": "price_history",
-          "tableTo": "products",
+        "orderItem_orderId_order_id_fk": {
+          "name": "orderItem_orderId_order_id_fk",
+          "tableFrom": "orderItem",
+          "tableTo": "order",
           "columnsFrom": [
-            "product_id"
+            "orderId"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "price_history_variant_id_product_variants_id_fk": {
-          "name": "price_history_variant_id_product_variants_id_fk",
-          "tableFrom": "price_history",
-          "tableTo": "product_variants",
+        "orderItem_productId_product_id_fk": {
+          "name": "orderItem_productId_product_id_fk",
+          "tableFrom": "orderItem",
+          "tableTo": "product",
           "columnsFrom": [
-            "variant_id"
+            "productId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orderItem_variantId_productVariant_id_fk": {
+          "name": "orderItem_variantId_productVariant_id_fk",
+          "tableFrom": "orderItem",
+          "tableTo": "productVariant",
+          "columnsFrom": [
+            "variantId"
           ],
           "columnsTo": [
             "id"
@@ -2981,8 +928,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "product_variants": {
-      "name": "product_variants",
+    "product": {
+      "name": "product",
       "columns": {
         "id": {
           "name": "id",
@@ -2991,8 +938,50 @@
           "notNull": true,
           "autoincrement": false
         },
-        "remote_id": {
-          "name": "remote_id",
+        "serverId": {
+          "name": "serverId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tenantId": {
+          "name": "tenantId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "categoryId": {
+          "name": "categoryId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "brandId": {
+          "name": "brandId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "supplierId": {
+          "name": "supplierId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sku": {
+          "name": "sku",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "barcode": {
+          "name": "barcode",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -3002,28 +991,219 @@
           "name": "name",
           "type": "text",
           "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "costPrice": {
+          "name": "costPrice",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sellingPrice": {
+          "name": "sellingPrice",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "wholesalePrice": {
+          "name": "wholesalePrice",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "promoPrice": {
+          "name": "promoPrice",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "promoStartAt": {
+          "name": "promoStartAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "promoEndAt": {
+          "name": "promoEndAt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "manufacturingDate": {
+          "name": "manufacturingDate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expiryDate": {
+          "name": "expiryDate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "bestBeforeDate": {
+          "name": "bestBeforeDate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "isTaxable": {
+          "name": "isTaxable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": true
+        },
+        "isActive": {
+          "name": "isActive",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": true
+        },
+        "isReturnable": {
+          "name": "isReturnable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": 0
+        },
+        "syncStatus": {
+          "name": "syncStatus",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'synced'"
+        },
+        "lastModified": {
+          "name": "lastModified",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "product_serverId_unique": {
+          "name": "product_serverId_unique",
+          "columns": [
+            "serverId"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "product_tenantId_tenant_id_fk": {
+          "name": "product_tenantId_tenant_id_fk",
+          "tableFrom": "product",
+          "tableTo": "tenant",
+          "columnsFrom": [
+            "tenantId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "product_categoryId_category_id_fk": {
+          "name": "product_categoryId_category_id_fk",
+          "tableFrom": "product",
+          "tableTo": "category",
+          "columnsFrom": [
+            "categoryId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "productVariant": {
+      "name": "productVariant",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "product_id": {
-          "name": "product_id",
+        "serverId": {
+          "name": "serverId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tenantId": {
+          "name": "tenantId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
+        "productId": {
+          "name": "productId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "sku": {
           "name": "sku",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "barcode": {
@@ -3037,14 +1217,14 @@
           "name": "price",
           "type": "real",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "cost_price": {
-          "name": "cost_price",
+        "costPrice": {
+          "name": "costPrice",
           "type": "real",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "color": {
@@ -3068,127 +1248,72 @@
           "notNull": false,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "isActive": {
+          "name": "isActive",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
-          "default": "1"
+          "default": true
         },
-        "sync_status": {
-          "name": "sync_status",
+        "syncStatus": {
+          "name": "syncStatus",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": "'synced'"
         },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
+        "lastModified": {
+          "name": "lastModified",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
-        "product_variants_remote_id_unique": {
-          "name": "product_variants_remote_id_unique",
+        "productVariant_serverId_unique": {
+          "name": "productVariant_serverId_unique",
           "columns": [
-            "remote_id"
+            "serverId"
           ],
           "isUnique": true
-        },
-        "variant_tenant_sku_idx": {
-          "name": "variant_tenant_sku_idx",
-          "columns": [
-            "tenant_id",
-            "sku"
-          ],
-          "isUnique": true
-        },
-        "variant_tenant_barcode_idx": {
-          "name": "variant_tenant_barcode_idx",
-          "columns": [
-            "tenant_id",
-            "barcode"
-          ],
-          "isUnique": true
-        },
-        "variant_product_name_idx": {
-          "name": "variant_product_name_idx",
-          "columns": [
-            "product_id",
-            "name"
-          ],
-          "isUnique": true
-        },
-        "variant_product_idx": {
-          "name": "variant_product_idx",
-          "columns": [
-            "product_id"
-          ],
-          "isUnique": false
-        },
-        "variant_active_idx": {
-          "name": "variant_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "variant_tenant_idx": {
-          "name": "variant_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "variant_tenant_created_idx": {
-          "name": "variant_tenant_created_idx",
-          "columns": [
-            "tenant_id",
-            "created_at"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
-        "product_variants_product_id_products_id_fk": {
-          "name": "product_variants_product_id_products_id_fk",
-          "tableFrom": "product_variants",
-          "tableTo": "products",
+        "productVariant_tenantId_tenant_id_fk": {
+          "name": "productVariant_tenantId_tenant_id_fk",
+          "tableFrom": "productVariant",
+          "tableTo": "tenant",
           "columnsFrom": [
-            "product_id"
+            "tenantId"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "productVariant_productId_product_id_fk": {
+          "name": "productVariant_productId_product_id_fk",
+          "tableFrom": "productVariant",
+          "tableTo": "product",
+          "columnsFrom": [
+            "productId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -3196,8 +1321,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "products": {
-      "name": "products",
+    "store": {
+      "name": "store",
       "columns": {
         "id": {
           "name": "id",
@@ -3206,355 +1331,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "remote_id": {
-          "name": "remote_id",
+        "serverId": {
+          "name": "serverId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "brand": {
-          "name": "brand",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "brand_id": {
-          "name": "brand_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sku": {
-          "name": "sku",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "barcode": {
-          "name": "barcode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "cost_price": {
-          "name": "cost_price",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "selling_price": {
-          "name": "selling_price",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "wholesale_price": {
-          "name": "wholesale_price",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false,
-          "default": 0
-        },
-        "promo_price": {
-          "name": "promo_price",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "promo_start_at": {
-          "name": "promo_start_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "promo_end_at": {
-          "name": "promo_end_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_taxable": {
-          "name": "is_taxable",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "is_returnable": {
-          "name": "is_returnable",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "expiry_date": {
-          "name": "expiry_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "manufacturing_date": {
-          "name": "manufacturing_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "best_before_date": {
-          "name": "best_before_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "supplier_id": {
-          "name": "supplier_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "products_remote_id_unique": {
-          "name": "products_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "products_tenant_sku_idx": {
-          "name": "products_tenant_sku_idx",
-          "columns": [
-            "tenant_id",
-            "sku"
-          ],
-          "isUnique": true
-        },
-        "products_tenant_barcode_idx": {
-          "name": "products_tenant_barcode_idx",
-          "columns": [
-            "tenant_id",
-            "barcode"
-          ],
-          "isUnique": true
-        },
-        "products_category_idx": {
-          "name": "products_category_idx",
-          "columns": [
-            "category_id"
-          ],
-          "isUnique": false
-        },
-        "products_tenant_active_idx": {
-          "name": "products_tenant_active_idx",
-          "columns": [
-            "tenant_id",
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "products_expiry_idx": {
-          "name": "products_expiry_idx",
-          "columns": [
-            "expiry_date"
-          ],
-          "isUnique": false
-        },
-        "products_deleted_idx": {
-          "name": "products_deleted_idx",
-          "columns": [
-            "deleted_at"
-          ],
-          "isUnique": false
-        },
-        "products_sku_idx": {
-          "name": "products_sku_idx",
-          "columns": [
-            "sku"
-          ],
-          "isUnique": false
-        },
-        "products_barcode_idx": {
-          "name": "products_barcode_idx",
-          "columns": [
-            "barcode"
-          ],
-          "isUnique": false
-        },
-        "products_tenant_created_idx": {
-          "name": "products_tenant_created_idx",
-          "columns": [
-            "tenant_id",
-            "created_at"
-          ],
-          "isUnique": false
-        },
-        "products_name_idx": {
-          "name": "products_name_idx",
-          "columns": [
-            "name"
-          ],
-          "isUnique": false
-        },
-        "products_brand_idx": {
-          "name": "products_brand_idx",
-          "columns": [
-            "brand"
-          ],
-          "isUnique": false
-        },
-        "products_brand_id_idx": {
-          "name": "products_brand_id_idx",
-          "columns": [
-            "brand_id"
-          ],
-          "isUnique": false
-        },
-        "products_store_idx": {
-          "name": "products_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "promotions": {
-      "name": "promotions",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
+        "tenantId": {
+          "name": "tenantId",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -3564,754 +1349,6 @@
           "name": "code",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "discount_type": {
-          "name": "discount_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "discount_value": {
-          "name": "discount_value",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "min_purchase": {
-          "name": "min_purchase",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "start_date": {
-          "name": "start_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "end_date": {
-          "name": "end_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "usage_limit": {
-          "name": "usage_limit",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "per_user_limit": {
-          "name": "per_user_limit",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "promotions_remote_id_unique": {
-          "name": "promotions_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "promotions_tenant_code_idx": {
-          "name": "promotions_tenant_code_idx",
-          "columns": [
-            "tenant_id",
-            "code"
-          ],
-          "isUnique": true
-        },
-        "promotions_active_idx": {
-          "name": "promotions_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "promotions_date_range_idx": {
-          "name": "promotions_date_range_idx",
-          "columns": [
-            "start_date",
-            "end_date"
-          ],
-          "isUnique": false
-        },
-        "promotions_tenant_idx": {
-          "name": "promotions_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "purchase_order_items": {
-      "name": "purchase_order_items",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "po_id": {
-          "name": "po_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "variant_id": {
-          "name": "variant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "unit_cost": {
-          "name": "unit_cost",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "total_cost": {
-          "name": "total_cost",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "received_quantity": {
-          "name": "received_quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "purchase_order_items_remote_id_unique": {
-          "name": "purchase_order_items_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "purchase_order_items_po_idx": {
-          "name": "purchase_order_items_po_idx",
-          "columns": [
-            "po_id"
-          ],
-          "isUnique": false
-        },
-        "purchase_order_items_product_idx": {
-          "name": "purchase_order_items_product_idx",
-          "columns": [
-            "product_id"
-          ],
-          "isUnique": false
-        },
-        "purchase_order_items_tenant_idx": {
-          "name": "purchase_order_items_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "purchase_orders": {
-      "name": "purchase_orders",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "supplier_id": {
-          "name": "supplier_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "po_number": {
-          "name": "po_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'DRAFT'"
-        },
-        "order_date": {
-          "name": "order_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expected_date": {
-          "name": "expected_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "received_date": {
-          "name": "received_date",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sub_total": {
-          "name": "sub_total",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tax_amount": {
-          "name": "tax_amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "grand_total": {
-          "name": "grand_total",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_by_id": {
-          "name": "created_by_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "purchase_orders_remote_id_unique": {
-          "name": "purchase_orders_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "purchase_orders_tenant_po_idx": {
-          "name": "purchase_orders_tenant_po_idx",
-          "columns": [
-            "tenant_id",
-            "po_number"
-          ],
-          "isUnique": true
-        },
-        "purchase_orders_supplier_idx": {
-          "name": "purchase_orders_supplier_idx",
-          "columns": [
-            "supplier_id"
-          ],
-          "isUnique": false
-        },
-        "purchase_orders_status_idx": {
-          "name": "purchase_orders_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "purchase_orders_tenant_idx": {
-          "name": "purchase_orders_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "purchase_orders_order_date_idx": {
-          "name": "purchase_orders_order_date_idx",
-          "columns": [
-            "order_date"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "sessions": {
-      "name": "sessions",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "register_id": {
-          "name": "register_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'OPEN'"
-        },
-        "opened_at": {
-          "name": "opened_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "closed_at": {
-          "name": "closed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "opening_balance": {
-          "name": "opening_balance",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "closing_balance": {
-          "name": "closing_balance",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expected_balance": {
-          "name": "expected_balance",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "discrepancy": {
-          "name": "discrepancy",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "cash_sales": {
-          "name": "cash_sales",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "card_sales": {
-          "name": "card_sales",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "digital_sales": {
-          "name": "digital_sales",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "sessions_remote_id_unique": {
-          "name": "sessions_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "sessions_store_idx": {
-          "name": "sessions_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "sessions_user_idx": {
-          "name": "sessions_user_idx",
-          "columns": [
-            "user_id"
-          ],
-          "isUnique": false
-        },
-        "sessions_status_idx": {
-          "name": "sessions_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "sessions_opened_idx": {
-          "name": "sessions_opened_idx",
-          "columns": [
-            "opened_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "staff": {
-      "name": "staff",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "username": {
-          "name": "username",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
@@ -4319,483 +1356,7 @@
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'CASHIER'"
-        },
-        "permissions": {
-          "name": "permissions",
-          "type": "text",
-          "primaryKey": false,
           "notNull": false,
-          "autoincrement": false,
-          "default": "'[]'"
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "staff_remote_id_unique": {
-          "name": "staff_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "staff_tenant_username_idx": {
-          "name": "staff_tenant_username_idx",
-          "columns": [
-            "tenant_id",
-            "username"
-          ],
-          "isUnique": true
-        },
-        "staff_tenant_email_idx": {
-          "name": "staff_tenant_email_idx",
-          "columns": [
-            "tenant_id",
-            "email"
-          ],
-          "isUnique": true
-        },
-        "staff_store_idx": {
-          "name": "staff_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "staff_role_idx": {
-          "name": "staff_role_idx",
-          "columns": [
-            "role"
-          ],
-          "isUnique": false
-        },
-        "staff_active_idx": {
-          "name": "staff_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "staff_tenant_idx": {
-          "name": "staff_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "stock_transfer_items": {
-      "name": "stock_transfer_items",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "transfer_id": {
-          "name": "transfer_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "variant_id": {
-          "name": "variant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "received_quantity": {
-          "name": "received_quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "stock_transfer_items_remote_id_unique": {
-          "name": "stock_transfer_items_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "stock_transfer_items_transfer_idx": {
-          "name": "stock_transfer_items_transfer_idx",
-          "columns": [
-            "transfer_id"
-          ],
-          "isUnique": false
-        },
-        "stock_transfer_items_product_idx": {
-          "name": "stock_transfer_items_product_idx",
-          "columns": [
-            "product_id"
-          ],
-          "isUnique": false
-        },
-        "stock_transfer_items_tenant_idx": {
-          "name": "stock_transfer_items_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "stock_transfers": {
-      "name": "stock_transfers",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "transfer_number": {
-          "name": "transfer_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "from_store_id": {
-          "name": "from_store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "to_store_id": {
-          "name": "to_store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'PENDING'"
-        },
-        "requested_by_id": {
-          "name": "requested_by_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "approved_by_id": {
-          "name": "approved_by_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "requested_at": {
-          "name": "requested_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "stock_transfers_remote_id_unique": {
-          "name": "stock_transfers_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "stock_transfers_tenant_transfer_idx": {
-          "name": "stock_transfers_tenant_transfer_idx",
-          "columns": [
-            "tenant_id",
-            "transfer_number"
-          ],
-          "isUnique": true
-        },
-        "stock_transfers_from_store_idx": {
-          "name": "stock_transfers_from_store_idx",
-          "columns": [
-            "from_store_id"
-          ],
-          "isUnique": false
-        },
-        "stock_transfers_to_store_idx": {
-          "name": "stock_transfers_to_store_idx",
-          "columns": [
-            "to_store_id"
-          ],
-          "isUnique": false
-        },
-        "stock_transfers_status_idx": {
-          "name": "stock_transfers_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "stock_transfers_tenant_idx": {
-          "name": "stock_transfers_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "stock_transfers_requested_at_idx": {
-          "name": "stock_transfers_requested_at_idx",
-          "columns": [
-            "requested_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "stores": {
-      "name": "stores",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false
         },
         "address": {
@@ -4819,98 +1380,75 @@
           "notNull": false,
           "autoincrement": false
         },
-        "tax_number": {
-          "name": "tax_number",
+        "taxNumber": {
+          "name": "taxNumber",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "is_active": {
-          "name": "is_active",
+        "isActive": {
+          "name": "isActive",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
-          "default": "1"
+          "default": true
         },
-        "sync_status": {
-          "name": "sync_status",
+        "syncStatus": {
+          "name": "syncStatus",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": "'synced'"
         },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
+        "lastModified": {
+          "name": "lastModified",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": false
         }
       },
       "indexes": {
-        "stores_remote_id_unique": {
-          "name": "stores_remote_id_unique",
+        "store_serverId_unique": {
+          "name": "store_serverId_unique",
           "columns": [
-            "remote_id"
+            "serverId"
           ],
           "isUnique": true
-        },
-        "stores_tenant_code_idx": {
-          "name": "stores_tenant_code_idx",
-          "columns": [
-            "tenant_id",
-            "code"
-          ],
-          "isUnique": true
-        },
-        "stores_name_idx": {
-          "name": "stores_name_idx",
-          "columns": [
-            "name"
-          ],
-          "isUnique": false
-        },
-        "stores_active_idx": {
-          "name": "stores_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "store_tenantId_tenant_id_fk": {
+          "name": "store_tenantId_tenant_id_fk",
+          "tableFrom": "store",
+          "tableTo": "tenant",
+          "columnsFrom": [
+            "tenantId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "supplier_payments": {
-      "name": "supplier_payments",
+    "syncLog": {
+      "name": "syncLog",
       "columns": {
         "id": {
           "name": "id",
@@ -4919,534 +1457,103 @@
           "notNull": true,
           "autoincrement": false
         },
-        "remote_id": {
-          "name": "remote_id",
+        "entityType": {
+          "name": "entityType",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "supplier_id": {
-          "name": "supplier_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "amount": {
-          "name": "amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "payment_method": {
-          "name": "payment_method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reference_number": {
-          "name": "reference_number",
+        "entityId": {
+          "name": "entityId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "note": {
-          "name": "note",
+        "action": {
+          "name": "action",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
-        },
-        "paid_at": {
-          "name": "paid_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "supplier_payments_remote_id_unique": {
-          "name": "supplier_payments_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "supplier_payments_supplier_idx": {
-          "name": "supplier_payments_supplier_idx",
-          "columns": [
-            "supplier_id"
-          ],
-          "isUnique": false
-        },
-        "supplier_payments_tenant_idx": {
-          "name": "supplier_payments_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "supplier_payments_paid_at_idx": {
-          "name": "supplier_payments_paid_at_idx",
-          "columns": [
-            "paid_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "suppliers": {
-      "name": "suppliers",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "contact_name": {
-          "name": "contact_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "phone": {
-          "name": "phone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "address": {
-          "name": "address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tax_number": {
-          "name": "tax_number",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "payment_terms": {
-          "name": "payment_terms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "credit_limit": {
-          "name": "credit_limit",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "current_balance": {
-          "name": "current_balance",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "suppliers_remote_id_unique": {
-          "name": "suppliers_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "suppliers_tenant_code_idx": {
-          "name": "suppliers_tenant_code_idx",
-          "columns": [
-            "tenant_id",
-            "code"
-          ],
-          "isUnique": true
-        },
-        "suppliers_tenant_phone_idx": {
-          "name": "suppliers_tenant_phone_idx",
-          "columns": [
-            "tenant_id",
-            "phone"
-          ],
-          "isUnique": true
-        },
-        "suppliers_tenant_email_idx": {
-          "name": "suppliers_tenant_email_idx",
-          "columns": [
-            "tenant_id",
-            "email"
-          ],
-          "isUnique": true
-        },
-        "suppliers_store_idx": {
-          "name": "suppliers_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        },
-        "suppliers_name_idx": {
-          "name": "suppliers_name_idx",
-          "columns": [
-            "name"
-          ],
-          "isUnique": false
-        },
-        "suppliers_active_idx": {
-          "name": "suppliers_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "suppliers_tenant_idx": {
-          "name": "suppliers_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "sync_outbox": {
-      "name": "sync_outbox",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "entity": {
-          "name": "entity",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "operation": {
-          "name": "operation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "endpoint": {
-          "name": "endpoint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "method": {
-          "name": "method",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false
         },
         "payload": {
           "name": "payload",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "status": {
           "name": "status",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
           "default": "'pending'"
         },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "next_attempt_at": {
-          "name": "next_attempt_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_error": {
-          "name": "last_error",
+        "error": {
+          "name": "error",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
+        "createdAt": {
+          "name": "createdAt",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
+          "notNull": false,
+          "autoincrement": false
         },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
+        "syncedAt": {
+          "name": "syncedAt",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
+          "notNull": false,
+          "autoincrement": false
         }
       },
-      "indexes": {
-        "outbox_entity_idx": {
-          "name": "outbox_entity_idx",
-          "columns": [
-            "entity"
-          ],
-          "isUnique": false
-        },
-        "outbox_status_idx": {
-          "name": "outbox_status_idx",
-          "columns": [
-            "status"
-          ],
-          "isUnique": false
-        },
-        "outbox_next_attempt_idx": {
-          "name": "outbox_next_attempt_idx",
-          "columns": [
-            "next_attempt_at"
-          ],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "sync_state": {
-      "name": "sync_state",
+    "syncState": {
+      "name": "syncState",
       "columns": {
-        "entity": {
-          "name": "entity",
+        "entityType": {
+          "name": "entityType",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "cursor": {
-          "name": "cursor",
-          "type": "text",
+        "lastPullAt": {
+          "name": "lastPullAt",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "last_pulled_at": {
-          "name": "last_pulled_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_pushed_at": {
-          "name": "last_pushed_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
+        "lastPushAt": {
+          "name": "lastPushAt",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         }
       },
-      "indexes": {
-        "sync_state_entity_idx": {
-          "name": "sync_state_entity_idx",
-          "columns": [
-            "entity"
-          ],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "tax_rates": {
-      "name": "tax_rates",
+    "tenant": {
+      "name": "tenant",
       "columns": {
         "id": {
           "name": "id",
@@ -5455,666 +1562,78 @@
           "notNull": true,
           "autoincrement": false
         },
-        "remote_id": {
-          "name": "remote_id",
+        "serverId": {
+          "name": "serverId",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tenant_id": {
-          "name": "tenant_id",
+        "code": {
+          "name": "code",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "rate": {
-          "name": "rate",
-          "type": "real",
+        "email": {
+          "name": "email",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "is_compound": {
-          "name": "is_compound",
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "isActive": {
+          "name": "isActive",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false,
-          "default": "0"
+          "default": true
         },
-        "applies_to": {
-          "name": "applies_to",
+        "syncStatus": {
+          "name": "syncStatus",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false,
-          "default": "'[]'"
+          "default": "'synced'"
         },
-        "valid_from": {
-          "name": "valid_from",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "valid_to": {
-          "name": "valid_to",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_active": {
-          "name": "is_active",
+        "lastModified": {
+          "name": "lastModified",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "tax_rates_remote_id_unique": {
-          "name": "tax_rates_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "tax_rates_tenant_name_idx": {
-          "name": "tax_rates_tenant_name_idx",
-          "columns": [
-            "tenant_id",
-            "name"
-          ],
-          "isUnique": true
-        },
-        "tax_rates_active_idx": {
-          "name": "tax_rates_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "tax_rates_tenant_idx": {
-          "name": "tax_rates_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "tenant_store_settings": {
-      "name": "tenant_store_settings",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "store_id": {
-          "name": "store_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "setting_key": {
-          "name": "setting_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "setting_value": {
-          "name": "setting_value",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "updated_by_id": {
-          "name": "updated_by_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "tenant_store_settings_remote_id_unique": {
-          "name": "tenant_store_settings_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "tenant_store_settings_key_idx": {
-          "name": "tenant_store_settings_key_idx",
-          "columns": [
-            "setting_key"
-          ],
-          "isUnique": false
-        },
-        "tenant_store_settings_tenant_idx": {
-          "name": "tenant_store_settings_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "tenant_store_settings_store_idx": {
-          "name": "tenant_store_settings_store_idx",
-          "columns": [
-            "store_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "wallet_transactions": {
-      "name": "wallet_transactions",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "wallet_id": {
-          "name": "wallet_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "amount": {
-          "name": "amount",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reference_id": {
-          "name": "reference_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "wallet_transactions_remote_id_unique": {
-          "name": "wallet_transactions_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "wallet_transactions_wallet_idx": {
-          "name": "wallet_transactions_wallet_idx",
-          "columns": [
-            "wallet_id"
-          ],
-          "isUnique": false
-        },
-        "wallet_transactions_tenant_idx": {
-          "name": "wallet_transactions_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "wallet_transactions_created_idx": {
-          "name": "wallet_transactions_created_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "wallets": {
-      "name": "wallets",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "customer_id": {
-          "name": "customer_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "balance": {
-          "name": "balance",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "wallets_remote_id_unique": {
-          "name": "wallets_remote_id_unique",
-          "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "wallets_customer_id_unique": {
-          "name": "wallets_customer_id_unique",
-          "columns": [
-            "customer_id"
-          ],
-          "isUnique": true
-        },
-        "wallets_customer_idx": {
-          "name": "wallets_customer_idx",
-          "columns": [
-            "customer_id"
-          ],
-          "isUnique": true
-        },
-        "wallets_tenant_idx": {
-          "name": "wallets_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "webhooks": {
-      "name": "webhooks",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "remote_id": {
-          "name": "remote_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "url": {
-          "name": "url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "events": {
-          "name": "events",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "secret": {
-          "name": "secret",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "is_active": {
-          "name": "is_active",
+        "isDeleted": {
+          "name": "isDeleted",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "1"
-        },
-        "last_triggered_at": {
-          "name": "last_triggered_at",
-          "type": "text",
-          "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_status": {
-          "name": "sync_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
           "autoincrement": false,
-          "default": "'synced'"
-        },
-        "sync_error": {
-          "name": "sync_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "CURRENT_TIMESTAMP"
-        },
-        "last_synced_at": {
-          "name": "last_synced_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "default": false
         }
       },
       "indexes": {
-        "webhooks_remote_id_unique": {
-          "name": "webhooks_remote_id_unique",
+        "tenant_serverId_unique": {
+          "name": "tenant_serverId_unique",
           "columns": [
-            "remote_id"
-          ],
-          "isUnique": true
-        },
-        "webhooks_tenant_idx": {
-          "name": "webhooks_tenant_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "webhooks_active_idx": {
-          "name": "webhooks_active_idx",
-          "columns": [
-            "is_active"
-          ],
-          "isUnique": false
-        },
-        "webhooks_tenant_name_idx": {
-          "name": "webhooks_tenant_name_idx",
-          "columns": [
-            "tenant_id",
-            "name"
+            "serverId"
           ],
           "isUnique": true
         }

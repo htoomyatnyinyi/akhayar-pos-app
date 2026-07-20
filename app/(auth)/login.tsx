@@ -1,196 +1,206 @@
-import { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
+  View,
   Text,
   TextInput,
-  View,
+  TouchableOpacity,
+  Alert,
+  Switch,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
-import { router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Animated, { FadeInDown } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
-import { MaterialIcons } from "@expo/vector-icons";
-import { useLoginMutation } from "@/services/features/auth/authApi";
-import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
-import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
-import { setLastTenantCode, setUser } from "@/services/features/auth/authSlice";
-import { getAuthErrorMessage } from "@/services/features/auth/authUtils";
+import { useState } from "react";
+import { useRouter } from "expo-router";
+import {
+  useLoginMutation,
+  usePlatformLoginMutation,
+} from "@/services/features/auth/authApi";
+import { useAppDispatch } from "@/services/store/hooks";
+import { setCredentials } from "@/services/features/auth/authSlice";
+import { saveToken, saveTenantId, saveUser } from "@/utils/secureStorage";
+import { Ionicons } from "@expo/vector-icons";
 
-export default function LoginScreen() {
-  const dispatch = useAppDispatch();
-
-  const savedTenantCode = useAppSelector((state) => state.auth.lastTenantCode);
-
-  const [tenantCode, setTenantCode] = useState(savedTenantCode);
+export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [tenantCode, setTenantCode] = useState("");
+  const [isPlatform, setIsPlatform] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const router = useRouter();
+  const dispatch = useAppDispatch();
 
-  const [login, { isLoading }] = useLoginMutation();
+  const [login, { isLoading: loginLoading }] = useLoginMutation();
+  const [platformLogin, { isLoading: platformLoading }] =
+    usePlatformLoginMutation();
 
-  const handleLogin = async () => {
-    const trimmedEmail = email.trim().toLowerCase();
-    const trimmedTenantCode = tenantCode.trim().toUpperCase();
+  const isLoading = loginLoading || platformLoading;
 
-    if (!trimmedEmail || !password) {
-      Alert.alert("Missing fields", "Enter your email and password.");
+  const handleSubmit = async () => {
+    if (!email || !password) {
+      Alert.alert("Error", "Please fill in all fields.");
+      return;
+    }
+    if (!isPlatform && !tenantCode) {
+      Alert.alert("Error", "Tenant code is required.");
       return;
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    dispatch(setLastTenantCode(trimmedTenantCode));
-
     try {
-      const user = await login({
-        email: trimmedEmail,
-        password,
-        tenantCode: trimmedTenantCode || undefined,
-      }).unwrap();
-      dispatch(setUser(user));
-      // console.log(user, "user auth");
+      let result: any;
+      if (isPlatform) {
+        result = await platformLogin({ email, password }).unwrap();
+        const userData = {
+          id: result.admin.id,
+          name: result.admin.name,
+          email: result.admin.email,
+          role: result.admin.role,
+          stores: [],
+          tenantId: null,
+        };
+        await saveToken(result.token);
+        await saveUser(userData);
+        dispatch(
+          setCredentials({
+            user: userData,
+            token: result.token,
+            tenantId: null,
+          }),
+        );
+      } else {
+        result = await login({
+          email,
+          password,
+          tenantCode: tenantCode.trim(),
+        }).unwrap();
+        await saveToken(result.token);
+        await saveTenantId(result.user.tenantId);
+        await saveUser(result.user);
+        dispatch(
+          setCredentials({
+            user: result.user,
+            token: result.token,
+            tenantId: result.user.tenantId,
+            stores: result.user.stores || [],
+          }),
+        );
+      }
       router.replace("/");
-    } catch (error: unknown) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        "Login failed",
-        getAuthErrorMessage(
-          error,
-          "Check your tenant code, email, and password.",
-        ),
-      );
+    } catch (err: any) {
+      const message = err.data?.message || err.message || "Login failed";
+      Alert.alert("Login Failed", message);
     }
   };
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-slate-950"
-      style={{ flex: 1, backgroundColor: "#020617" }}
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1 bg-white"
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: "center",
-            padding: 24,
-            paddingBottom: 36,
-          }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Animated.View
-            entering={FadeInDown.duration(600).springify()}
-            className="mb-10"
-          >
-            <View className="mb-4 h-16 w-16 items-center justify-center rounded-[24px] bg-sky-500/15 border border-sky-400/20">
-              <MaterialIcons name="point-of-sale" size={32} color="#7dd3fc" />
+      <ScrollView contentContainerClassName="flex-1 justify-center px-6">
+        <View className="items-center mb-8">
+          <Text className="text-3xl font-bold text-indigo-600">Oasis POS</Text>
+          <Text className="text-gray-500 mt-1">ERP & POS System</Text>
+        </View>
+
+        <View className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+          <Text className="text-xl font-bold mb-6 text-center">
+            {isPlatform ? "Platform Admin Login" : "Tenant Login"}
+          </Text>
+
+          <View className="space-y-4">
+            <View>
+              <Text className="text-sm font-medium text-gray-700 mb-1">
+                Email
+              </Text>
+              <TextInput
+                className="border border-gray-300 rounded-lg px-4 py-3 text-base"
+                placeholder="admin@demo.com"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
             </View>
-            <Text className="text-4xl font-black text-white">Welcome back</Text>
-            <Text className="mt-3 max-w-[320px] text-sm leading-5 text-slate-300">
-              Sign in to your tenant workspace to manage sales, stock, and
-              operations.
-            </Text>
-          </Animated.View>
 
-          <Animated.View
-            entering={FadeInDown.duration(600).delay(120).springify()}
-            className="rounded-[28px] border border-white/10 bg-slate-900/90 p-5"
-          >
-            <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
-              Tenant code
-            </Text>
-            <TextInput
-              value={tenantCode}
-              onChangeText={(value) => setTenantCode(value.toUpperCase())}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              placeholder="MY-STORE"
-              placeholderTextColor="#64748b"
-              className="mb-1 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-white"
-            />
-            <Text className="mb-4 text-xs leading-5 text-slate-500">
-              Required when your email is linked to more than one organization.
-            </Text>
-
-            <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
-              Email
-            </Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="name@company.com"
-              placeholderTextColor="#64748b"
-              className="mb-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-base text-white"
-            />
-
-            <View className="mb-2 flex-row items-center justify-between">
-              <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
+            <View>
+              <Text className="text-sm font-medium text-gray-700 mb-1">
                 Password
               </Text>
-              <Pressable onPress={() => router.push("/(auth)/forgot-password")}>
-                <Text className="text-xs font-bold text-sky-400">Forgot?</Text>
-              </Pressable>
-            </View>
-            <View className="mb-6 flex-row items-center rounded-2xl border border-white/10 bg-white/5 px-4">
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                placeholder="••••••••"
-                placeholderTextColor="#64748b"
-                className="flex-1 py-4 text-base text-white"
-              />
-              <Pressable
-                onPress={() => setShowPassword((value) => !value)}
-                className="pl-3"
-              >
-                <MaterialIcons
-                  name={showPassword ? "visibility-off" : "visibility"}
-                  size={22}
-                  color="#cbd5e1"
+              <View className="flex-row items-center border border-gray-300 rounded-lg">
+                <TextInput
+                  className="flex-1 px-4 py-3 text-base"
+                  placeholder="••••••••"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
                 />
-              </Pressable>
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  className="px-3"
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off" : "eye"}
+                    size={20}
+                    color="#9CA3AF"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
-            <Pressable
-              onPress={handleLogin}
+            {!isPlatform && (
+              <View>
+                <Text className="text-sm font-medium text-gray-700 mb-1">
+                  Tenant Code
+                </Text>
+                <TextInput
+                  className="border border-gray-300 rounded-lg px-4 py-3 text-base"
+                  placeholder="e.g., DEMO-TNT"
+                  value={tenantCode}
+                  onChangeText={setTenantCode}
+                  autoCapitalize="characters"
+                />
+              </View>
+            )}
+
+            <View className="flex-row items-center justify-between mt-2">
+              <View className="flex-row items-center">
+                <Switch
+                  value={isPlatform}
+                  onValueChange={setIsPlatform}
+                  trackColor={{ false: "#D1D5DB", true: "#6366F1" }}
+                />
+                <Text className="ml-2 text-sm text-gray-600">
+                  Platform Admin
+                </Text>
+              </View>
+              <TouchableOpacity>
+                <Text className="text-sm text-indigo-600">
+                  Forgot Password?
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={handleSubmit}
               disabled={isLoading}
-              className="items-center rounded-2xl bg-sky-500 px-4 py-4 active:opacity-80"
+              className={`bg-indigo-600 py-3 rounded-lg mt-4 ${isLoading ? "opacity-50" : ""}`}
             >
               {isLoading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="white" />
               ) : (
-                <Text className="text-base font-bold text-white">Sign in</Text>
+                <Text className="text-white text-center font-bold text-base">
+                  {isPlatform ? "Sign In as Admin" : "Sign In"}
+                </Text>
               )}
-            </Pressable>
-          </Animated.View>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-          <Animated.View
-            entering={FadeInDown.duration(600).delay(240).springify()}
-            className="mt-8 flex-row items-center justify-center"
-          >
-            <Text className="text-sm text-slate-400">
-              Need a tenant account?
-            </Text>
-            <Pressable
-              onPress={() => router.push("/register")}
-              className="ml-2 rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1.5"
-            >
-              <Text className="text-xs font-bold uppercase tracking-[2px] text-sky-200">
-                Register
-              </Text>
-            </Pressable>
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        <Text className="text-center text-gray-400 text-xs mt-6">
+          v1.0.0 • Offline-First POS
+        </Text>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
