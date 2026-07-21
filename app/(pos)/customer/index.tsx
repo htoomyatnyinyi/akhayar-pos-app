@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useState } from "react";
 // import { useGetCustomersQuery } from "@/services/features/customers/customersApi";
+import { useGetCustomersQuery } from "@/services/features/customers/customerApi";
 import { useAppSelector } from "@/services/store/hooks";
 import { Ionicons } from "@expo/vector-icons";
 

@@ -1,3 +1,18 @@
+--> statement-breakpoint
+CREATE TABLE `tenant` (
+	`id` text PRIMARY KEY NOT NULL,
+	`serverId` text,
+	`code` text,
+	`name` text,
+	`email` text,
+	`phone` text,
+	`isActive` integer DEFAULT true,
+	`syncStatus` text DEFAULT 'synced',
+	`lastModified` integer,
+	`isDeleted` integer DEFAULT false
+);
+
+
 CREATE TABLE `category` (
 	`id` text PRIMARY KEY NOT NULL,
 	`serverId` text,
@@ -194,6 +209,28 @@ CREATE TABLE `store` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `store_serverId_unique` ON `store` (`serverId`);--> statement-breakpoint
+CREATE TABLE `supplier` (
+	`id` text PRIMARY KEY NOT NULL,
+	`serverId` text,
+	`tenantId` text NOT NULL,
+	`code` text,
+	`name` text,
+	`contactName` text,
+	`phone` text,
+	`email` text,
+	`address` text,
+	`taxId` text,
+	`paymentTerms` text,
+	`creditLimit` real,
+	`currentBalance` real DEFAULT 0,
+	`isActive` integer DEFAULT true,
+	`syncStatus` text DEFAULT 'synced',
+	`lastModified` integer,
+	`isDeleted` integer DEFAULT false,
+	FOREIGN KEY (`tenantId`) REFERENCES `tenant`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `supplier_serverId_unique` ON `supplier` (`serverId`);--> statement-breakpoint
 CREATE TABLE `syncLog` (
 	`id` text PRIMARY KEY NOT NULL,
 	`entityType` text,
@@ -211,18 +248,6 @@ CREATE TABLE `syncState` (
 	`lastPullAt` integer,
 	`lastPushAt` integer
 );
---> statement-breakpoint
-CREATE TABLE `tenant` (
-	`id` text PRIMARY KEY NOT NULL,
-	`serverId` text,
-	`code` text,
-	`name` text,
-	`email` text,
-	`phone` text,
-	`isActive` integer DEFAULT true,
-	`syncStatus` text DEFAULT 'synced',
-	`lastModified` integer,
-	`isDeleted` integer DEFAULT false
-);
+
 --> statement-breakpoint
 CREATE UNIQUE INDEX `tenant_serverId_unique` ON `tenant` (`serverId`);

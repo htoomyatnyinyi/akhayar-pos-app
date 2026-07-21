@@ -58,7 +58,7 @@ export default function PosLayout() {
           }}
         />
       )}
-      <Tabs.Screen
+      {/* <Tabs.Screen
         name="more"
         options={{
           title: "More",
@@ -66,7 +66,7 @@ export default function PosLayout() {
             <Ionicons name="ellipsis-horizontal" size={size} color={color} />
           ),
         }}
-      />
+      /> */}
 
       {/* Hidden screens — accessible via navigation but not shown in tabs */}
       <Tabs.Screen

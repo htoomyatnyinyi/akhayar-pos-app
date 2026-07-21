@@ -1,3 +1,15 @@
+import { View, Text } from "react-native";
+import React from "react";
+
+const verify = () => {
+  return (
+    <View>
+      <Text>verify</Text>
+    </View>
+  );
+};
+
+export default verify;
 // import { useState } from "react";
 // import { View, Text, TextInput, Pressable, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from "react-native";
 // import { SafeAreaView } from "react-native-safe-area-context";

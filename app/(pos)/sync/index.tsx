@@ -5,7 +5,7 @@ import { setSyncing, setLastSync } from "@/services/features/sync/syncSlice";
 import { SyncEngine } from "@/services/features/sync/syncEngine";
 import { getToken, getTenantId } from "@/utils/secureStorage";
 
-export default function SyncScreen() {
+function SyncScreen() {
   const dispatch = useAppDispatch();
   const { isSyncing, lastSyncAt, isOnline, pendingItems } = useAppSelector(
     (state) => state.sync,
@@ -53,3 +53,5 @@ export default function SyncScreen() {
     </View>
   );
 }
+
+export default SyncScreen;
