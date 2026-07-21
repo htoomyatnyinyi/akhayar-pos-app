@@ -13,12 +13,6 @@ export async function printThermalReceiptWithPOS5890U(
 
     await Print.printAsync({
       html: html,
-      // POS-5890U specific settings
-      printerOptions: {
-        paperWidth: 80, // mm
-        density: 1.0,
-        cutPaper: true,
-      },
     });
   } catch (error) {
     throw error;

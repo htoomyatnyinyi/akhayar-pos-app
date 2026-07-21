@@ -22,6 +22,24 @@ export class StoreRepository {
     });
     return id;
   }
+  // update by em
+  async updateLocal(id: string, data: any) {
+    const now = Date.now();
+    await db
+      .update(store)
+      .set({
+        code: data.code,
+        name: data.name,
+        address: data.address,
+        phone: data.phone,
+        email: data.email,
+        taxNumber: data.taxNumber,
+        isActive: data.isActive,
+        lastModified: now,
+        syncStatus: "pending",
+      })
+      .where(eq(store.id, id));
+  }
 
   async getStores(): Promise<any[]> {
     return await db.select().from(store).where(eq(store.isDeleted, false));
@@ -45,7 +63,7 @@ export class StoreRepository {
       .where(eq(store.serverId, serverStore.id));
     const now = Date.now();
     if (existing.length > 0) {
-      if (serverStore.lastModified > existing[0].lastModified) {
+      if (serverStore.lastModified > (existing[0].lastModified || 0)) {
         await db
           .update(store)
           .set({

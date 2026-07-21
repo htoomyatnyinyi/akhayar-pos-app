@@ -36,6 +36,44 @@ export class SupplierRepository {
       .where(eq(supplier.isDeleted, false));
   }
 
+  async updateLocal(id: string, data: any) {
+    const now = Date.now();
+    await db
+      .update(supplier)
+      .set({
+        code: data.code,
+        name: data.name,
+        contactName: data.contactName,
+        phone: data.phone,
+        email: data.email,
+        address: data.address,
+        taxId: data.taxId,
+        paymentTerms: data.paymentTerms,
+        creditLimit: data.creditLimit,
+        currentBalance: data.currentBalance,
+        isActive: data.isActive,
+        lastModified: now,
+        syncStatus: "pending",
+      })
+      .where(eq(supplier.id, id));
+  }
+
+  // async softDelete(id: string) {
+  //   await db
+  //     .update(supplier)
+  //     .set({
+  //       isDeleted: true,
+  //       isActive: false,
+  //       lastModified: Date.now(),
+  //       syncStatus: "pending",
+  //     })
+  //     .where(eq(supplier.id, id));
+  // }
+
+  async deleteLocal(id: string) {
+    await db.delete(supplier).where(eq(supplier.id, id));
+  }
+
   async getPending(): Promise<any[]> {
     return await db
       .select()
@@ -57,7 +95,7 @@ export class SupplierRepository {
       .where(eq(supplier.serverId, serverSupplier.id));
     const now = Date.now();
     if (existing.length > 0) {
-      if (serverSupplier.lastModified > existing[0].lastModified) {
+      if (serverSupplier.lastModified > (existing[0].lastModified || 0)) {
         await db
           .update(supplier)
           .set({

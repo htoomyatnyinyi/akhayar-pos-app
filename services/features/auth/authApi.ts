@@ -1,4 +1,3 @@
-// import { baseApi } from "../../services/api/baseApi";
 import { baseApi } from "@/services/api/baseApi";
 
 export const authApi = baseApi.injectEndpoints({
@@ -21,7 +20,7 @@ export const authApi = baseApi.injectEndpoints({
       query: () => "/auth/me",
     }),
   }),
-  overrideExisting: false,
+  overrideExisting: true,
 });
 
 export const {

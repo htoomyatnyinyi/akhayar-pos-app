@@ -2,25 +2,40 @@ import { drizzle } from "drizzle-orm/expo-sqlite";
 import { openDatabaseSync } from "expo-sqlite";
 import * as schema from "./schema";
 import migrations from "@/services/offline/drizzle/migrations";
-// import migrations from "./drizzle/migrations"; // Drizzle Kit က ထုတ်ပေးမည့် Migration ဖိုင်များ
 import { useMigrations } from "drizzle-orm/expo-sqlite/migrator";
+
+export { migrations, useMigrations };
 
 const expoDb = openDatabaseSync("pos.db", { enableChangeListener: true });
 
-// စွမ်းဆောင်ရည်အတွက် WAL mode နှင့် Foreign Keys ကိုသာ ချန်လှပ်နိုင်သည်
+// Enable WAL mode for better performance and foreign key support
 expoDb.execSync("PRAGMA journal_mode = WAL;");
 expoDb.execSync("PRAGMA foreign_keys = ON;");
 
-// // Run migrations (this is a one-time operation at app startup)
-// useMigrations(db, migrations)
-//   .then(() => {
-//     console.log("✅ Migrations applied successfully");
-//   })
-//   .catch((error) => {
-//     console.error("❌ Error applying migrations:", error);
-//   });
-
 export const db = drizzle(expoDb, { schema });
+
+export function createLocalId(prefix: string) {
+  const random = Math.random().toString(36).slice(2, 10);
+  return `${prefix}_${Date.now().toString(36)}_${random}`;
+}
+
+/* 
+declare const _default: {
+  journal: {
+    entries: {
+      idx: number;
+      when: number;
+      tag: string;
+      breakpoints: boolean;
+    }[];
+  };
+  migrations: Record<string, any>;
+};
+export default _default;
+
+
+// migrations.d.ts
+*/
 
 // import { drizzle } from "drizzle-orm/expo-sqlite";
 // import { openDatabaseSync } from "expo-sqlite";

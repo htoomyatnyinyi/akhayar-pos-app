@@ -238,6 +238,48 @@ export const supplier = sqliteTable("supplier", {
   lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
+// ── Staff ──
+export const staff = sqliteTable("staff", {
+  id: text("id").primaryKey(),
+  serverId: text("serverId").unique(),
+  tenantId: text("tenantId")
+    .notNull()
+    .references(() => tenant.id),
+  storeId: text("storeId").references(() => store.id),
+  username: text("username"),
+  email: text("email"),
+  name: text("name"),
+  role: text("role"),
+  permissions: text("permissions"), // JSON string array
+  isActive: integer("isActive", { mode: "boolean" }).default(true),
+  syncStatus: text("syncStatus").default("synced"),
+  lastModified: integer("lastModified"),
+  isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
+});
+
+// ── Session ──
+export const session = sqliteTable("session", {
+  id: text("id").primaryKey(),
+  serverId: text("serverId").unique(),
+  tenantId: text("tenantId")
+    .notNull()
+    .references(() => tenant.id),
+  storeId: text("storeId").references(() => store.id),
+  registerId: text("registerId"),
+  userId: text("userId").references(() => staff.id),
+  status: text("status").default("OPEN"),
+  openingBalance: real("openingBalance").default(0),
+  closingBalance: real("closingBalance").default(0),
+  cashCount: real("cashCount").default(0),
+  notes: text("notes"),
+  openedAt: integer("openedAt"),
+  closedAt: integer("closedAt"),
+  isActive: integer("isActive", { mode: "boolean" }).default(true),
+  syncStatus: text("syncStatus").default("synced"),
+  lastModified: integer("lastModified"),
+  isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
+});
+
 // ── Sync State ──
 export const syncState = sqliteTable("syncState", {
   entityType: text("entityType").primaryKey(),

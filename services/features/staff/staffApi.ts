@@ -1,135 +1,93 @@
-// import { posApi } from "@/services/api/posApi";
-// import { isOnline } from "@/services/offline/network";
-// import {
-//   createOfflineGenericRecord,
-//   deleteOfflineGenericRecord,
-//   getLocalGenericRecords,
-//   updateOfflineGenericRecord,
-//   upsertGenericRecords,
-// } from "@/services/offline/repository";
-// import { Staff } from "./staffTypes";
+import { baseApi } from "@/services/api/baseApi";
+import { StaffRepository } from "@/services/offline/repositories/staffRepo";
 
-// export interface CreateStaffPayload {
-//   username: string;
-//   email?: string;
-//   name: string;
-//   password?: string;
-//   role: string;
-//   permissions: string[];
-//   isActive?: boolean;
-//   storeId?: string;
-// }
+export const staffApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    getStaff: builder.query<any, void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const repo = new StaffRepository();
+        try {
+          const result = await baseQuery({
+            url: "/tenant/staff",
+          });
+          if (result.data) {
+            const staffs = (result.data as any).data || result.data;
+            for (const staff of staffs) {
+              await repo.upsertFromServer(staff);
+            }
+          }
+        } catch (e) {
+          console.log("Offline or network error fetching staff");
+        }
 
-// export const staffApi = posApi.injectEndpoints({
-//   overrideExisting: false,
-//   endpoints: (builder) => ({
-//     getStaff: builder.query<Staff[], string | undefined>({
-//       async queryFn(storeId, _api, _extraOptions, baseQuery) {
-//         if (await isOnline()) {
-//           const result = await baseQuery(
-//             `/tenant/staff${storeId ? `?storeId=${storeId}` : ""}`,
-//           );
-//           if (!result.error && Array.isArray(result.data)) {
-//             await upsertGenericRecords("staff", result.data as Staff[]);
-//             return { data: await getLocalGenericRecords<Staff>("staff") };
-//           }
-//         }
+        const localStaff = await repo.getStaff();
+        return { data: localStaff };
+      },
+      providesTags: ["Staff"],
+    }),
+    createStaff: builder.mutation<any, any>({
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const repo = new StaffRepository();
+        const localId = await repo.createLocal(body);
 
-//         return { data: await getLocalGenericRecords<Staff>("staff") };
-//       },
-//       providesTags: ["Staff"],
-//     }),
+        const result = await baseQuery({
+          url: "/tenant/staff",
+          method: "POST",
+          body,
+        });
 
-//     getStaffById: builder.query<Staff, string>({
-//       query: (id) => `/tenant/staff/${id}`,
-//       providesTags: ["Staff"],
-//     }),
+        if (result.data) {
+          const serverStaff = result.data as any;
+          await repo.markSynced(localId, serverStaff.id);
+          return { data: serverStaff };
+        }
 
-//     createStaff: builder.mutation<Staff, CreateStaffPayload>({
-//       async queryFn(body, _api, _extraOptions, baseQuery) {
-//         if (await isOnline()) {
-//           const result = await baseQuery({
-//             url: "/tenant/staff",
-//             method: "POST",
-//             body,
-//           });
-//           if (!result.error) return { data: result.data as Staff };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        return { data: { ...body, id: localId } };
+      },
+      invalidatesTags: ["Staff"],
+    }),
+    updateStaff: builder.mutation<any, { id: string; data: any }>({
+      async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
+        const repo = new StaffRepository();
+        await repo.updateLocal(id, data);
 
-//         return {
-//           data: (await createOfflineGenericRecord(
-//             "staff",
-//             "/tenant/staff",
-//             body,
-//           )) as Staff,
-//         };
-//       },
-//       invalidatesTags: ["Staff"],
-//     }),
+        const result = await baseQuery({
+          url: `/tenant/staff/${id}`,
+          method: "PUT",
+          body: data,
+        });
 
-//     updateStaff: builder.mutation<
-//       Staff,
-//       { id: string; data: Partial<CreateStaffPayload> }
-//     >({
-//       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
-//         if (await isOnline() && !String(id).includes("_")) {
-//           const result = await baseQuery({
-//             url: `/tenant/staff/${id}`,
-//             method: "PUT",
-//             body: data,
-//           });
-//           if (!result.error) return { data: result.data as Staff };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        if (result.data) {
+          const serverStaff = result.data as any;
+          await repo.markSynced(id, serverStaff.id);
+          return { data: serverStaff };
+        }
 
-//         return {
-//           data: (await updateOfflineGenericRecord(
-//             "staff",
-//             `/tenant/staff/${id}`,
-//             id,
-//             data,
-//           )) as unknown as Staff,
-//         };
-//       },
-//       invalidatesTags: ["Staff"],
-//     }),
+        return { data: { id, ...data } };
+      },
+      invalidatesTags: (result, error, { id }) => [{ type: "Staff", id }],
+    }),
+    deleteStaff: builder.mutation<any, string>({
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        const repo = new StaffRepository();
+        await repo.deleteLocal(id);
 
-//     deleteStaff: builder.mutation<void, string>({
-//       async queryFn(id, _api, _extraOptions, baseQuery) {
-//         if (await isOnline() && !String(id).includes("_")) {
-//           const result = await baseQuery({
-//             url: `/tenant/staff/${id}`,
-//             method: "DELETE",
-//           });
-//           if (!result.error) return { data: undefined };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        await baseQuery({
+          url: `/tenant/staff/${id}`,
+          method: "DELETE",
+        });
 
-//         await deleteOfflineGenericRecord("staff", `/tenant/staff/${id}`, id);
-//         return { data: undefined };
-//       },
-//       invalidatesTags: ["Staff"],
-//     }),
-//   }),
-// });
+        return { data: undefined };
+      },
+      invalidatesTags: ["Staff"],
+    }),
+  }),
+  overrideExisting: false,
+});
 
-// export const {
-//   useGetStaffQuery,
-//   useGetStaffByIdQuery,
-//   useCreateStaffMutation,
-//   useUpdateStaffMutation,
-//   useDeleteStaffMutation,
-// } = staffApi;
+export const {
+  useGetStaffQuery,
+  useCreateStaffMutation,
+  useUpdateStaffMutation,
+  useDeleteStaffMutation,
+} = staffApi;

@@ -10,6 +10,8 @@ import { Provider } from "react-redux";
 import { store } from "@/services/store/store";
 import { SyncInitializer } from "@/components/SyncInitializer";
 import { useAppSelector } from "@/services/store/hooks";
+import { db, migrations, useMigrations } from "@/services/offline/db";
+import { View, ActivityIndicator, Text } from "react-native";
 
 function RootLayoutNav() {
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
@@ -36,6 +38,25 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+  const { success, error } = useMigrations(db, migrations);
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text style={{ color: "red" }}>DB Migration Error: {error.message}</Text>
+      </View>
+    );
+  }
+
+  if (!success) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" />
+        <Text style={{ marginTop: 8, color: "#666" }}>Preparing database…</Text>
+      </View>
+    );
+  }
+
   return (
     <Provider store={store}>
       <SyncInitializer />
@@ -43,3 +64,4 @@ export default function RootLayout() {
     </Provider>
   );
 }
+

@@ -1,128 +1,94 @@
-// import { posApi } from "@/services/api/posApi";
-// import { isOnline } from "@/services/offline/network";
-// import {
-//   createOfflineGenericRecord,
-//   deleteOfflineGenericRecord,
-//   getLocalGenericRecords,
-//   updateOfflineGenericRecord,
-//   upsertGenericRecords,
-// } from "@/services/offline/repository";
-// import { Supplier, CreateSupplierPayload } from "./supplierTypes";
+import { baseApi } from "@/services/api/baseApi";
+import { SupplierRepository } from "@/services/offline/repositories/supplierRepo";
 
-// export const supplierApi = posApi.injectEndpoints({
-//   overrideExisting: false,
-//   endpoints: (builder) => ({
-//     getSuppliers: builder.query<Supplier[], string | undefined>({
-//       async queryFn(storeId, _api, _extraOptions, baseQuery) {
-//         if (await isOnline()) {
-//           const result = await baseQuery({
-//             url: "/tenant/suppliers",
-//             params: storeId ? { storeId } : {},
-//           });
-//           if (!result.error && Array.isArray(result.data)) {
-//             await upsertGenericRecords("suppliers", result.data as Supplier[]);
-//             return { data: await getLocalGenericRecords<Supplier>("suppliers") };
-//           }
-//         }
+export const supplierApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    getSuppliers: builder.query<any, void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const repo = new SupplierRepository();
+        try {
+          const result = await baseQuery({
+            url: "/tenant/suppliers",
+          });
+          if (result.data) {
+            const suppliers = (result.data as any).data || result.data;
+            for (const supplier of suppliers) {
+              await repo.upsertFromServer(supplier);
+            }
+          }
+        } catch (e) {
+          console.log("Offline or network error fetching suppliers");
+        }
 
-//         return { data: await getLocalGenericRecords<Supplier>("suppliers") };
-//       },
-//       providesTags: ["Inventory"],
-//     }),
+        const localSuppliers = await repo.getSuppliers();
+        return { data: localSuppliers };
+      },
+      providesTags: ["Supplier"],
+    }),
+    createSupplier: builder.mutation<any, any>({
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const repo = new SupplierRepository();
+        const localId = await repo.createLocal(body);
 
-//     getSupplierById: builder.query<Supplier, string>({
-//       query: (id) => `/tenant/suppliers/${id}`,
-//       providesTags: ["Inventory"],
-//     }),
+        const result = await baseQuery({
+          url: "/tenant/suppliers",
+          method: "POST",
+          body,
+        });
 
-//     createSupplier: builder.mutation<
-//       Supplier,
-//       CreateSupplierPayload & { storeId?: string }
-//     >({
-//       async queryFn(body, _api, _extraOptions, baseQuery) {
-//         if (await isOnline()) {
-//           const result = await baseQuery({
-//             url: "/tenant/suppliers",
-//             method: "POST",
-//             body,
-//           });
-//           if (!result.error) return { data: result.data as Supplier };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        if (result.data) {
+          const serverSupplier = result.data as any;
+          await repo.markSynced(localId, serverSupplier.id);
+          return { data: serverSupplier };
+        }
 
-//         return {
-//           data: (await createOfflineGenericRecord(
-//             "suppliers",
-//             "/tenant/suppliers",
-//             body,
-//           )) as Supplier,
-//         };
-//       },
-//       invalidatesTags: ["Inventory"],
-//     }),
+        return { data: { ...body, id: localId } };
+      },
+      invalidatesTags: ["Supplier"],
+    }),
+    updateSupplier: builder.mutation<any, { id: string; data: any }>({
+      async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
+        const repo = new SupplierRepository();
+        await repo.updateLocal(id, data);
 
-//     updateSupplier: builder.mutation<
-//       Supplier,
-//       { id: string; data: Partial<CreateSupplierPayload> }
-//     >({
-//       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
-//         if (await isOnline() && !String(id).includes("_")) {
-//           const result = await baseQuery({
-//             url: `/tenant/suppliers/${id}`,
-//             method: "PUT",
-//             body: data,
-//           });
-//           if (!result.error) return { data: result.data as Supplier };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        const result = await baseQuery({
+          url: `/tenant/suppliers/${id}`,
+          method: "PUT",
+          body: data,
+        });
 
-//         return {
-//           data: (await updateOfflineGenericRecord(
-//             "suppliers",
-//             `/tenant/suppliers/${id}`,
-//             id,
-//             data,
-//           )) as Supplier,
-//         };
-//       },
-//       invalidatesTags: ["Inventory"],
-//     }),
+        if (result.data) {
+          const serverSupplier = result.data as any;
+          await repo.markSynced(id, serverSupplier.id);
+          return { data: serverSupplier };
+        }
 
-//     deleteSupplier: builder.mutation<void, string>({
-//       async queryFn(id, _api, _extraOptions, baseQuery) {
-//         if (await isOnline() && !String(id).includes("_")) {
-//           const result = await baseQuery({
-//             url: `/tenant/suppliers/${id}`,
-//             method: "DELETE",
-//           });
-//           if (!result.error) return { data: undefined };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        return { data: { id, ...data } };
+      },
+      invalidatesTags: (result, error, { id }) => [{ type: "Supplier", id }],
+    }),
+    deleteSupplier: builder.mutation<any, string>({
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        const repo = new SupplierRepository();
+        await repo.deleteLocal(id);
+        // await repo.softDelete(id);
 
-//         await deleteOfflineGenericRecord("suppliers", `/tenant/suppliers/${id}`, id);
-//         return { data: undefined };
-//       },
-//       invalidatesTags: ["Inventory"],
-//     }),
-//   }),
-// });
+        await baseQuery({
+          url: `/tenant/suppliers/${id}`,
+          method: "DELETE",
+        });
 
-// export const {
-//   useGetSuppliersQuery,
-//   useGetSupplierByIdQuery,
-//   useCreateSupplierMutation,
-//   useUpdateSupplierMutation,
-//   useDeleteSupplierMutation,
-// } = supplierApi;
+        return { data: undefined };
+      },
+      invalidatesTags: ["Supplier"],
+    }),
+  }),
+  overrideExisting: true, // fasle
+});
+
+export const {
+  useGetSuppliersQuery,
+  useCreateSupplierMutation,
+  useUpdateSupplierMutation,
+  useDeleteSupplierMutation,
+} = supplierApi;

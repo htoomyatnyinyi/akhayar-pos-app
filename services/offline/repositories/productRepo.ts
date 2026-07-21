@@ -78,14 +78,19 @@ export class ProductRepository {
 
   // ── Get all products ──
   async getProducts(storeId?: string): Promise<any[]> {
-    let q = db.select().from(product).where(eq(product.isDeleted, false));
     if (storeId) {
       // Join with inventory to filter by store
-      q = q
+      return await db
+        .select({ product })
+        .from(product)
         .innerJoin(inventory, eq(inventory.productId, product.id))
-        .where(eq(inventory.storeId, storeId));
+        .where(
+          and(eq(product.isDeleted, false), eq(inventory.storeId, storeId)),
+        )
+        .then((rows) => rows.map((r) => r.product));
     }
-    return await q;
+
+    return await db.select().from(product).where(eq(product.isDeleted, false));
   }
 
   // ── Get pending products for sync ──
@@ -160,7 +165,7 @@ export class ProductRepository {
 
     if (existing.length > 0) {
       // Update if server is newer
-      if (serverProduct.lastModified > existing[0].lastModified) {
+      if (serverProduct.lastModified > (existing[0].lastModified || 0)) {
         await db
           .update(product)
           .set({

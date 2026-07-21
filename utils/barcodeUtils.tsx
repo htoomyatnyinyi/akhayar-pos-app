@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text } from "react-native";
 import Svg, { Rect, Text as SvgText } from "react-native-svg";
-import { Product } from "@/services/features/products/productTypes";
+type Product = any;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Code 39 Encoding Table (ISO/IEC 16388)

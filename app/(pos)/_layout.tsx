@@ -47,7 +47,8 @@ export default function PosLayout() {
           ),
         }}
       />
-      {!isPlatform && (
+
+      {isPlatform && (
         <Tabs.Screen
           name="customer"
           options={{
@@ -58,15 +59,16 @@ export default function PosLayout() {
           }}
         />
       )}
-      {/* <Tabs.Screen
-        name="more"
+
+      <Tabs.Screen
+        name="settings"
         options={{
-          title: "More",
+          title: "Settings",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="ellipsis-horizontal" size={size} color={color} />
           ),
         }}
-      /> */}
+      />
 
       {/* Hidden screens — accessible via navigation but not shown in tabs */}
       <Tabs.Screen

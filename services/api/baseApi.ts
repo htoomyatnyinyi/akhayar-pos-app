@@ -23,6 +23,8 @@ export const baseApi = createApi({
     "Supplier",
     "Store",
     "Sync",
+    "Staff",
+    "Session",
   ],
   endpoints: () => ({}),
 });

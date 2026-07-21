@@ -39,8 +39,13 @@ export default function PosHome() {
   const { data: rawCategories, isLoading: categoriesLoading } =
     useGetCategoriesQuery({});
 
-  const products = Array.isArray(rawProducts) ? rawProducts : rawProducts?.data || [];
-  const categories = Array.isArray(rawCategories) ? rawCategories : rawCategories?.data || [];
+  console.log("rawProducts", rawProducts);
+  const products = Array.isArray(rawProducts)
+    ? rawProducts
+    : rawProducts?.data || [];
+  const categories = Array.isArray(rawCategories)
+    ? rawCategories
+    : rawCategories?.data || [];
 
   const {
     cart,
@@ -122,9 +127,7 @@ export default function PosHome() {
             <ProductCard
               product={item}
               onAdd={() => addToCart(item)}
-              cartQuantity={
-                cart.find((c) => c.id === item.id)?.quantity || 0
-              }
+              cartQuantity={cart.find((c) => c.id === item.id)?.quantity || 0}
             />
           )}
           refreshControl={

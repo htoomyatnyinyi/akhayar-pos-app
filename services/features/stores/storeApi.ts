@@ -1,114 +1,93 @@
-// import { posApi } from "@/services/api/posApi";
-// import { isOnline } from "@/services/offline/network";
-// import {
-//   createOfflineStore,
-//   deleteOfflineEntity,
-//   getLocalStores,
-//   updateOfflineEntity,
-//   upsertStores,
-// } from "@/services/offline/repository";
-// import { Store, CreateStorePayload } from "./storeTypes";
+import { baseApi } from "@/services/api/baseApi";
+import { StoreRepository } from "@/services/offline/repositories/storeRepo";
 
-// export const storeApi = posApi.injectEndpoints({
-//   overrideExisting: false,
-//   endpoints: (builder) => ({
-//     getStores: builder.query<Store[], void>({
-//       async queryFn(_arg, _api, _extraOptions, baseQuery) {
-//         if (await isOnline()) {
-//           const result = await baseQuery("/tenant/stores");
-//           if (!result.error && Array.isArray(result.data)) {
-//             await upsertStores(result.data as Store[]);
-//             return { data: await getLocalStores() };
-//           }
-//         }
+export const storeApi = baseApi.injectEndpoints({
+  endpoints: (builder) => ({
+    getStores: builder.query<any, void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const repo = new StoreRepository();
+        try {
+          const result = await baseQuery({
+            url: "/tenant/stores",
+          });
+          if (result.data) {
+            const stores = (result.data as any).data || result.data;
+            for (const store of stores) {
+              await repo.upsertFromServer(store);
+            }
+          }
+        } catch (e) {
+          console.log("Offline or network error fetching stores");
+        }
 
-//         return { data: await getLocalStores() };
-//       },
-//       providesTags: ["Stores" as any],
-//     }),
+        const localStores = await repo.getStores();
+        return { data: localStores };
+      },
+      providesTags: ["Store"],
+    }),
+    createStore: builder.mutation<any, any>({
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const repo = new StoreRepository();
+        const localId = await repo.createLocal(body);
 
-//     getStoreById: builder.query<Store, string>({
-//       query: (id) => `/tenant/stores/${id}`,
-//       providesTags: ["Stores" as any],
-//     }),
+        const result = await baseQuery({
+          url: "/tenant/stores",
+          method: "POST",
+          body,
+        });
 
-//     createStore: builder.mutation<Store, CreateStorePayload>({
-//       async queryFn(body, _api, _extraOptions, baseQuery) {
-//         if (await isOnline()) {
-//           const result = await baseQuery({
-//             url: "/tenant/stores",
-//             method: "POST",
-//             body,
-//           });
-//           if (!result.error) return { data: result.data as Store };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        if (result.data) {
+          const serverStore = result.data as any;
+          await repo.markSynced(localId, serverStore.id);
+          return { data: serverStore };
+        }
 
-//         return { data: await createOfflineStore(body) };
-//       },
-//       invalidatesTags: ["Stores" as any],
-//     }),
+        return { data: { ...body, id: localId } };
+      },
+      invalidatesTags: ["Store"],
+    }),
+    updateStore: builder.mutation<any, { id: string; data: any }>({
+      async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
+        const repo = new StoreRepository();
+        await repo.updateLocal(id, data);
 
-//     updateStore: builder.mutation<
-//       Store,
-//       { id: string; data: Partial<CreateStorePayload> }
-//     >({
-//       async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
-//         if (await isOnline() && !String(id).includes("_")) {
-//           const result = await baseQuery({
-//             url: `/tenant/stores/${id}`,
-//             method: "PUT",
-//             body: data,
-//           });
-//           if (!result.error) return { data: result.data as Store };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        const result = await baseQuery({
+          url: `/tenant/stores/${id}`,
+          method: "PUT",
+          body: data,
+        });
 
-//         await updateOfflineEntity("stores", id, data);
-//         return {
-//           data: (await getLocalStores()).find(
-//             (store) => store.id === id,
-//           ) as Store,
-//         };
-//       },
-//       invalidatesTags: ["Stores" as any],
-//     }),
+        if (result.data) {
+          const serverStore = result.data as any;
+          await repo.markSynced(id, serverStore.id);
+          return { data: serverStore };
+        }
 
-//     deleteStore: builder.mutation<void, string>({
-//       async queryFn(id, _api, _extraOptions, baseQuery) {
-//         if (await isOnline() && !String(id).includes("_")) {
-//           const result = await baseQuery({
-//             url: `/tenant/stores/${id}`,
-//             method: "DELETE",
-//           });
-//           if (!result.error) return { data: undefined };
-//           if (
-//             typeof result.error.status === "number" &&
-//             result.error.status < 500
-//           )
-//             return { error: result.error };
-//         }
+        return { data: { id, ...data } };
+      },
+      invalidatesTags: (result, error, { id }) => [{ type: "Store", id }],
+    }),
+    deleteStore: builder.mutation<any, string>({
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        const repo = new StoreRepository();
+        await repo.softDelete(id);
 
-//         await deleteOfflineEntity("stores", id);
-//         return { data: undefined };
-//       },
-//       invalidatesTags: ["Stores" as any],
-//     }),
-//   }),
-// });
+        await baseQuery({
+          url: `/tenant/stores/${id}`,
+          method: "DELETE",
+        });
 
-// export const {
-//   useGetStoresQuery,
-//   useGetStoreByIdQuery,
-//   useCreateStoreMutation,
-//   useUpdateStoreMutation,
-//   useDeleteStoreMutation,
-// } = storeApi;
+        return { data: undefined };
+      },
+      invalidatesTags: ["Store"],
+    }),
+  }),
+  overrideExisting: false,
+});
+
+export const {
+  useGetStoresQuery,
+  useCreateStoreMutation,
+  useUpdateStoreMutation,
+  useDeleteStoreMutation,
+} = storeApi;

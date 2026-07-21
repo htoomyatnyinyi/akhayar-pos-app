@@ -29,18 +29,21 @@ export const customersApi = baseApi.injectEndpoints({
         } catch (e) {
           console.log("Offline or network error fetching customers");
         }
-        
+
         let localCustomers = await repo.getCustomers();
         if (params.search) {
           const s = params.search.toLowerCase();
-          localCustomers = localCustomers.filter((c: any) => 
-            c.name?.toLowerCase().includes(s) || c.phone?.includes(s)
+          localCustomers = localCustomers.filter(
+            (c: any) =>
+              c.name?.toLowerCase().includes(s) || c.phone?.includes(s),
           );
         }
         if (params.tier) {
-          localCustomers = localCustomers.filter((c: any) => c.tier === params.tier);
+          localCustomers = localCustomers.filter(
+            (c: any) => c.tier === params.tier,
+          );
         }
-        
+
         return { data: localCustomers };
       },
       providesTags: ["Customer"],
@@ -120,7 +123,7 @@ export const customersApi = baseApi.injectEndpoints({
       providesTags: ["Customer"],
     }),
   }),
-  overrideExisting: false,
+  overrideExisting: true, // false
 });
 
 export const {

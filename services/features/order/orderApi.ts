@@ -73,7 +73,7 @@ export const ordersApi = baseApi.injectEndpoints({
       }),
     }),
   }),
-  overrideExisting: false,
+  overrideExisting: true,
 });
 
 export const {

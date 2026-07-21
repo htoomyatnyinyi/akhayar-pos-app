@@ -1,4 +1,3 @@
---> statement-breakpoint
 CREATE TABLE `tenant` (
 	`id` text PRIMARY KEY NOT NULL,
 	`serverId` text,
@@ -11,8 +10,7 @@ CREATE TABLE `tenant` (
 	`lastModified` integer,
 	`isDeleted` integer DEFAULT false
 );
-
-
+--> statement-breakpoint
 CREATE TABLE `category` (
 	`id` text PRIMARY KEY NOT NULL,
 	`serverId` text,
@@ -191,6 +189,50 @@ CREATE TABLE `productVariant` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `productVariant_serverId_unique` ON `productVariant` (`serverId`);--> statement-breakpoint
+CREATE TABLE `session` (
+	`id` text PRIMARY KEY NOT NULL,
+	`serverId` text,
+	`tenantId` text NOT NULL,
+	`storeId` text,
+	`registerId` text,
+	`userId` text,
+	`status` text DEFAULT 'OPEN',
+	`openingBalance` real DEFAULT 0,
+	`closingBalance` real DEFAULT 0,
+	`cashCount` real DEFAULT 0,
+	`notes` text,
+	`openedAt` integer,
+	`closedAt` integer,
+	`isActive` integer DEFAULT true,
+	`syncStatus` text DEFAULT 'synced',
+	`lastModified` integer,
+	`isDeleted` integer DEFAULT false,
+	FOREIGN KEY (`tenantId`) REFERENCES `tenant`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`storeId`) REFERENCES `store`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`userId`) REFERENCES `staff`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `session_serverId_unique` ON `session` (`serverId`);--> statement-breakpoint
+CREATE TABLE `staff` (
+	`id` text PRIMARY KEY NOT NULL,
+	`serverId` text,
+	`tenantId` text NOT NULL,
+	`storeId` text,
+	`username` text,
+	`email` text,
+	`password` text,
+	`name` text,
+	`role` text,
+	`permissions` text,
+	`isActive` integer DEFAULT true,
+	`syncStatus` text DEFAULT 'synced',
+	`lastModified` integer,
+	`isDeleted` integer DEFAULT false,
+	FOREIGN KEY (`tenantId`) REFERENCES `tenant`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`storeId`) REFERENCES `store`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `staff_serverId_unique` ON `staff` (`serverId`);--> statement-breakpoint
 CREATE TABLE `store` (
 	`id` text PRIMARY KEY NOT NULL,
 	`serverId` text,
