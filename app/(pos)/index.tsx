@@ -26,7 +26,7 @@ export default function PosHome() {
   const storeId = useAppSelector((state) => state.auth.selectedStoreId);
 
   const {
-    data: products,
+    data: rawProducts,
     isLoading,
     isFetching,
     refetch,
@@ -36,8 +36,11 @@ export default function PosHome() {
     categoryId: selectedCategory || undefined,
   });
 
-  const { data: categories, isLoading: categoriesLoading } =
+  const { data: rawCategories, isLoading: categoriesLoading } =
     useGetCategoriesQuery({});
+
+  const products = Array.isArray(rawProducts) ? rawProducts : rawProducts?.data || [];
+  const categories = Array.isArray(rawCategories) ? rawCategories : rawCategories?.data || [];
 
   const {
     cart,
@@ -104,7 +107,7 @@ export default function PosHome() {
       />
 
       {/* Product Grid */}
-      {isLoading && !products ? (
+      {isLoading && products.length === 0 ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#6366F1" />
           <Text className="text-gray-400 mt-3">Loading products...</Text>

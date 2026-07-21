@@ -2,14 +2,17 @@ import { db } from "../db";
 import { category } from "../schema";
 import { eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { getTenantId } from "@/utils/secureStorage";
 
 export class CategoryRepository {
   async createLocal(data: any): Promise<string> {
     const now = Date.now();
     const id = uuid();
+    const tenantId = data.tenantId || (await getTenantId());
+    
     await db.insert(category).values({
       id,
-      tenantId: data.tenantId,
+      tenantId,
       name: data.name,
       slug: data.slug || data.name.toLowerCase().replace(/\s+/g, "-"),
       description: data.description,
@@ -41,6 +44,35 @@ export class CategoryRepository {
       .update(category)
       .set({ syncStatus: "synced", serverId })
       .where(eq(category.id, localId));
+  }
+
+  async updateLocal(id: string, data: any) {
+    const now = Date.now();
+    await db
+      .update(category)
+      .set({
+        name: data.name,
+        slug: data.slug,
+        description: data.description,
+        parentId: data.parentId,
+        sortOrder: data.sortOrder,
+        isActive: data.isActive,
+        syncStatus: "pending",
+        lastModified: now,
+      })
+      .where(eq(category.id, id));
+  }
+
+  async deleteLocal(id: string) {
+    const now = Date.now();
+    await db
+      .update(category)
+      .set({
+        isDeleted: true,
+        syncStatus: "pending",
+        lastModified: now,
+      })
+      .where(eq(category.id, id));
   }
 
   async upsertFromServer(serverCategory: any) {

@@ -1,47 +1,102 @@
 // import { baseApi } from "../../services/api/baseApi";
 import { baseApi } from "@/services/api/baseApi";
 
+import { CategoryRepository } from "@/services/offline/repositories/categoryRepo";
+
 export const categoriesApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getCategories: builder.query<
       any,
       { page?: number; limit?: number; search?: string }
     >({
-      query: (params) => ({
-        url: "/tenant/categories",
-        params: {
-          page: params.page || 1,
-          limit: params.limit || 50,
-          search: params.search,
-        },
-      }),
+      async queryFn(params, _api, _extraOptions, baseQuery) {
+        const repo = new CategoryRepository();
+        try {
+          const result = await baseQuery({
+            url: "/tenant/categories",
+            params: {
+              page: params.page || 1,
+              limit: params.limit || 50,
+              search: params.search,
+            },
+          });
+          if (result.data) {
+            const categories = (result.data as any).data || result.data;
+            for (const cat of categories) {
+              await repo.upsertFromServer(cat);
+            }
+          }
+        } catch (e) {
+          console.log("Offline or network error fetching categories");
+        }
+        const localCategories = await repo.getCategories();
+        return { data: localCategories };
+      },
       providesTags: ["Category"],
     }),
     getCategory: builder.query<any, string>({
-      query: (id) => `/tenant/categories/${id}`,
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        // Fallback to basic network request for single item for now
+        const result = await baseQuery(`/tenant/categories/${id}`);
+        if (result.error) return { error: result.error };
+        return { data: result.data };
+      },
       providesTags: (result, error, id) => [{ type: "Category", id }],
     }),
     createCategory: builder.mutation<any, any>({
-      query: (body) => ({
-        url: "/tenant/categories",
-        method: "POST",
-        body,
-      }),
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const repo = new CategoryRepository();
+        const localId = await repo.createLocal(body);
+
+        const result = await baseQuery({
+          url: "/tenant/categories",
+          method: "POST",
+          body,
+        });
+
+        if (result.data) {
+          const serverCat = result.data as any;
+          await repo.markSynced(localId, serverCat.id);
+          return { data: serverCat };
+        }
+
+        return { data: { ...body, id: localId } };
+      },
       invalidatesTags: ["Category"],
     }),
     updateCategory: builder.mutation<any, { id: string; data: any }>({
-      query: ({ id, data }) => ({
-        url: `/tenant/categories/${id}`,
-        method: "PUT",
-        body: data,
-      }),
+      async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
+        const repo = new CategoryRepository();
+        await repo.updateLocal(id, data);
+
+        const result = await baseQuery({
+          url: `/tenant/categories/${id}`,
+          method: "PUT",
+          body: data,
+        });
+
+        if (result.data) {
+          const serverCat = result.data as any;
+          await repo.markSynced(id, serverCat.id);
+          return { data: serverCat };
+        }
+
+        return { data: { id, ...data } };
+      },
       invalidatesTags: (result, error, { id }) => [{ type: "Category", id }],
     }),
     deleteCategory: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `/tenant/categories/${id}`,
-        method: "DELETE",
-      }),
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        const repo = new CategoryRepository();
+        await repo.deleteLocal(id);
+
+        await baseQuery({
+          url: `/tenant/categories/${id}`,
+          method: "DELETE",
+        });
+
+        return { data: undefined };
+      },
       invalidatesTags: ["Category"],
     }),
   }),

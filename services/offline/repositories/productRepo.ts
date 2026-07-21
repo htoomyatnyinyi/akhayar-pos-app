@@ -2,16 +2,18 @@ import { db } from "../db";
 import { product, productVariant, inventory } from "../schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { getTenantId } from "@/utils/secureStorage";
 
 export class ProductRepository {
   // ── Create local product ──
   async createLocal(productData: any): Promise<string> {
     const now = Date.now();
     const id = uuid();
+    const tenantId = productData.tenantId || (await getTenantId());
 
     await db.insert(product).values({
       id,
-      tenantId: productData.tenantId,
+      tenantId,
       categoryId: productData.categoryId,
       brandId: productData.brandId,
       supplierId: productData.supplierId,
@@ -37,7 +39,7 @@ export class ProductRepository {
       for (const v of productData.variants) {
         await db.insert(productVariant).values({
           id: uuid(),
-          tenantId: productData.tenantId,
+          tenantId,
           productId: id,
           name: v.name,
           sku: v.sku || `${productData.sku}-${v.name}`,
@@ -58,7 +60,7 @@ export class ProductRepository {
     if (productData.storeId && productData.initialStock) {
       await db.insert(inventory).values({
         id: uuid(),
-        tenantId: productData.tenantId,
+        tenantId,
         storeId: productData.storeId,
         productId: id,
         variantId: null,
@@ -92,6 +94,42 @@ export class ProductRepository {
       .select()
       .from(product)
       .where(eq(product.syncStatus, "pending"));
+  }
+
+  // ── Update local product ──
+  async updateLocal(id: string, data: any) {
+    const now = Date.now();
+    await db
+      .update(product)
+      .set({
+        name: data.name,
+        description: data.description,
+        sellingPrice: data.sellingPrice,
+        costPrice: data.costPrice,
+        wholesalePrice: data.wholesalePrice,
+        promoPrice: data.promoPrice,
+        promoStartAt: data.promoStartAt,
+        promoEndAt: data.promoEndAt,
+        isTaxable: data.isTaxable,
+        isActive: data.isActive,
+        isReturnable: data.isReturnable,
+        syncStatus: "pending",
+        lastModified: now,
+      })
+      .where(eq(product.id, id));
+  }
+
+  // ── Delete local product ──
+  async deleteLocal(id: string) {
+    const now = Date.now();
+    await db
+      .update(product)
+      .set({
+        isDeleted: true,
+        syncStatus: "pending",
+        lastModified: now,
+      })
+      .where(eq(product.id, id));
   }
 
   // ── Mark as synced ──

@@ -15,7 +15,7 @@ export const tenant = sqliteTable("tenant", {
   phone: text("phone"),
   isActive: integer("isActive", { mode: "boolean" }).default(true),
   syncStatus: text("syncStatus").default("synced"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 
@@ -33,7 +33,7 @@ export const store = sqliteTable("store", {
   taxNumber: text("taxNumber"),
   isActive: integer("isActive", { mode: "boolean" }).default(true),
   syncStatus: text("syncStatus").default("synced"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 
@@ -50,7 +50,7 @@ export const category = sqliteTable("category", {
   sortOrder: integer("sortOrder"),
   isActive: integer("isActive", { mode: "boolean" }).default(true),
   syncStatus: text("syncStatus").default("synced"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 
@@ -71,17 +71,17 @@ export const product = sqliteTable("product", {
   sellingPrice: real("sellingPrice"),
   wholesalePrice: real("wholesalePrice"),
   promoPrice: real("promoPrice"),
-  promoStartAt: integer("promoStartAt", { mode: "timestamp" }),
-  promoEndAt: integer("promoEndAt", { mode: "timestamp" }),
-  manufacturingDate: integer("manufacturingDate", { mode: "timestamp" }),
-  expiryDate: integer("expiryDate", { mode: "timestamp" }),
-  bestBeforeDate: integer("bestBeforeDate", { mode: "timestamp" }),
+  promoStartAt: integer("promoStartAt"),
+  promoEndAt: integer("promoEndAt"),
+  manufacturingDate: integer("manufacturingDate"),
+  expiryDate: integer("expiryDate"),
+  bestBeforeDate: integer("bestBeforeDate"),
   isTaxable: integer("isTaxable", { mode: "boolean" }).default(true),
   isActive: integer("isActive", { mode: "boolean" }).default(true),
   isReturnable: integer("isReturnable", { mode: "boolean" }).default(true),
   version: integer("version").default(0),
   syncStatus: text("syncStatus").default("synced"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 
@@ -104,7 +104,7 @@ export const productVariant = sqliteTable("productVariant", {
   weight: real("weight"),
   isActive: integer("isActive", { mode: "boolean" }).default(true),
   syncStatus: text("syncStatus").default("synced"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 
@@ -128,7 +128,7 @@ export const inventory = sqliteTable("inventory", {
   shelfLocation: text("shelfLocation"),
   version: integer("version").default(0),
   syncStatus: text("syncStatus").default("synced"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 
@@ -159,10 +159,10 @@ export const order = sqliteTable("order", {
   notes: text("notes"),
   voidReason: text("voidReason"),
   version: integer("version").default(0),
-  completedAt: integer("completedAt", { mode: "timestamp" }),
-  cancelledAt: integer("cancelledAt", { mode: "timestamp" }),
+  completedAt: integer("completedAt"),
+  cancelledAt: integer("cancelledAt"),
   syncStatus: text("syncStatus").default("pending"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 
@@ -185,7 +185,7 @@ export const orderItem = sqliteTable("orderItem", {
   isReturned: integer("isReturned", { mode: "boolean" }).default(false),
   returnedQuantity: integer("returnedQuantity").default(0),
   syncStatus: text("syncStatus").default("pending"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 
@@ -201,7 +201,7 @@ export const customer = sqliteTable("customer", {
   phone: text("phone"),
   email: text("email"),
   address: text("address"),
-  dateOfBirth: integer("dateOfBirth", { mode: "timestamp" }),
+  dateOfBirth: integer("dateOfBirth"),
   gender: text("gender"),
   loyaltyPoints: integer("loyaltyPoints").default(0),
   totalSpent: real("totalSpent").default(0),
@@ -209,17 +209,40 @@ export const customer = sqliteTable("customer", {
   debtAmount: real("debtAmount").default(0),
   creditLimit: real("creditLimit"),
   tier: text("tier").default("BRONZE"),
-  tierValidUntil: integer("tierValidUntil", { mode: "timestamp" }),
+  tierValidUntil: integer("tierValidUntil"),
   isActive: integer("isActive", { mode: "boolean" }).default(true),
   syncStatus: text("syncStatus").default("synced"),
-  lastModified: integer("lastModified", { mode: "timestamp" }),
+  lastModified: integer("lastModified"),
+  isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
+});
+
+// ── Supplier ──
+export const supplier = sqliteTable("supplier", {
+  id: text("id").primaryKey(),
+  serverId: text("serverId").unique(),
+  tenantId: text("tenantId")
+    .notNull()
+    .references(() => tenant.id),
+  code: text("code"),
+  name: text("name"),
+  contactName: text("contactName"),
+  phone: text("phone"),
+  email: text("email"),
+  address: text("address"),
+  taxId: text("taxId"),
+  paymentTerms: text("paymentTerms"),
+  creditLimit: real("creditLimit"),
+  currentBalance: real("currentBalance").default(0),
+  isActive: integer("isActive", { mode: "boolean" }).default(true),
+  syncStatus: text("syncStatus").default("synced"),
+  lastModified: integer("lastModified"),
   isDeleted: integer("isDeleted", { mode: "boolean" }).default(false),
 });
 // ── Sync State ──
 export const syncState = sqliteTable("syncState", {
   entityType: text("entityType").primaryKey(),
-  lastPullAt: integer("lastPullAt", { mode: "timestamp" }),
-  lastPushAt: integer("lastPushAt", { mode: "timestamp" }),
+  lastPullAt: integer("lastPullAt"),
+  lastPushAt: integer("lastPushAt"),
 });
 
 // ── Sync Log ──
@@ -231,6 +254,6 @@ export const syncLog = sqliteTable("syncLog", {
   payload: text("payload"), // JSON string
   status: text("status").default("pending"), // 'pending', 'success', 'failed'
   error: text("error"),
-  createdAt: integer("createdAt", { mode: "timestamp" }),
-  syncedAt: integer("syncedAt", { mode: "timestamp" }),
+  createdAt: integer("createdAt"),
+  syncedAt: integer("syncedAt"),
 });

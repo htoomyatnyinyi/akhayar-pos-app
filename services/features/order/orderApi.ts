@@ -1,28 +1,68 @@
 import { baseApi } from "@/services/api/baseApi";
+import { OrderRepository } from "@/services/offline/repositories/orderRepo";
 
 export const ordersApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getOrders: builder.query<any, { storeId?: string; status?: string }>({
-      query: (params) => ({
-        url: "/tenant/orders",
-        params: { ...params, limit: 100 },
-      }),
+      async queryFn(params, _api, _extraOptions, baseQuery) {
+        const repo = new OrderRepository();
+        try {
+          const result = await baseQuery({
+            url: "/tenant/orders",
+            params: { ...params, limit: 100 },
+          });
+          if (result.data) {
+            const orders = (result.data as any).data || result.data;
+            for (const ord of orders) {
+              await repo.upsertFromServer(ord);
+            }
+          }
+        } catch (e) {
+          console.log("Offline or network error fetching orders");
+        }
+        const localOrders = await repo.getOrders(params.storeId, params.status);
+        return { data: localOrders };
+      },
       providesTags: ["Order"],
     }),
     createOrder: builder.mutation<any, any>({
-      query: (body) => ({
-        url: "/tenant/orders",
-        method: "POST",
-        body,
-      }),
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const repo = new OrderRepository();
+        const localId = await repo.createLocal(body);
+
+        const result = await baseQuery({
+          url: "/tenant/orders",
+          method: "POST",
+          body,
+        });
+
+        if (result.data) {
+          const serverOrder = result.data as any;
+          await repo.markSynced(localId, serverOrder.id);
+          return { data: serverOrder };
+        }
+
+        return { data: { ...body, id: localId } };
+      },
       invalidatesTags: ["Order"],
     }),
     updateOrderStatus: builder.mutation<any, { id: string; status: string }>({
-      query: ({ id, status }) => ({
-        url: `/tenant/orders/${id}/status`,
-        method: "PATCH",
-        body: { status },
-      }),
+      async queryFn({ id, status }, _api, _extraOptions, baseQuery) {
+        const repo = new OrderRepository();
+        await repo.updateStatus(id, status);
+
+        const result = await baseQuery({
+          url: `/tenant/orders/${id}/status`,
+          method: "PATCH",
+          body: { status },
+        });
+
+        if (result.data) {
+          return { data: result.data };
+        }
+
+        return { data: { id, status } };
+      },
       invalidatesTags: (result, error, { id }) => [{ type: "Order", id }],
     }),
     // Pull orders for sync (since timestamp)

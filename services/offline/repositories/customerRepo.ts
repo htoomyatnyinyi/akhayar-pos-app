@@ -2,16 +2,18 @@ import { db } from "../db";
 import { customer } from "../schema";
 import { eq, and } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { getTenantId } from "@/utils/secureStorage";
 
 export class CustomerRepository {
   // ── Create local customer ──
   async createLocal(customerData: any): Promise<string> {
     const now = Date.now();
     const id = uuid();
+    const tenantId = customerData.tenantId || (await getTenantId());
 
     await db.insert(customer).values({
       id,
-      tenantId: customerData.tenantId,
+      tenantId,
       code: customerData.code || `CUS-${now}`,
       name: customerData.name,
       phone: customerData.phone,

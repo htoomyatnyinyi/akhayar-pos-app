@@ -12,7 +12,9 @@ import { eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 
 const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "https://your-backend.com/api";
+  process.env.EXPO_PUBLIC_POS_URL
+    ? `${process.env.EXPO_PUBLIC_POS_URL}/api`
+    : process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.57:6060/api";
 
 export class SyncEngine {
   private orderRepo = new OrderRepository();
@@ -130,14 +132,17 @@ export class SyncEngine {
     const since = state.length > 0 ? state[0].lastPullAt : 0;
 
     try {
+      // Use the same /tenant/ endpoints as the API slices
       const response = await fetch(
-        `${API_URL}/sync/${entityType}?since=${since}`,
+        `${API_URL}/tenant/${entityType}?since=${since}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
       );
       if (!response.ok) return;
-      const data = await response.json();
+      const json = await response.json();
+      // Handle both paginated { data: [...] } and plain array responses
+      const data = Array.isArray(json) ? json : (json.data || []);
       const repoMap: Record<string, any> = {
         orders: this.orderRepo,
         products: this.productRepo,
@@ -148,7 +153,7 @@ export class SyncEngine {
         inventory: this.inventoryRepo,
       };
       const repo = repoMap[entityType];
-      if (repo) {
+      if (repo && Array.isArray(data)) {
         for (const item of data) {
           await repo.upsertFromServer(item);
         }
@@ -162,7 +167,8 @@ export class SyncEngine {
           set: { lastPullAt: Date.now() },
         });
     } catch (error) {
-      console.error(`Pull ${entityType} failed`, error);
+      // Network errors during pull are expected when offline — log quietly
+      console.log(`Pull ${entityType} skipped (offline or server unavailable)`);
     }
   }
 

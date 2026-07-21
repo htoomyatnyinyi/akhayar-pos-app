@@ -1,5 +1,5 @@
-// import { baseApi } from "../../services/api/baseApi";
 import { baseApi } from "@/services/api/baseApi";
+import { CustomerRepository } from "@/services/offline/repositories/customerRepo";
 
 export const customersApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
@@ -8,15 +8,41 @@ export const customersApi = baseApi.injectEndpoints({
       any,
       { page?: number; limit?: number; search?: string; tier?: string }
     >({
-      query: (params) => ({
-        url: "/tenant/customers",
-        params: {
-          page: params.page || 1,
-          limit: params.limit || 50,
-          search: params.search,
-          tier: params.tier,
-        },
-      }),
+      async queryFn(params, _api, _extraOptions, baseQuery) {
+        const repo = new CustomerRepository();
+        try {
+          const result = await baseQuery({
+            url: "/tenant/customers",
+            params: {
+              page: params.page || 1,
+              limit: params.limit || 50,
+              search: params.search,
+              tier: params.tier,
+            },
+          });
+          if (result.data) {
+            const customers = (result.data as any).data || result.data;
+            for (const cus of customers) {
+              await repo.upsertFromServer(cus);
+            }
+          }
+        } catch (e) {
+          console.log("Offline or network error fetching customers");
+        }
+        
+        let localCustomers = await repo.getCustomers();
+        if (params.search) {
+          const s = params.search.toLowerCase();
+          localCustomers = localCustomers.filter((c: any) => 
+            c.name?.toLowerCase().includes(s) || c.phone?.includes(s)
+          );
+        }
+        if (params.tier) {
+          localCustomers = localCustomers.filter((c: any) => c.tier === params.tier);
+        }
+        
+        return { data: localCustomers };
+      },
       providesTags: ["Customer"],
     }),
 
@@ -28,30 +54,63 @@ export const customersApi = baseApi.injectEndpoints({
 
     // ── Create customer ──
     createCustomer: builder.mutation<any, any>({
-      query: (body) => ({
-        url: "/tenant/customers",
-        method: "POST",
-        body,
-      }),
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const repo = new CustomerRepository();
+        const localId = await repo.createLocal(body);
+
+        const result = await baseQuery({
+          url: "/tenant/customers",
+          method: "POST",
+          body,
+        });
+
+        if (result.data) {
+          const serverCus = result.data as any;
+          await repo.markSynced(localId, serverCus.id);
+          return { data: serverCus };
+        }
+
+        return { data: { ...body, id: localId } };
+      },
       invalidatesTags: ["Customer"],
     }),
 
     // ── Update customer ──
     updateCustomer: builder.mutation<any, { id: string; data: any }>({
-      query: ({ id, data }) => ({
-        url: `/tenant/customers/${id}`,
-        method: "PUT",
-        body: data,
-      }),
+      async queryFn({ id, data }, _api, _extraOptions, baseQuery) {
+        const repo = new CustomerRepository();
+        await repo.updateLocal(id, data);
+
+        const result = await baseQuery({
+          url: `/tenant/customers/${id}`,
+          method: "PUT",
+          body: data,
+        });
+
+        if (result.data) {
+          const serverCus = result.data as any;
+          await repo.markSynced(id, serverCus.id);
+          return { data: serverCus };
+        }
+
+        return { data: { id, ...data } };
+      },
       invalidatesTags: (result, error, { id }) => [{ type: "Customer", id }],
     }),
 
     // ── Delete customer (soft delete) ──
     deleteCustomer: builder.mutation<void, string>({
-      query: (id) => ({
-        url: `/tenant/customers/${id}`,
-        method: "DELETE",
-      }),
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        const repo = new CustomerRepository();
+        await repo.softDelete(id);
+
+        await baseQuery({
+          url: `/tenant/customers/${id}`,
+          method: "DELETE",
+        });
+
+        return { data: undefined };
+      },
       invalidatesTags: ["Customer"],
     }),
 

@@ -2,20 +2,139 @@ import { db } from "../db";
 import { order, orderItem } from "../schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { getTenantId } from "@/utils/secureStorage";
 
 export class OrderRepository {
-  getPending() {
-    throw new Error("Method not implemented.");
+  async getPending(): Promise<any[]> {
+    return await db.select().from(order).where(eq(order.syncStatus, "pending"));
   }
-  upsertFromServer(so: any) {
-    throw new Error("Method not implemented.");
+
+  async upsertFromServer(serverOrder: any) {
+    const existing = await db
+      .select()
+      .from(order)
+      .where(eq(order.serverId, serverOrder.id));
+    
+    const now = Date.now();
+
+    let localOrderId = serverOrder.id;
+
+    if (existing.length > 0) {
+      localOrderId = existing[0].id;
+      if (serverOrder.lastModified > existing[0].lastModified) {
+        await db
+          .update(order)
+          .set({
+            orderNumber: serverOrder.orderNumber,
+            customerId: serverOrder.customerId,
+            userId: serverOrder.userId,
+            sessionId: serverOrder.sessionId,
+            storeId: serverOrder.storeId,
+            registerId: serverOrder.registerId,
+            status: serverOrder.status,
+            paymentStatus: serverOrder.paymentStatus,
+            subTotal: serverOrder.subTotal,
+            taxAmount: serverOrder.taxAmount,
+            discountAmount: serverOrder.discountAmount,
+            discountPercent: serverOrder.discountPercent,
+            grandTotal: serverOrder.grandTotal,
+            currencyCode: serverOrder.currencyCode,
+            paymentMethod: serverOrder.paymentMethod,
+            paidAmount: serverOrder.paidAmount,
+            changeAmount: serverOrder.changeAmount,
+            notes: serverOrder.notes,
+            voidReason: serverOrder.voidReason,
+            completedAt: serverOrder.completedAt,
+            cancelledAt: serverOrder.cancelledAt,
+            syncStatus: "synced",
+            lastModified: now,
+          })
+          .where(eq(order.id, localOrderId));
+      }
+    } else {
+      localOrderId = uuid();
+      await db.insert(order).values({
+        id: localOrderId,
+        serverId: serverOrder.id,
+        tenantId: serverOrder.tenantId,
+        orderNumber: serverOrder.orderNumber,
+        customerId: serverOrder.customerId,
+        userId: serverOrder.userId,
+        sessionId: serverOrder.sessionId,
+        storeId: serverOrder.storeId,
+        registerId: serverOrder.registerId,
+        status: serverOrder.status,
+        paymentStatus: serverOrder.paymentStatus,
+        subTotal: serverOrder.subTotal,
+        taxAmount: serverOrder.taxAmount,
+        discountAmount: serverOrder.discountAmount,
+        discountPercent: serverOrder.discountPercent,
+        grandTotal: serverOrder.grandTotal,
+        currencyCode: serverOrder.currencyCode,
+        paymentMethod: serverOrder.paymentMethod,
+        paidAmount: serverOrder.paidAmount,
+        changeAmount: serverOrder.changeAmount,
+        notes: serverOrder.notes,
+        voidReason: serverOrder.voidReason,
+        completedAt: serverOrder.completedAt,
+        cancelledAt: serverOrder.cancelledAt,
+        syncStatus: "synced",
+        lastModified: now,
+      });
+    }
+
+    if (serverOrder.items && Array.isArray(serverOrder.items)) {
+      for (const item of serverOrder.items) {
+        const existingItem = await db
+          .select()
+          .from(orderItem)
+          .where(eq(orderItem.serverId, item.id));
+
+        if (existingItem.length > 0) {
+          await db
+            .update(orderItem)
+            .set({
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              discountPercent: item.discountPercent,
+              discountAmount: item.discountAmount,
+              taxAmount: item.taxAmount,
+              subTotal: item.subTotal,
+              isReturned: item.isReturned,
+              returnedQuantity: item.returnedQuantity,
+              syncStatus: "synced",
+              lastModified: now,
+            })
+            .where(eq(orderItem.id, existingItem[0].id));
+        } else {
+          await db.insert(orderItem).values({
+            id: uuid(),
+            serverId: item.id,
+            orderId: localOrderId,
+            productId: item.productId,
+            variantId: item.variantId || null,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discountPercent: item.discountPercent,
+            discountAmount: item.discountAmount,
+            taxAmount: item.taxAmount,
+            subTotal: item.subTotal,
+            isReturned: item.isReturned,
+            returnedQuantity: item.returnedQuantity,
+            syncStatus: "synced",
+            lastModified: now,
+          });
+        }
+      }
+    }
   }
   async createLocal(orderData: any): Promise<string> {
     const now = Date.now();
     const id = uuid();
+    const tenantId = orderData.tenantId || (await getTenantId());
     await db.insert(order).values({
       id,
-      tenantId: orderData.tenantId,
+      tenantId,
       orderNumber: orderData.orderNumber || `ORD-${now}`,
       customerId: orderData.customerId,
       userId: orderData.userId,

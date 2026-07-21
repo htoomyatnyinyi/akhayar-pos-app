@@ -60,7 +60,7 @@ export function CategoryPills({
         </Text>
       </TouchableOpacity>
 
-      {categories?.map((category) => (
+      {Array.isArray(categories) && categories.map((category) => (
         <TouchableOpacity
           key={category.id}
           onPress={() => onSelect(category.id)}

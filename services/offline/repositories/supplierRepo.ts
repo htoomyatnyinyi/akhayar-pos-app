@@ -2,14 +2,16 @@ import { db } from "../db";
 import { supplier } from "../schema";
 import { eq, and } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { getTenantId } from "@/utils/secureStorage";
 
 export class SupplierRepository {
   async createLocal(data: any): Promise<string> {
     const now = Date.now();
     const id = uuid();
+    const tenantId = data.tenantId || (await getTenantId());
     await db.insert(supplier).values({
       id,
-      tenantId: data.tenantId,
+      tenantId,
       code: data.code || `SUP-${now}`,
       name: data.name,
       contactName: data.contactName,

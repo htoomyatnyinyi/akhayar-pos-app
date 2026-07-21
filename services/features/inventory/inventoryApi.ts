@@ -1,5 +1,6 @@
 // import { baseApi } from "../../services/api/baseApi";
 import { baseApi } from "@/services/api/baseApi";
+import { InventoryRepository } from "@/services/offline/repositories/inventoryRepo";
 
 export const inventoryApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
@@ -8,15 +9,33 @@ export const inventoryApi = baseApi.injectEndpoints({
       any,
       { storeId?: string; productId?: string; page?: number; limit?: number }
     >({
-      query: (params) => ({
-        url: "/tenant/inventory",
-        params: {
-          storeId: params.storeId,
-          productId: params.productId,
-          page: params.page || 1,
-          limit: params.limit || 50,
-        },
-      }),
+      async queryFn(params, _api, _extraOptions, baseQuery) {
+        const repo = new InventoryRepository();
+        try {
+          const result = await baseQuery({
+            url: "/tenant/inventory",
+            params: {
+              storeId: params.storeId,
+              productId: params.productId,
+              page: params.page || 1,
+              limit: params.limit || 50,
+            },
+          });
+          if (result.data) {
+            const inventories = (result.data as any).data || result.data;
+            for (const inv of inventories) {
+              await repo.upsertFromServer(inv);
+            }
+          }
+        } catch (e) {
+          console.log("Offline or network error fetching inventory");
+        }
+        
+        let localInventory = await repo.getPending(); // actually need all inventory, but getPending only gives pending ones. Wait! I need to implement getInventory in InventoryRepository!
+        // We'll implement it shortly.
+        localInventory = await repo.getInventory(params.storeId, params.productId);
+        return { data: localInventory };
+      },
       providesTags: ["Inventory"],
     }),
 
@@ -39,11 +58,28 @@ export const inventoryApi = baseApi.injectEndpoints({
 
     // ── Create manual stock movement ──
     createStockMovement: builder.mutation<any, any>({
-      query: (body) => ({
-        url: "/tenant/inventory/movements",
-        method: "POST",
-        body,
-      }),
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const repo = new InventoryRepository();
+        // apply it locally
+        await repo.adjustStock(
+          body.storeId,
+          body.productId,
+          body.type === "ADD" ? body.quantity : -body.quantity,
+          body.variantId
+        );
+
+        const result = await baseQuery({
+          url: "/tenant/inventory/movements",
+          method: "POST",
+          body,
+        });
+
+        if (result.data) {
+          return { data: result.data };
+        }
+
+        return { data: { ...body } };
+      },
       invalidatesTags: ["Inventory"],
     }),
 

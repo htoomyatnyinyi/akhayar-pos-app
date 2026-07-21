@@ -2,14 +2,16 @@ import { db } from "../db";
 import { inventory } from "../schema";
 import { eq, and } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
+import { getTenantId } from "@/utils/secureStorage";
 
 export class InventoryRepository {
   async createLocal(data: any): Promise<string> {
     const now = Date.now();
     const id = uuid();
+    const tenantId = data.tenantId || (await getTenantId());
     await db.insert(inventory).values({
       id,
-      tenantId: data.tenantId,
+      tenantId,
       storeId: data.storeId,
       productId: data.productId,
       variantId: data.variantId || null,
@@ -63,6 +65,47 @@ export class InventoryRepository {
         quantity: delta,
       });
     }
+  }
+
+  async getInventory(storeId?: string, productId?: string): Promise<any[]> {
+    let q = db.select().from(inventory);
+    
+    // Because we need product details in the UI (e.g., item.product.name)
+    // we should join with the product table. But for simplicity, we'll return raw inventory
+    // and rely on the UI to either join it or we do a manual join here.
+    
+    // In index.tsx: item.product?.name
+    // So we need to join it.
+    const { product } = require("../schema");
+    let joinedQ = db
+      .select({
+        id: inventory.id,
+        serverId: inventory.serverId,
+        tenantId: inventory.tenantId,
+        storeId: inventory.storeId,
+        productId: inventory.productId,
+        variantId: inventory.variantId,
+        quantity: inventory.quantity,
+        reservedQty: inventory.reservedQty,
+        reorderPoint: inventory.reorderPoint,
+        reorderQty: inventory.reorderQty,
+        shelfLocation: inventory.shelfLocation,
+        syncStatus: inventory.syncStatus,
+        lastModified: inventory.lastModified,
+        product: {
+          id: product.id,
+          name: product.name,
+          sku: product.sku,
+        }
+      })
+      .from(inventory)
+      .leftJoin(product, eq(inventory.productId, product.id))
+      .where(eq(inventory.isDeleted, false));
+
+    if (storeId) joinedQ = joinedQ.where(eq(inventory.storeId, storeId));
+    if (productId) joinedQ = joinedQ.where(eq(inventory.productId, productId));
+
+    return await joinedQ;
   }
 
   async getPending(): Promise<any[]> {
