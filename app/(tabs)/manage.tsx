@@ -83,27 +83,29 @@ export default function ManageScreen() {
     null,
   );
 
-  // ✅ Queries
-  const { data: staff = [], refetch: refetchStaff } = useGetLocalStaffQuery({
-    storeId: currentStoreId || undefined,
-  });
-  const { data: products = [], refetch: refetchProducts } =
-    useGetLocalProductsQuery({
-      storeId: currentStoreId || undefined,
-    });
+  //  // Queries
+  // const { data: staff = [], refetch: refetchStaff } = useGetLocalStaffQuery({
+  //   storeId: currentStoreId || undefined,
+  // });
+  // const { data: products, refetch: refetchProducts } = useGetLocalProductsQuery(
+  //   {
+  //     storeId: currentStoreId || undefined,
+  //   },
+  // );
+
   const { data: stores = [], refetch: refetchStores } = useGetLocalStoresQuery(
     {},
   );
-  const { data: categories = [], refetch: refetchCategories } =
-    useGetLocalCategoriesQuery({
-      storeId: currentStoreId || undefined,
-    });
+  // const { data: categories = [], refetch: refetchCategories } =
+  //   useGetLocalCategoriesQuery({
+  //     storeId: currentStoreId || undefined,
+  //   });
   const { data: customers = [], refetch: refetchCustomers } =
     useGetLocalCustomersQuery({});
-  const { data: suppliers = [], refetch: refetchSuppliers } =
-    useGetLocalSuppliersQuery({
-      storeId: currentStoreId || undefined,
-    });
+  // const { data: suppliers = [], refetch: refetchSuppliers } =
+  //   useGetLocalSuppliersQuery({
+  //     storeId: currentStoreId || undefined,
+  //   });
   const { data: brands = [], refetch: refetchBrands } = useGetLocalBrandsQuery({
     isActive: true,
   });
@@ -113,7 +115,16 @@ export default function ManageScreen() {
       { skip: !user?.id },
     );
 
-  // ✅ Mutations
+  const { data: staff = [], refetch: refetchStaff } = useGetLocalStaffQuery({});
+  const { data: products = [], refetch: refetchProducts } =
+    useGetLocalProductsQuery({});
+  const { data: categories = [], refetch: refetchCategories } =
+    useGetLocalCategoriesQuery({});
+  const { data: suppliers = [], refetch: refetchSuppliers } =
+    useGetLocalSuppliersQuery({});
+  // customers and stores stay as they are
+
+  // Mutations
   const [createStaff] = useCreateLocalStaffMutation();
   const [updateStaff] = useUpdateLocalStaffMutation();
   const [deleteStaff] = useDeleteLocalStaffMutation();
@@ -1331,8 +1342,13 @@ function EditorModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView className="flex-1 bg-slate-950 px-4 pt-4">
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen" // ✅ add this
+      onRequestClose={onClose}
+    >
+      <SafeAreaView className="flex-1 bg-slate-150 px-4 pt-4">
         <Header
           eyebrow="Editor"
           title={title}
@@ -1344,7 +1360,7 @@ function EditorModal({
           }
         />
         <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-          {/* ======================================STAFF====== */}
+          {/* STAFF */}
           {moduleKey === "staff" && (
             <>
               <Field
@@ -1390,8 +1406,7 @@ function EditorModal({
               />
             </>
           )}
-          /* ============================================ */ /* PRODUCTS FORM */
-          /* ============================================ */
+          {/* PRODUCTS FORM  */}
           {moduleKey === "products" && (
             <>
               <Field
@@ -1603,8 +1618,7 @@ function EditorModal({
               </Pressable>
             </>
           )}
-          /* ============================================ */ /* STORES FORM */
-          /* ============================================ */
+          {/* STORES FORM  */}
           {moduleKey === "stores" && (
             <>
               <Field
@@ -1639,8 +1653,7 @@ function EditorModal({
               />
             </>
           )}
-          /* ============================================ */ /* CATEGORIES FORM
-          */ /* ============================================ */
+          {/* CATEGORIES FORM */}
           {moduleKey === "categories" && (
             <>
               <Field
@@ -1660,8 +1673,7 @@ function EditorModal({
               />
             </>
           )}
-          /* ============================================ */ /* CUSTOMERS FORM
-          */ /* ============================================ */
+          {/* CUSTOMERS FORM  */}
           {moduleKey === "customers" && (
             <>
               <Field
@@ -1698,8 +1710,7 @@ function EditorModal({
               />
             </>
           )}
-          /* ============================================ */ /* SUPPLIERS FORM
-          */ /* ============================================ */
+          {/* SUPPLIERS FORM  */}
           {moduleKey === "suppliers" && (
             <>
               <Field
@@ -1826,8 +1837,7 @@ function EditorModal({
               </Pressable>
             </>
           )}
-          /* ============================================ */ /* BRANDS FORM
-          (NEW) */ /* ============================================ */
+          {/* BRANDS FORM  */}
           {moduleKey === "brands" && (
             <>
               <Field
@@ -1842,8 +1852,8 @@ function EditorModal({
               />
             </>
           )}
-          /* ============================================ */ /* SESSIONS - No
-          form needed */ /* ============================================ */
+          {/* SESSIONS - No
+          form needed */}
           {moduleKey === "sessions" && (
             <View className="py-8">
               <Text className="text-center text-slate-400">

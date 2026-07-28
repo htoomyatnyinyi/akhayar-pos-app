@@ -1,9 +1,6 @@
 import { drizzle } from "drizzle-orm/expo-sqlite";
 import { migrate } from "drizzle-orm/expo-sqlite/migrator";
-import {
-  openDatabaseSync,
-  type SQLiteDatabase,
-} from "expo-sqlite";
+import { openDatabaseSync, type SQLiteDatabase } from "expo-sqlite";
 import migrations from "./drizzle/migrations";
 import * as schema from "./schema";
 
@@ -12,9 +9,7 @@ const databaseName = "midnightcorner_offline_v2.db";
 let sqlite: SQLiteDatabase | undefined;
 let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
 
-// ============================================
 // 1. DATABASE INITIALIZATION
-// ============================================
 
 export function getSqliteDatabase() {
   if (!sqlite) {
@@ -36,9 +31,7 @@ export function getOfflineDb() {
 export const database = getOfflineDb();
 export type Database = typeof database;
 
-// ============================================
 // 2. MIGRATION FUNCTIONS - FIXED ✅
-// ============================================
 
 /**
  * Run migrations using Drizzle Kit generated migrations
@@ -66,7 +59,9 @@ export async function runMigrations() {
 
       // Get all user tables
       const tables = db
-        .getAllSync<{ name: string }>(
+        .getAllSync<{
+          name: string;
+        }>(
           "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
         )
         .map((r) => r.name);
@@ -105,9 +100,7 @@ export async function initializeDatabase() {
   }
 }
 
-// ============================================
 // 3. UTILITY FUNCTIONS
-// ============================================
 
 export async function getOfflineDbSize(): Promise<string> {
   try {
@@ -179,7 +172,7 @@ export async function resetDatabaseCompletely() {
   try {
     const db = getSqliteDatabase();
 
-    console.log("🗑️ Dropping all tables...");
+    console.log("Dropping all tables...");
 
     // Drop all tables in correct order
     const tablesToDrop = [

@@ -1556,7 +1556,7 @@ export async function createOfflineCategory(
       id: id,
       remoteId: null,
       tenantId: payload.tenantId,
-      storeId: payload.storeId,
+      // storeId: payload.storeId,
       name: payload.name || "Unnamed Category",
       slug:
         (payload.slug ?? payload.name?.toLowerCase().replace(/\s+/g, "-")) ||
@@ -3100,7 +3100,47 @@ function toInventoryItem(inv: LocalInventory): InventoryItem {
   };
 }
 
-// ✅ Fixed toOrder
+// async function toOrder(order: LocalOrder): Promise<Order> {
+//   const items = await getOfflineDb()
+//     .select()
+//     .from(orderItems)
+//     .where(eq(orderItems.orderId, order.id));
+
+//   return {
+//     id: order.id,
+//     grandTotal: order.grandTotal,
+//     status: order.status as Order["status"],
+//     createdAt: order.createdAt,
+//     subTotal: order.subTotal,
+//     taxAmount: order.taxAmount,
+//     discountAmount: order.discountAmount,
+//     paidAmount: order.paidAmount,
+//     changeAmount: order.changeAmount,
+//     paymentMethod: order.paymentMethod as Order["paymentMethod"],
+//     paymentStatus: order.paymentStatus as Order["paymentStatus"],
+//     paymentBreakdown: parsePaymentBreakdown(order.paymentBreakdown),
+//     customerId: order.customerId ?? undefined,
+//     storeId: order.storeId ?? undefined,
+//     userId: order.userId,
+//     items: items.map((item) => ({
+//       id: item.id,
+//       orderId: item.orderId,
+//       productId: item.productId,
+//       variantId: item.variantId ?? undefined,
+//       productName: item.productName ?? "",
+//       quantity: item.quantity,
+//       unitPrice: item.unitPrice,
+//       discountAmount: item.discountAmount,
+//       subTotal: item.subTotal,
+//       createdAt: item.createdAt,
+//       product: {
+//         name: item.productName ?? "",
+//         sellingPrice: String(item.unitPrice),
+//       },
+//     })),
+//   };
+// }
+
 async function toOrder(order: LocalOrder): Promise<Order> {
   const items = await getOfflineDb()
     .select()
@@ -3134,14 +3174,21 @@ async function toOrder(order: LocalOrder): Promise<Order> {
       discountAmount: item.discountAmount,
       subTotal: item.subTotal,
       createdAt: item.createdAt,
+      // ✅ Provide a minimal Product (or leave undefined)
       product: {
+        id: item.productId,
+        sku: "",
         name: item.productName ?? "",
         sellingPrice: String(item.unitPrice),
-      },
+        costPrice: 0,
+        isTaxable: true,
+        isActive: true,
+        isReturnable: true,
+        createdAt: item.createdAt,
+      } as any, // as Product
     })),
   };
 }
-
 function toCategory(category: LocalCategory): Category {
   return {
     id: category.id,
@@ -3157,6 +3204,29 @@ function toCategory(category: LocalCategory): Category {
   };
 }
 
+// function toCustomer(customer: LocalCustomer): Customer {
+//   return {
+//     id: customer.id,
+//     tenantId: customer.tenantId,
+//     code: customer.code,
+//     name: customer.name,
+//     phone: customer.phone ?? undefined,
+//     email: customer.email ?? undefined,
+//     address: customer.address ?? undefined,
+//     dateOfBirth: customer.dateOfBirth ?? undefined,
+//     gender: customer.gender ?? undefined,
+//     debtAmount: customer.debtAmount ?? 0,
+//     loyaltyPoints: customer.loyaltyPoints,
+//     totalSpent: customer.totalSpent,
+//     totalOrders: customer.totalOrders,
+//     tier: (customer.tier as Customer["tier"]) ?? "BRONZE",
+//     tierValidUntil: customer.tierValidUntil ?? undefined,
+//     isActive: customer.isActive,
+//     createdAt: customer.createdAt,
+//     updatedAt: customer.updatedAt,
+//   };
+// }
+
 function toCustomer(customer: LocalCustomer): Customer {
   return {
     id: customer.id,
@@ -3167,7 +3237,7 @@ function toCustomer(customer: LocalCustomer): Customer {
     email: customer.email ?? undefined,
     address: customer.address ?? undefined,
     dateOfBirth: customer.dateOfBirth ?? undefined,
-    gender: customer.gender ?? undefined,
+    gender: customer.gender as "MALE" | "FEMALE" | "OTHER" | undefined,
     debtAmount: customer.debtAmount ?? 0,
     loyaltyPoints: customer.loyaltyPoints,
     totalSpent: customer.totalSpent,
@@ -3183,6 +3253,8 @@ function toCustomer(customer: LocalCustomer): Customer {
 function toStore(store: LocalStore): Store {
   return {
     id: store.id,
+    remoteId: store.remoteId, // ✅ add
+    tenantId: store.tenantId, // ✅ add
     code: store.code,
     name: store.name,
     address: store.address ?? undefined,
@@ -3198,6 +3270,7 @@ function toStore(store: LocalStore): Store {
 function toSession(session: LocalSession): Session {
   return {
     id: session.id,
+    remoteId: session.remoteId, // ✅ add
     tenantId: session.tenantId,
     userId: session.userId,
     status: session.status as Session["status"],
@@ -3211,6 +3284,8 @@ function toSession(session: LocalSession): Session {
     cardSales: session.cardSales,
     digitalSales: session.digitalSales,
     notes: session.notes ?? undefined,
+    createdAt: session.createdAt, // ✅ add
+    updatedAt: session.updatedAt, // ✅ add
   };
 }
 

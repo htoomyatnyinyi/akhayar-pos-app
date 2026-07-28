@@ -1,6 +1,4 @@
-// ============================================
 // FILE: services/offline/syncManager.ts
-// ============================================
 
 import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
@@ -58,18 +56,14 @@ import {
   syncOutbox,
 } from "./schema";
 
-// ============================================
 // GLOBAL STATE
-// ============================================
 
 let syncInFlight = false;
 let unsubscribeNetwork: (() => void) | undefined;
 let syncInterval: NodeJS.Timeout | undefined;
 let syncStartTime: number = 0;
 
-// ============================================
 // 1. INITIALIZATION
-// ============================================
 
 export async function initializeOfflineSystem(
   dispatch: AppDispatch,
@@ -282,6 +276,11 @@ export async function syncNow(
       if (!silent) console.log("✅ Sync completed successfully");
     }
 
+    // // Inside syncNow, after each step
+    // console.log(`✅ Synced ${productResult.synced} products`);
+    // console.log(`✅ Synced ${variantResult.synced} variants`);
+    // console.log(`✅ Synced ${inventoryResult.synced} inventory items`);
+
     dispatch(setSyncProgress(100));
 
     return {
@@ -464,6 +463,7 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
     }
 
     const productsData = data?.products || data?.data || data || [];
+
     if (productsData.length > 0) {
       await upsertProducts(productsData, tenantId);
       return { synced: productsData.length };
@@ -627,9 +627,7 @@ async function pullPriceHistory(dispatch: AppDispatch, tenantId: string) {
   }
 }
 
-// ============================================
 // PUSH FUNCTIONS
-// ============================================
 
 async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
   const items = await getDueOutboxItems(maxItems);
@@ -926,9 +924,7 @@ async function processOutboxItem(
   }
 }
 
-// ============================================
 // HELPERS
-// ============================================
 
 async function getFailedCount(): Promise<number> {
   const db = getOfflineDb();
@@ -939,9 +935,7 @@ async function getFailedCount(): Promise<number> {
   return Number(result[0]?.count ?? 0);
 }
 
-// ============================================
 // RETRY
-// ============================================
 
 export async function retryFailedItems(
   dispatch: AppDispatch,
@@ -986,9 +980,7 @@ export async function retryFailedItems(
   }
 }
 
-// ============================================
 // CLEANUP
-// ============================================
 
 export function cleanupOfflineSystem() {
   if (unsubscribeNetwork) {
@@ -1005,9 +997,7 @@ export function cleanupOfflineSystem() {
   console.log("🧹 Offline system cleaned up");
 }
 
-// ============================================
 // HOOK
-// ============================================
 
 export function useSync() {
   const dispatch = useAppDispatch();

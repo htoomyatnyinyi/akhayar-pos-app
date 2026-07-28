@@ -1,7 +1,3 @@
-// ============================================
-// FILE: services/offline/schema.ts
-// ============================================
-
 import { relations, sql } from "drizzle-orm";
 import {
   index,
@@ -30,9 +26,6 @@ export const syncEntities = [
 ] as const;
 export type SyncEntity = (typeof syncEntities)[number];
 
-// ============================================
-// 1. BRANDS (NEW)
-// ============================================
 export const brands = sqliteTable(
   "brands",
   {
@@ -197,9 +190,6 @@ export const productVariants = sqliteTable(
   }),
 );
 
-// ============================================
-// 4. CATEGORIES
-// ============================================
 export const categories = sqliteTable(
   "categories",
   {
@@ -238,9 +228,6 @@ export const categories = sqliteTable(
   }),
 );
 
-// ============================================
-// 5. INVENTORY
-// ============================================
 export const inventory = sqliteTable(
   "inventory",
   {
@@ -291,9 +278,6 @@ export const inventory = sqliteTable(
   }),
 );
 
-// ============================================
-// 6. INVENTORY MOVEMENTS
-// ============================================
 export const inventoryMovements = sqliteTable(
   "inventory_movements",
   {
@@ -361,9 +345,6 @@ export const inventoryCounts = sqliteTable(
   }),
 );
 
-// ============================================
-// 8. INVENTORY COUNT ITEMS
-// ============================================
 export const inventoryCountItems = sqliteTable(
   "inventory_count_items",
   {
@@ -387,9 +368,6 @@ export const inventoryCountItems = sqliteTable(
   }),
 );
 
-// ============================================
-// 9. CUSTOMERS
-// ============================================
 export const customers = sqliteTable(
   "customers",
   {
@@ -440,9 +418,6 @@ export const customers = sqliteTable(
   }),
 );
 
-// ============================================
-// 10. STORES
-// ============================================
 export const stores = sqliteTable(
   "stores",
   {
@@ -478,9 +453,6 @@ export const stores = sqliteTable(
   }),
 );
 
-// ============================================
-// 11. SESSIONS
-// ============================================
 export const sessions = sqliteTable(
   "sessions",
   {
@@ -521,9 +493,6 @@ export const sessions = sqliteTable(
   }),
 );
 
-// ============================================
-// 12. STAFF
-// ============================================
 export const staff = sqliteTable(
   "staff",
   {
@@ -567,9 +536,6 @@ export const staff = sqliteTable(
   }),
 );
 
-// ============================================
-// 13. SUPPLIERS
-// ============================================
 export const suppliers = sqliteTable(
   "suppliers",
   {
@@ -620,9 +586,6 @@ export const suppliers = sqliteTable(
   }),
 );
 
-// ============================================
-// 14. ORDERS
-// ============================================
 export const orders = sqliteTable(
   "orders",
   {
@@ -671,9 +634,6 @@ export const orders = sqliteTable(
   }),
 );
 
-// ============================================
-// 15. ORDER ITEMS
-// ============================================
 export const orderItems = sqliteTable(
   "order_items",
   {
@@ -699,9 +659,6 @@ export const orderItems = sqliteTable(
   }),
 );
 
-// ============================================
-// 16. PRICE HISTORY
-// ============================================
 export const priceHistory = sqliteTable(
   "price_history",
   {
@@ -734,9 +691,6 @@ export const priceHistory = sqliteTable(
   }),
 );
 
-// ============================================
-// 17. SYNC OUTBOX
-// ============================================
 export const syncOutbox = sqliteTable(
   "sync_outbox",
   {
@@ -767,9 +721,6 @@ export const syncOutbox = sqliteTable(
   }),
 );
 
-// ============================================
-// 18. SYNC STATE
-// ============================================
 export const syncState = sqliteTable(
   "sync_state",
   {
@@ -784,9 +735,6 @@ export const syncState = sqliteTable(
   }),
 );
 
-// ============================================
-// 19. GENERIC RECORDS
-// ============================================
 export const genericRecords = sqliteTable(
   "generic_records",
   {
@@ -812,10 +760,6 @@ export const genericRecords = sqliteTable(
     activeIdx: index("generic_active_idx").on(table.isActive),
   }),
 );
-
-// ============================================
-// 20. RELATIONS
-// ============================================
 
 export const brandsRelations = relations(brands, ({ many }) => ({
   products: many(products),
@@ -1003,10 +947,6 @@ export const priceHistoryRelations = relations(priceHistory, ({ one }) => ({
     references: [productVariants.id],
   }),
 }));
-
-// ============================================
-// 21. TYPE EXPORTS
-// ============================================
 
 export type LocalBrand = typeof brands.$inferSelect;
 export type LocalProduct = typeof products.$inferSelect;
