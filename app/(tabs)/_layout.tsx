@@ -41,20 +41,8 @@ export default function TabLayout() {
             ),
           }}
         />
+
         <Tabs.Screen
-          name="manage"
-          options={{
-            title: "Manage",
-            tabBarIcon: ({ color, focused }) => (
-              <MaterialIcons
-                name="settings-applications"
-                size={22}
-                color={focused ? "#86efac" : color}
-              />
-            ),
-          }}
-        />
-        {/* <Tabs.Screen
           name="orders"
           options={{
             title: "Orders",
@@ -66,7 +54,7 @@ export default function TabLayout() {
               />
             ),
           }}
-        /> */}
+        />
         <Tabs.Screen
           name="inventory"
           options={{
@@ -80,7 +68,7 @@ export default function TabLayout() {
             ),
           }}
         />
-        {/* <Tabs.Screen
+        <Tabs.Screen
           name="dashboard"
           options={{
             title: "Dashboard",
@@ -92,7 +80,20 @@ export default function TabLayout() {
               />
             ),
           }}
-        /> */}
+        />
+        <Tabs.Screen
+          name="manage"
+          options={{
+            title: "Manage",
+            tabBarIcon: ({ color, focused }) => (
+              <MaterialIcons
+                name="settings-applications"
+                size={22}
+                color={focused ? "#86efac" : color}
+              />
+            ),
+          }}
+        />
         <Tabs.Screen
           name="sync"
           options={{

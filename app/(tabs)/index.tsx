@@ -191,6 +191,7 @@ export default function POSScreen() {
         "Please open a session before placing an order.",
         [
           { text: "Open Session", onPress: () => router.push("/sessions") },
+          // { text: "Open Session", onPress: () => router.push("/sessions") },
           { text: "Cancel", style: "cancel" },
         ],
       );
