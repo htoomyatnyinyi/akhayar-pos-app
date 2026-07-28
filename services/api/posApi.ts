@@ -48,6 +48,7 @@ export const posApi = createApi({
     "TaxRates",
     "Dashboard",
     "Reports",
+    "Brands",
   ],
 
   endpoints: () => ({}),

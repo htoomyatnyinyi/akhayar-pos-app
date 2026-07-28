@@ -1,7 +1,3 @@
-// ============================================
-// FILE: app/(tabs)/receipt/[id].tsx
-// ============================================
-
 import {
   ActionButton,
   Card,
@@ -14,7 +10,6 @@ import {
   StatRow,
 } from "@/components/app-ui";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
-import { useAuth } from "@/hooks/useAuth";
 import {
   useGetLocalCustomersQuery,
   useGetLocalOrderByIdQuery,
@@ -156,8 +151,8 @@ function formatThermalReceipt(
 
 export default function ReceiptScreen() {
   const router = useRouter();
+  const { user } = useAppSelector((state) => state.auth);
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user } = useAuth();
 
   const {
     data: order,

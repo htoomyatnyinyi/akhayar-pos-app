@@ -42,12 +42,19 @@ export default function LoginScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     dispatch(setLastTenantCode(trimmedTenantCode));
 
+    console.log(trimmedEmail, "trimmedEmail login");
+    console.log(password, "password login");
+    console.log(trimmedTenantCode, "trimmedTenantCode login");
+
     try {
       const user = await login({
         email: trimmedEmail,
         password,
         tenantCode: trimmedTenantCode || undefined,
       }).unwrap();
+
+      console.log(user, "user login");
+
       dispatch(setUser(user));
       router.replace("/");
     } catch (error: unknown) {
@@ -63,7 +70,10 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-slate-950" style={{ flex: 1, backgroundColor: '#020617' }}>
+    <SafeAreaView
+      className="flex-1 bg-slate-950"
+      style={{ flex: 1, backgroundColor: "#020617" }}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}

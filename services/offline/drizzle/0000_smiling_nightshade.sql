@@ -1,3 +1,21 @@
+CREATE TABLE `brands` (
+	`id` text PRIMARY KEY NOT NULL,
+	`remote_id` text,
+	`tenant_id` text NOT NULL,
+	`name` text NOT NULL,
+	`description` text,
+	`is_active` integer DEFAULT 1 NOT NULL,
+	`sync_status` text DEFAULT 'synced' NOT NULL,
+	`sync_error` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`last_synced_at` text
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `brands_remote_id_unique` ON `brands` (`remote_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `brands_tenant_name_idx` ON `brands` (`tenant_id`,`name`);--> statement-breakpoint
+CREATE INDEX `brands_tenant_idx` ON `brands` (`tenant_id`);--> statement-breakpoint
+CREATE INDEX `brands_active_idx` ON `brands` (`is_active`);--> statement-breakpoint
 CREATE TABLE `categories` (
 	`id` text PRIMARY KEY NOT NULL,
 	`remote_id` text,
@@ -268,7 +286,7 @@ CREATE TABLE `products` (
 	`tenant_id` text NOT NULL,
 	`name` text NOT NULL,
 	`description` text,
-	`brand` text,
+	`brand_id` text,
 	`sku` text NOT NULL,
 	`barcode` text,
 	`cost_price` real DEFAULT 0 NOT NULL,
@@ -285,19 +303,25 @@ CREATE TABLE `products` (
 	`best_before_date` text,
 	`category_id` text NOT NULL,
 	`supplier_id` text,
+	`store_id` text,
 	`deleted_at` text,
 	`version` integer DEFAULT 0 NOT NULL,
 	`sync_status` text DEFAULT 'synced' NOT NULL,
 	`sync_error` text,
 	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
 	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-	`last_synced_at` text
+	`last_synced_at` text,
+	FOREIGN KEY (`brand_id`) REFERENCES `brands`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`supplier_id`) REFERENCES `suppliers`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`store_id`) REFERENCES `stores`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `products_remote_id_unique` ON `products` (`remote_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `products_tenant_sku_idx` ON `products` (`tenant_id`,`sku`);--> statement-breakpoint
 CREATE UNIQUE INDEX `products_tenant_barcode_idx` ON `products` (`tenant_id`,`barcode`);--> statement-breakpoint
 CREATE INDEX `products_category_idx` ON `products` (`category_id`);--> statement-breakpoint
+CREATE INDEX `products_brand_idx` ON `products` (`brand_id`);--> statement-breakpoint
+CREATE INDEX `products_store_idx` ON `products` (`store_id`);--> statement-breakpoint
 CREATE INDEX `products_tenant_active_idx` ON `products` (`tenant_id`,`is_active`);--> statement-breakpoint
 CREATE INDEX `products_expiry_idx` ON `products` (`expiry_date`);--> statement-breakpoint
 CREATE INDEX `products_deleted_idx` ON `products` (`deleted_at`);--> statement-breakpoint
@@ -305,7 +329,6 @@ CREATE INDEX `products_sku_idx` ON `products` (`sku`);--> statement-breakpoint
 CREATE INDEX `products_barcode_idx` ON `products` (`barcode`);--> statement-breakpoint
 CREATE INDEX `products_tenant_created_idx` ON `products` (`tenant_id`,`created_at`);--> statement-breakpoint
 CREATE INDEX `products_name_idx` ON `products` (`name`);--> statement-breakpoint
-CREATE INDEX `products_brand_idx` ON `products` (`brand`);--> statement-breakpoint
 CREATE TABLE `sessions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`remote_id` text,
@@ -336,6 +359,31 @@ CREATE INDEX `sessions_store_idx` ON `sessions` (`store_id`);--> statement-break
 CREATE INDEX `sessions_user_idx` ON `sessions` (`user_id`);--> statement-breakpoint
 CREATE INDEX `sessions_status_idx` ON `sessions` (`status`);--> statement-breakpoint
 CREATE INDEX `sessions_opened_idx` ON `sessions` (`opened_at`);--> statement-breakpoint
+CREATE TABLE `staff` (
+	`id` text PRIMARY KEY NOT NULL,
+	`remote_id` text,
+	`tenant_id` text NOT NULL,
+	`store_id` text,
+	`username` text NOT NULL,
+	`email` text,
+	`name` text NOT NULL,
+	`role` text DEFAULT 'CASHIER' NOT NULL,
+	`permissions` text DEFAULT '[]',
+	`is_active` integer DEFAULT 1 NOT NULL,
+	`sync_status` text DEFAULT 'synced' NOT NULL,
+	`sync_error` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`last_synced_at` text
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `staff_remote_id_unique` ON `staff` (`remote_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `staff_tenant_username_idx` ON `staff` (`tenant_id`,`username`);--> statement-breakpoint
+CREATE UNIQUE INDEX `staff_tenant_email_idx` ON `staff` (`tenant_id`,`email`);--> statement-breakpoint
+CREATE INDEX `staff_store_idx` ON `staff` (`store_id`);--> statement-breakpoint
+CREATE INDEX `staff_role_idx` ON `staff` (`role`);--> statement-breakpoint
+CREATE INDEX `staff_active_idx` ON `staff` (`is_active`);--> statement-breakpoint
+CREATE INDEX `staff_tenant_idx` ON `staff` (`tenant_id`);--> statement-breakpoint
 CREATE TABLE `stores` (
 	`id` text PRIMARY KEY NOT NULL,
 	`remote_id` text,
@@ -358,6 +406,37 @@ CREATE UNIQUE INDEX `stores_remote_id_unique` ON `stores` (`remote_id`);--> stat
 CREATE UNIQUE INDEX `stores_tenant_code_idx` ON `stores` (`tenant_id`,`code`);--> statement-breakpoint
 CREATE INDEX `stores_name_idx` ON `stores` (`name`);--> statement-breakpoint
 CREATE INDEX `stores_active_idx` ON `stores` (`is_active`);--> statement-breakpoint
+CREATE TABLE `suppliers` (
+	`id` text PRIMARY KEY NOT NULL,
+	`remote_id` text,
+	`tenant_id` text NOT NULL,
+	`store_id` text,
+	`code` text NOT NULL,
+	`name` text NOT NULL,
+	`contact_name` text,
+	`phone` text,
+	`email` text,
+	`address` text,
+	`tax_number` text,
+	`payment_terms` integer,
+	`credit_limit` real,
+	`current_balance` real DEFAULT 0 NOT NULL,
+	`is_active` integer DEFAULT 1 NOT NULL,
+	`sync_status` text DEFAULT 'synced' NOT NULL,
+	`sync_error` text,
+	`created_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`updated_at` text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	`last_synced_at` text
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `suppliers_remote_id_unique` ON `suppliers` (`remote_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `suppliers_tenant_code_idx` ON `suppliers` (`tenant_id`,`code`);--> statement-breakpoint
+CREATE UNIQUE INDEX `suppliers_tenant_phone_idx` ON `suppliers` (`tenant_id`,`phone`);--> statement-breakpoint
+CREATE UNIQUE INDEX `suppliers_tenant_email_idx` ON `suppliers` (`tenant_id`,`email`);--> statement-breakpoint
+CREATE INDEX `suppliers_store_idx` ON `suppliers` (`store_id`);--> statement-breakpoint
+CREATE INDEX `suppliers_name_idx` ON `suppliers` (`name`);--> statement-breakpoint
+CREATE INDEX `suppliers_active_idx` ON `suppliers` (`is_active`);--> statement-breakpoint
+CREATE INDEX `suppliers_tenant_idx` ON `suppliers` (`tenant_id`);--> statement-breakpoint
 CREATE TABLE `sync_outbox` (
 	`id` text PRIMARY KEY NOT NULL,
 	`entity` text NOT NULL,
