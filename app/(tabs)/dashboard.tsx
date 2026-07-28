@@ -1,7 +1,3 @@
-// ============================================
-// FILE: app/(tabs)/dashboard.tsx
-// ============================================
-
 import {
   Card,
   Header,
@@ -166,7 +162,7 @@ export default function DashboardScreen() {
     return {
       totalOrders,
       totalRevenue,
-      todayOrders: todayOrders.length, // ✅ ensure it's a number
+      todayOrders: todayOrders.length,
       todayRevenue,
       avgOrderValue,
       topProducts,
@@ -199,7 +195,7 @@ export default function DashboardScreen() {
                 />
                 <TouchableOpacity
                   className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30"
-                  onPress={() => router.push("(tabs)/pos")}
+                  onPress={() => router.push("(tabs)/index")}
                 >
                   <Text className="text-sky-400 text-xs font-bold">+ New</Text>
                 </TouchableOpacity>

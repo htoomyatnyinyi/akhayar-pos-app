@@ -1,7 +1,3 @@
-// ============================================
-// FILE: services/offline/localApi.ts
-// ============================================
-
 import { getOfflineDb } from "@/services/offline/db";
 import {
   brands, // ✅ NEW: import brands table
