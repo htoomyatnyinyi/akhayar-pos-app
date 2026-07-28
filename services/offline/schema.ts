@@ -97,7 +97,7 @@ export const products = sqliteTable(
     expiryDate: text("expiry_date"),
     manufacturingDate: text("manufacturing_date"),
     bestBeforeDate: text("best_before_date"),
-    categoryId: text("category_id").notNull(),
+    categoryId: text("category_id"),
     supplierId: text("supplier_id").references(() => suppliers.id),
     // 🔽 New: storeId (foreign key to stores)
     storeId: text("store_id").references(() => stores.id),

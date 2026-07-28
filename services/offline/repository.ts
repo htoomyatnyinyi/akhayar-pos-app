@@ -62,7 +62,21 @@ import {
 
 // ============================================
 // NORMALIZATION FUNCTIONS
+
 // ============================================
+
+// Add this near the top of repository.ts
+async function withForeignKeysOff<T>(
+  db: ReturnType<typeof getOfflineDb>,
+  callback: () => Promise<T>,
+): Promise<T> {
+  await db.run(sql`PRAGMA foreign_keys = OFF`);
+  try {
+    return await callback();
+  } finally {
+    await db.run(sql`PRAGMA foreign_keys = ON`);
+  }
+}
 
 export function normalizeProduct(
   product: Product & Record<string, any>,
@@ -73,8 +87,19 @@ export function normalizeProduct(
     tenantId: product.tenantId,
     name: product.name || "Unnamed Product",
     description: product.description,
-    brandId: product.brandId ?? null,
-    storeId: product.storeId ?? null,
+    // 🔥 Convert empty strings to null for foreign keys
+    brandId:
+      product.brandId && product.brandId.trim() !== "" ? product.brandId : null,
+    storeId:
+      product.storeId && product.storeId.trim() !== "" ? product.storeId : null,
+    categoryId:
+      product.categoryId && product.categoryId.trim() !== ""
+        ? product.categoryId
+        : null,
+    supplierId:
+      product.supplierId && product.supplierId.trim() !== ""
+        ? product.supplierId
+        : null,
     sku: product.sku || `SKU-${product.id?.slice(-8) || Date.now()}`,
     barcode: product.barcode,
     costPrice: Number(product.costPrice ?? 0),
@@ -89,9 +114,6 @@ export function normalizeProduct(
     expiryDate: product.expiryDate,
     manufacturingDate: product.manufacturingDate,
     bestBeforeDate: product.bestBeforeDate,
-    // 🔥 FALLBACK for categoryId (required in schema)
-    categoryId: product.categoryId || "default-category",
-    supplierId: product.supplierId,
     deletedAt: product.deletedAt,
     version: Number(product.version ?? 0),
     syncStatus: "synced",
@@ -101,6 +123,43 @@ export function normalizeProduct(
     lastSyncedAt: new Date().toISOString(),
   };
 }
+// export function normalizeProduct(
+//   product: Product & Record<string, any>,
+// ): typeof products.$inferInsert {
+//   return {
+//     id: product.id,
+//     remoteId: product.remoteId || null,
+//     tenantId: product.tenantId,
+//     name: product.name || "Unnamed Product",
+//     description: product.description,
+//     brandId: product.brandId ?? null,
+//     storeId: product.storeId ?? null,
+//     sku: product.sku || `SKU-${product.id?.slice(-8) || Date.now()}`,
+//     barcode: product.barcode,
+//     costPrice: Number(product.costPrice ?? 0),
+//     sellingPrice: Number(product.sellingPrice ?? 0),
+//     wholesalePrice: Number(product.wholesalePrice ?? 0),
+//     promoPrice: product.promoPrice ? Number(product.promoPrice) : null,
+//     promoStartAt: product.promoStartAt,
+//     promoEndAt: product.promoEndAt,
+//     isTaxable: product.isTaxable ?? true,
+//     isActive: product.isActive ?? true,
+//     isReturnable: product.isReturnable ?? true,
+//     expiryDate: product.expiryDate,
+//     manufacturingDate: product.manufacturingDate,
+//     bestBeforeDate: product.bestBeforeDate,
+//     // 🔥 FALLBACK for categoryId (required in schema)
+//     categoryId: product.categoryId || null,
+//     supplierId: product.supplierId || null,
+//     deletedAt: product.deletedAt,
+//     version: Number(product.version ?? 0),
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: product.createdAt ?? new Date().toISOString(),
+//     updatedAt: product.updatedAt ?? new Date().toISOString(),
+//     lastSyncedAt: new Date().toISOString(),
+//   };
+// }
 
 export function normalizeProductVariant(
   variant: any,
@@ -133,8 +192,13 @@ export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
     remoteId: inv.remoteId,
     tenantId: inv.tenantId,
     storeId: inv.storeId,
-    productId: inv.productId,
-    variantId: inv.variantId,
+    productId:
+      inv.productId && inv.productId.trim() !== "" ? inv.productId : null,
+    variantId:
+      inv.variantId && inv.variantId.trim() !== "" ? inv.variantId : null,
+
+    // productId: inv.productId,
+    // variantId: inv.variantId,
     quantity: Number(inv.quantity ?? 0),
     reservedQty: Number(inv.reservedQty ?? 0),
     reorderPoint: Number(inv.reorderPoint ?? 10),
@@ -196,128 +260,358 @@ export async function upsertProducts(
   defaultTenantId: string,
 ) {
   if (!remoteProducts.length) return;
-
   const db = getOfflineDb();
 
   const productsToInsert = remoteProducts.map((product) => {
     const normalized = normalizeProduct(product);
-    if (!normalized.tenantId) {
-      normalized.tenantId = defaultTenantId;
-    }
+    if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
     return normalized;
   });
 
-  await db
-    .insert(products)
-    .values(productsToInsert)
-    .onConflictDoUpdate({
-      target: products.id,
-      set: {
-        sku: sql`excluded.sku`,
-        barcode: sql`excluded.barcode`,
-        name: sql`excluded.name`,
-        description: sql`excluded.description`,
-        brandId: sql`excluded.brand_id`,
-        storeId: sql`excluded.store_id`,
-        costPrice: sql`excluded.cost_price`,
-        sellingPrice: sql`excluded.selling_price`,
-        wholesalePrice: sql`excluded.wholesale_price`,
-        promoPrice: sql`excluded.promo_price`,
-        promoStartAt: sql`excluded.promo_start_at`,
-        promoEndAt: sql`excluded.promo_end_at`,
-        isTaxable: sql`excluded.is_taxable`,
-        isActive: sql`excluded.is_active`,
-        isReturnable: sql`excluded.is_returnable`,
-        expiryDate: sql`excluded.expiry_date`,
-        manufacturingDate: sql`excluded.manufacturing_date`,
-        bestBeforeDate: sql`excluded.best_before_date`,
-        categoryId: sql`excluded.category_id`,
-        supplierId: sql`excluded.supplier_id`,
-        deletedAt: sql`excluded.deleted_at`,
-        version: sql`excluded.version`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: sql`excluded.last_synced_at`,
-      },
-    });
+  await withForeignKeysOff(db, async () => {
+    await db
+      .insert(products)
+      .values(productsToInsert)
+      .onConflictDoUpdate({
+        target: products.id,
+        set: {
+          sku: sql`excluded.sku`,
+          barcode: sql`excluded.barcode`,
+          name: sql`excluded.name`,
+          description: sql`excluded.description`,
+          brandId: sql`excluded.brand_id`,
+          storeId: sql`excluded.store_id`,
+          costPrice: sql`excluded.cost_price`,
+          sellingPrice: sql`excluded.selling_price`,
+          wholesalePrice: sql`excluded.wholesale_price`,
+          promoPrice: sql`excluded.promo_price`,
+          promoStartAt: sql`excluded.promo_start_at`,
+          promoEndAt: sql`excluded.promo_end_at`,
+          isTaxable: sql`excluded.is_taxable`,
+          isActive: sql`excluded.is_active`,
+          isReturnable: sql`excluded.is_returnable`,
+          expiryDate: sql`excluded.expiry_date`,
+          manufacturingDate: sql`excluded.manufacturing_date`,
+          bestBeforeDate: sql`excluded.best_before_date`,
+          categoryId: sql`excluded.category_id`,
+          supplierId: sql`excluded.supplier_id`,
+          deletedAt: sql`excluded.deleted_at`,
+          version: sql`excluded.version`,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: sql`excluded.updated_at`,
+          lastSyncedAt: sql`excluded.last_synced_at`,
+        },
+      });
+  });
 }
+
+// export async function upsertProducts(
+//   remoteProducts: Product[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteProducts.length) return;
+
+//   const db = getOfflineDb();
+
+//   const productsToInsert = remoteProducts.map((product) => {
+//     const normalized = normalizeProduct(product);
+//     if (!normalized.tenantId) {
+//       normalized.tenantId = defaultTenantId;
+//     }
+//     return normalized;
+//   });
+
+//   await db
+//     .insert(products)
+//     .values(productsToInsert)
+//     .onConflictDoUpdate({
+//       target: products.id,
+//       set: {
+//         sku: sql`excluded.sku`,
+//         barcode: sql`excluded.barcode`,
+//         name: sql`excluded.name`,
+//         description: sql`excluded.description`,
+//         brandId: sql`excluded.brand_id`,
+//         storeId: sql`excluded.store_id`,
+//         costPrice: sql`excluded.cost_price`,
+//         sellingPrice: sql`excluded.selling_price`,
+//         wholesalePrice: sql`excluded.wholesale_price`,
+//         promoPrice: sql`excluded.promo_price`,
+//         promoStartAt: sql`excluded.promo_start_at`,
+//         promoEndAt: sql`excluded.promo_end_at`,
+//         isTaxable: sql`excluded.is_taxable`,
+//         isActive: sql`excluded.is_active`,
+//         isReturnable: sql`excluded.is_returnable`,
+//         expiryDate: sql`excluded.expiry_date`,
+//         manufacturingDate: sql`excluded.manufacturing_date`,
+//         bestBeforeDate: sql`excluded.best_before_date`,
+//         categoryId: sql`excluded.category_id`,
+//         supplierId: sql`excluded.supplier_id`,
+//         deletedAt: sql`excluded.deleted_at`,
+//         version: sql`excluded.version`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: sql`excluded.last_synced_at`,
+//       },
+//     });
+// }
+
+// export async function upsertProducts(
+//   remoteProducts: Product[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteProducts.length) return;
+
+//   const db = getOfflineDb();
+
+//   // ✅ Disable foreign key constraints temporarily
+//   await db.run(sql`PRAGMA foreign_keys = OFF`);
+
+//   try {
+//     const productsToInsert = remoteProducts.map((product) => {
+//       const normalized = normalizeProduct(product);
+//       if (!normalized.tenantId) {
+//         normalized.tenantId = defaultTenantId;
+//       }
+//       return normalized;
+//     });
+
+//     await db
+//       .insert(products)
+//       .values(productsToInsert)
+//       .onConflictDoUpdate({
+//         target: products.id,
+//         set: {
+//           sku: sql`excluded.sku`,
+//           barcode: sql`excluded.barcode`,
+//           name: sql`excluded.name`,
+//           description: sql`excluded.description`,
+//           brandId: sql`excluded.brand_id`,
+//           storeId: sql`excluded.store_id`,
+//           costPrice: sql`excluded.cost_price`,
+//           sellingPrice: sql`excluded.selling_price`,
+//           wholesalePrice: sql`excluded.wholesale_price`,
+//           promoPrice: sql`excluded.promo_price`,
+//           promoStartAt: sql`excluded.promo_start_at`,
+//           promoEndAt: sql`excluded.promo_end_at`,
+//           isTaxable: sql`excluded.is_taxable`,
+//           isActive: sql`excluded.is_active`,
+//           isReturnable: sql`excluded.is_returnable`,
+//           expiryDate: sql`excluded.expiry_date`,
+//           manufacturingDate: sql`excluded.manufacturing_date`,
+//           bestBeforeDate: sql`excluded.best_before_date`,
+//           categoryId: sql`excluded.category_id`,
+//           supplierId: sql`excluded.supplier_id`,
+//           deletedAt: sql`excluded.deleted_at`,
+//           version: sql`excluded.version`,
+//           syncStatus: "synced",
+//           syncError: null,
+//           updatedAt: sql`excluded.updated_at`,
+//           lastSyncedAt: sql`excluded.last_synced_at`,
+//         },
+//       });
+//   } finally {
+//     // ✅ Re-enable foreign key constraints
+//     await db.run(sql`PRAGMA foreign_keys = ON`);
+//   }
+// }
+// export async function upsertProductVariants(
+//   remoteVariants: any[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteVariants.length) return;
+
+//   const db = getOfflineDb();
+//   const variantsToInsert = remoteVariants.map((variant) => {
+//     const normalized = normalizeProductVariant(variant);
+//     if (!normalized.tenantId) {
+//       normalized.tenantId = defaultTenantId;
+//     }
+//     return normalized;
+//   });
+
+//   await db
+//     .insert(productVariants)
+//     .values(variantsToInsert)
+//     .onConflictDoUpdate({
+//       target: productVariants.id,
+//       set: {
+//         sku: sql`excluded.sku`,
+//         barcode: sql`excluded.barcode`,
+//         name: sql`excluded.name`,
+//         price: sql`excluded.price`,
+//         costPrice: sql`excluded.cost_price`,
+//         color: sql`excluded.color`,
+//         size: sql`excluded.size`,
+//         weight: sql`excluded.weight`,
+//         isActive: sql`excluded.is_active`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: sql`excluded.last_synced_at`,
+//       },
+//     });
+// }
 
 export async function upsertProductVariants(
   remoteVariants: any[],
   defaultTenantId: string,
 ) {
   if (!remoteVariants.length) return;
-
   const db = getOfflineDb();
+
   const variantsToInsert = remoteVariants.map((variant) => {
     const normalized = normalizeProductVariant(variant);
-    if (!normalized.tenantId) {
-      normalized.tenantId = defaultTenantId;
-    }
+    if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
     return normalized;
   });
 
-  await db
-    .insert(productVariants)
-    .values(variantsToInsert)
-    .onConflictDoUpdate({
-      target: productVariants.id,
-      set: {
-        sku: sql`excluded.sku`,
-        barcode: sql`excluded.barcode`,
-        name: sql`excluded.name`,
-        price: sql`excluded.price`,
-        costPrice: sql`excluded.cost_price`,
-        color: sql`excluded.color`,
-        size: sql`excluded.size`,
-        weight: sql`excluded.weight`,
-        isActive: sql`excluded.is_active`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: sql`excluded.last_synced_at`,
-      },
-    });
+  await withForeignKeysOff(db, async () => {
+    await db
+      .insert(productVariants)
+      .values(variantsToInsert)
+      .onConflictDoUpdate({
+        target: productVariants.id,
+        set: {
+          sku: sql`excluded.sku`,
+          barcode: sql`excluded.barcode`,
+          name: sql`excluded.name`,
+          price: sql`excluded.price`,
+          costPrice: sql`excluded.cost_price`,
+          color: sql`excluded.color`,
+          size: sql`excluded.size`,
+          weight: sql`excluded.weight`,
+          isActive: sql`excluded.is_active`,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: sql`excluded.updated_at`,
+          lastSyncedAt: sql`excluded.last_synced_at`,
+        },
+      });
+  });
 }
+// // export async function upsertInventory(
+// //   remoteInventory: any[],
+// //   defaultTenantId: string,
+// // ) {
+// //   if (!remoteInventory.length) return;
+
+// //   const db = getOfflineDb();
+// //   const inventoryToInsert = remoteInventory.map((inv) => {
+// //     const normalized = normalizeInventory(inv);
+// //     if (!normalized.tenantId) {
+// //       normalized.tenantId = defaultTenantId;
+// //     }
+// //     return normalized;
+// //   });
+
+// //   await db
+// //     .insert(inventory)
+// //     .values(inventoryToInsert)
+// //     .onConflictDoUpdate({
+// //       target: inventory.id,
+// //       set: {
+// //         tenantId: sql`excluded.tenant_id`,
+// //         storeId: sql`excluded.store_id`,
+// //         productId: sql`excluded.product_id`,
+// //         variantId: sql`excluded.variant_id`,
+// //         quantity: sql`excluded.quantity`,
+// //         reservedQty: sql`excluded.reserved_qty`,
+// //         reorderPoint: sql`excluded.reorder_point`,
+// //         reorderQty: sql`excluded.reorder_qty`,
+// //         shelfLocation: sql`excluded.shelf_location`,
+// //         version: sql`excluded.version`,
+// //         syncStatus: "synced",
+// //         syncError: null,
+// //         updatedAt: sql`excluded.updated_at`,
+// //         lastSyncedAt: sql`excluded.last_synced_at`,
+// //       },
+// //     });
+// // }
+
+// export async function upsertInventory(
+//   remoteInventory: any[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteInventory.length) return;
+
+//   const db = getOfflineDb();
+//   await db.run(sql`PRAGMA foreign_keys = OFF`);
+//   try {
+//     const inventoryToInsert = remoteInventory.map((inv) => {
+//       const normalized = normalizeInventory(inv);
+//       if (!normalized.tenantId) {
+//         normalized.tenantId = defaultTenantId;
+//       }
+//       return normalized;
+//     });
+
+//     await db
+//       .insert(inventory)
+//       .values(inventoryToInsert)
+//       .onConflictDoUpdate({
+//         target: inventory.id,
+//         set: {
+//           tenantId: sql`excluded.tenant_id`,
+//           storeId: sql`excluded.store_id`,
+//           productId: sql`excluded.product_id`,
+//           variantId: sql`excluded.variant_id`,
+//           quantity: sql`excluded.quantity`,
+//           reservedQty: sql`excluded.reserved_qty`,
+//           reorderPoint: sql`excluded.reorder_point`,
+//           reorderQty: sql`excluded.reorder_qty`,
+//           shelfLocation: sql`excluded.shelf_location`,
+//           version: sql`excluded.version`,
+//           syncStatus: "synced",
+//           syncError: null,
+//           updatedAt: sql`excluded.updated_at`,
+//           lastSyncedAt: sql`excluded.last_synced_at`,
+//         },
+//       });
+//   } finally {
+//     await db.run(sql`PRAGMA foreign_keys = ON`);
+//   }
+// }
 
 export async function upsertInventory(
   remoteInventory: any[],
   defaultTenantId: string,
 ) {
   if (!remoteInventory.length) return;
-
   const db = getOfflineDb();
+
   const inventoryToInsert = remoteInventory.map((inv) => {
     const normalized = normalizeInventory(inv);
-    if (!normalized.tenantId) {
-      normalized.tenantId = defaultTenantId;
-    }
+    if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
     return normalized;
   });
 
-  await db
-    .insert(inventory)
-    .values(inventoryToInsert)
-    .onConflictDoUpdate({
-      target: inventory.id,
-      set: {
-        tenantId: sql`excluded.tenant_id`,
-        storeId: sql`excluded.store_id`,
-        productId: sql`excluded.product_id`,
-        variantId: sql`excluded.variant_id`,
-        quantity: sql`excluded.quantity`,
-        reservedQty: sql`excluded.reserved_qty`,
-        reorderPoint: sql`excluded.reorder_point`,
-        reorderQty: sql`excluded.reorder_qty`,
-        shelfLocation: sql`excluded.shelf_location`,
-        version: sql`excluded.version`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: sql`excluded.last_synced_at`,
-      },
-    });
+  await withForeignKeysOff(db, async () => {
+    await db
+      .insert(inventory)
+      .values(inventoryToInsert)
+      .onConflictDoUpdate({
+        target: inventory.id,
+        set: {
+          tenantId: sql`excluded.tenant_id`,
+          storeId: sql`excluded.store_id`,
+          productId: sql`excluded.product_id`,
+          variantId: sql`excluded.variant_id`,
+          quantity: sql`excluded.quantity`,
+          reservedQty: sql`excluded.reserved_qty`,
+          reorderPoint: sql`excluded.reorder_point`,
+          reorderQty: sql`excluded.reorder_qty`,
+          shelfLocation: sql`excluded.shelf_location`,
+          version: sql`excluded.version`,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: sql`excluded.updated_at`,
+          lastSyncedAt: sql`excluded.last_synced_at`,
+        },
+      });
+  });
 }
 
 export async function upsertCategories(
