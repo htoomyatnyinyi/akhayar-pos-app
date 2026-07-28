@@ -171,19 +171,66 @@ export function ActionButton({
   );
 }
 
+// export function RowItem({
+//   title,
+//   subtitle,
+//   right,
+//   icon,
+// }: {
+//   title: string;
+//   subtitle?: string;
+//   right?: string;
+//   icon?: keyof typeof MaterialIcons.glyphMap;
+// }) {
+//   return (
+//     <View className="flex-row items-center gap-3 rounded-[20px] border border-white/8 bg-white/4 px-4 py-3">
+//       {icon ? (
+//         <View className="h-11 w-11 items-center justify-center rounded-2xl bg-white/8">
+//           <MaterialIcons name={icon} size={20} color="#e2e8f0" />
+//         </View>
+//       ) : null}
+//       <View className="flex-1">
+//         <Text className="text-sm font-semibold text-white">{title}</Text>
+//         {subtitle ? (
+//           <Text className="mt-1 text-xs text-slate-400">{subtitle}</Text>
+//         ) : null}
+//       </View>
+//       {right ? (
+//         <Text className="text-sm font-bold text-slate-200">{right}</Text>
+//       ) : null}
+//     </View>
+//   );
+// }
+
 export function RowItem({
   title,
   subtitle,
   right,
   icon,
+  onPress,
+  accent = "default", // new
 }: {
   title: string;
   subtitle?: string;
   right?: string;
   icon?: keyof typeof MaterialIcons.glyphMap;
+  onPress?: () => void;
+  accent?: "default" | "sky" | "emerald" | "amber" | "rose";
 }) {
+  const accentStyles = {
+    default: { bg: "bg-white/4", border: "border-white/8" },
+    sky: { bg: "bg-sky-500/10", border: "border-sky-500/20" },
+    emerald: { bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
+    amber: { bg: "bg-amber-500/10", border: "border-amber-500/20" },
+    rose: { bg: "bg-rose-500/10", border: "border-rose-500/20" },
+  };
+  const s = accentStyles[accent] || accentStyles.default;
+
   return (
-    <View className="flex-row items-center gap-3 rounded-[20px] border border-white/8 bg-white/4 px-4 py-3">
+    <Pressable
+      onPress={onPress}
+      className={`flex-row items-center gap-3 rounded-[20px] border ${s.border} ${s.bg} px-4 py-3`}
+    >
       {icon ? (
         <View className="h-11 w-11 items-center justify-center rounded-2xl bg-white/8">
           <MaterialIcons name={icon} size={20} color="#e2e8f0" />
@@ -198,10 +245,9 @@ export function RowItem({
       {right ? (
         <Text className="text-sm font-bold text-slate-200">{right}</Text>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
-
 export function SectionTitle({
   title,
   action,
