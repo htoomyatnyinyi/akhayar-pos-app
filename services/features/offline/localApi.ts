@@ -132,7 +132,7 @@ export const localApi = createApi({
             operation: "create",
             endpoint: "/api/tenant/brands",
             method: "POST",
-            payload: JSON.stringify(payload),
+            payload: payload,
             status: "pending",
             attempts: 0,
             nextAttemptAt: now,
@@ -173,7 +173,7 @@ export const localApi = createApi({
             operation: "update",
             endpoint: `/api/tenant/brands/${id}`,
             method: "PUT",
-            payload: JSON.stringify(payload),
+            payload: payload,
             status: "pending",
             attempts: 0,
             nextAttemptAt: now,
@@ -216,7 +216,7 @@ export const localApi = createApi({
             operation: "delete",
             endpoint: `/api/tenant/brands/${id}`,
             method: "DELETE",
-            payload: JSON.stringify({}),
+            payload: {},
             status: "pending",
             attempts: 0,
             nextAttemptAt: new Date().toISOString(),
@@ -557,9 +557,6 @@ export const localApi = createApi({
 
           if (isActive !== undefined) {
             query = query.where(eq(categories.isActive, isActive));
-          }
-          if (storeId) {
-            query = query.where(eq(categories.storeId, storeId));
           }
 
           const result = await query;
@@ -1622,7 +1619,7 @@ export const localApi = createApi({
 
           const { createLocalId } = await import("@/services/offline/ids");
           const movementId = createLocalId("mov");
-          const movementType = diff > 0 ? "IN" : "OUT";
+          const movementType = "ADJUSTMENT";
 
           await db.insert(inventoryMovements).values({
             id: movementId,
@@ -1630,7 +1627,7 @@ export const localApi = createApi({
             storeId: payload.storeId,
             productId: payload.productId,
             variantId: payload.variantId || null,
-            quantity: Math.abs(diff),
+            quantity: diff,
             type: movementType,
             referenceId: `adj-${Date.now()}`,
             referenceType: "STOCK_ADJUSTMENT",
@@ -1648,25 +1645,7 @@ export const localApi = createApi({
             .from(inventory)
             .where(eq(inventory.id, existingInventory.id));
 
-          await db.insert(syncOutbox).values({
-            id: createLocalId("outbox"),
-            entity: "inventory",
-            entityId: updatedInventory.id,
-            operation: "update",
-            endpoint: `/api/tenant/inventory/${updatedInventory.id}`,
-            method: "PUT",
-            payload: {
-              id: updatedInventory.id,
-              quantity: updatedInventory.quantity,
-              version: updatedInventory.version,
-            },
-            status: "pending",
-            attempts: 0,
-            nextAttemptAt: now,
-            lastError: null,
-            createdAt: now,
-            updatedAt: now,
-          });
+
 
           await db.insert(syncOutbox).values({
             id: createLocalId("outbox"),
@@ -1676,11 +1655,10 @@ export const localApi = createApi({
             endpoint: "/api/tenant/inventory/movements",
             method: "POST",
             payload: {
-              tenantId: payload.tenantId || existingInventory.tenantId,
               storeId: payload.storeId,
               productId: payload.productId,
-              variantId: payload.variantId || null,
-              quantity: Math.abs(diff),
+              ...(payload.variantId ? { variantId: payload.variantId } : {}),
+              quantity: diff,
               type: movementType,
               referenceId: `adj-${Date.now()}`,
               referenceType: "STOCK_ADJUSTMENT",

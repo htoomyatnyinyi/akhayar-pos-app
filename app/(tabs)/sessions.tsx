@@ -1,7 +1,3 @@
-// ============================================
-// FILE: app/(tabs)/sessions.tsx
-// ============================================
-
 import {
   ActionButton,
   Card,
@@ -77,6 +73,8 @@ export default function SessionsScreen() {
         openingBalance: Number(openingBalance) || 0,
         notes: notes.trim() || undefined,
         storeId: currentStoreId || undefined,
+        registerId: "Default Register", // ✅ hardcoded bypass register-id create api. because i did not implement yet.
+        // registerId: "default", // ✅ hardcoded bypass register-id create api. because i did not implement yet.
       }).unwrap();
       setShowOpenModal(false);
       setOpeningBalance("0");

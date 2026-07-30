@@ -1,0 +1,634 @@
+== GET /api/tenant/api-keys/ ==
+
+== POST /api/tenant/api-keys/ ==
+Request:
+  Required: ['userId', 'name']
+  userId: string
+  name: string
+  permissions: array
+  expiresAt: string
+
+== DELETE /api/tenant/api-keys/{id} ==
+
+== GET /api/tenant/brands/ ==
+
+== POST /api/tenant/brands/ ==
+Request:
+  Required: ['name']
+  name: string
+  description: string
+
+== GET /api/tenant/brands/{id} ==
+
+== PUT /api/tenant/brands/{id} ==
+Request:
+  name: string
+  description: string
+  isActive: boolean
+
+== DELETE /api/tenant/brands/{id} ==
+
+== GET /api/tenant/cash-registers/ ==
+
+== POST /api/tenant/cash-registers/ ==
+Request:
+  Required: ['storeId', 'name']
+  storeId: string
+  name: string
+  status: None
+
+== GET /api/tenant/cash-registers/{id} ==
+
+== PUT /api/tenant/cash-registers/{id} ==
+Request:
+  name: string
+  status: None
+
+== DELETE /api/tenant/cash-registers/{id} ==
+
+== GET /api/tenant/categories/ ==
+
+== POST /api/tenant/categories/ ==
+Request:
+  Required: ['name']
+  name: string
+  slug: string
+  description: string
+  parentId: string
+  sortOrder: None
+
+== GET /api/tenant/categories/{id} ==
+
+== PUT /api/tenant/categories/{id} ==
+Request:
+  name: string
+  slug: string
+  description: string
+  parentId: string
+  sortOrder: None
+  isActive: boolean
+
+== DELETE /api/tenant/categories/{id} ==
+
+== GET /api/tenant/customers/ ==
+
+== POST /api/tenant/customers/ ==
+Request:
+  Required: ['name']
+  code: string
+  name: string
+  phone: string
+  email: string
+  address: string
+  dateOfBirth: string
+  gender: string
+  tier: string
+
+== GET /api/tenant/customers/{id} ==
+
+== PUT /api/tenant/customers/{id} ==
+Request:
+  code: string
+  name: string
+  phone: string
+  email: string
+  address: string
+  dateOfBirth: string
+  gender: string
+  tier: string
+  isActive: boolean
+
+== DELETE /api/tenant/customers/{id} ==
+
+== GET /api/tenant/expenses/ ==
+
+== POST /api/tenant/expenses/ ==
+Request:
+  Required: ['categoryId', 'amount']
+  categoryId: string
+  amount: number
+  storeId: string
+  description: string
+  receiptUrl: string
+  expenseDate: string
+
+== GET /api/tenant/expenses/{id} ==
+
+== PUT /api/tenant/expenses/{id} ==
+Request:
+  categoryId: string
+  amount: number
+  storeId: string
+  description: string
+  receiptUrl: string
+  expenseDate: string
+
+== DELETE /api/tenant/expenses/{id} ==
+
+== GET /api/tenant/gift-cards/ ==
+
+== POST /api/tenant/gift-cards/ ==
+Request:
+  Required: ['initialAmount']
+  initialAmount: number
+  cardNumber: string
+  pinCode: string
+  customerId: string
+  expiresAt: string
+
+== GET /api/tenant/gift-cards/lookup/{cardNumber} ==
+
+== POST /api/tenant/gift-cards/{id}/reload ==
+Request:
+  Required: ['amount']
+  amount: number
+
+== PATCH /api/tenant/gift-cards/{id}/status ==
+Request:
+  Required: ['status']
+  status: string
+
+== GET /api/tenant/inventory/ ==
+
+== GET /api/tenant/inventory/counts/ ==
+
+== POST /api/tenant/inventory/counts/ ==
+Request:
+  Required: ['storeId', 'items']
+  storeId: string
+  scheduledDate: string
+  items: array
+
+== GET /api/tenant/inventory/movements/ ==
+
+== POST /api/tenant/inventory/movements/ ==
+Request:
+  Required: ['storeId', 'productId', 'quantity', 'type', 'referenceId', 'referenceType']
+  storeId: string
+  productId: string
+  variantId: string
+  quantity: None
+  type: string
+  referenceId: string
+  referenceType: string
+  reason: string
+
+== GET /api/tenant/notifications/ ==
+
+== POST /api/tenant/notifications/ ==
+Request:
+  Required: ['userId', 'type', 'title', 'message']
+  userId: string
+  type: string
+  title: string
+  message: string
+  metadata: None
+
+== PATCH /api/tenant/notifications/read-all ==
+
+== GET /api/tenant/notifications/unread-count ==
+
+== GET /api/tenant/notifications/{id} ==
+
+== DELETE /api/tenant/notifications/{id} ==
+
+== PATCH /api/tenant/notifications/{id}/read ==
+
+== GET /api/tenant/orders/ ==
+
+== POST /api/tenant/orders/ ==
+Request:
+  Required: ['subTotal', 'grandTotal', 'paymentMethod', 'paidAmount', 'changeAmount', 'storeId', 'items']
+  subTotal: number
+  taxAmount: number
+  discountAmount: number
+  grandTotal: number
+  paymentMethod: string
+  paidAmount: number
+  changeAmount: number
+  customerId: string
+  sessionId: string
+  storeId: string
+  registerId: string
+  items: array
+
+== GET /api/tenant/orders/{id} ==
+
+== DELETE /api/tenant/orders/{id} ==
+
+== PATCH /api/tenant/orders/{id}/complete ==
+
+== PATCH /api/tenant/orders/{id}/status ==
+Request:
+  Required: ['status']
+  status: string
+
+== GET /api/tenant/payments/ ==
+
+== POST /api/tenant/payments/ ==
+Request:
+  Required: ['orderId', 'amount', 'method']
+  orderId: string
+  amount: number
+  method: string
+  referenceNumber: string
+  status: string
+
+== GET /api/tenant/payments/{id} ==
+
+== PUT /api/tenant/payments/{id} ==
+Request:
+  amount: number
+  method: string
+  referenceNumber: string
+  status: string
+
+== DELETE /api/tenant/payments/{id} ==
+
+== GET /api/tenant/products/ ==
+
+== POST /api/tenant/products/ ==
+Request:
+  Required: ['name']
+  sku: string
+  barcode: string
+  name: string
+  description: string
+  brandId: string
+  costPrice: number
+  sellingPrice: number
+  wholesalePrice: number
+  categoryId: string
+  categoryName: string
+  manufacturingDate: string
+  expiryDate: string
+  bestBeforeDate: string
+  promoPrice: number
+  promoStartAt: string
+  promoEndAt: string
+  isTaxable: boolean
+  isActive: boolean
+  isReturnable: boolean
+  supplierId: string
+  storeId: string
+  initialStock: None
+  variants: array
+
+== GET /api/tenant/products/barcode/{barcode} ==
+
+== GET /api/tenant/products/{id} ==
+
+== PUT /api/tenant/products/{id} ==
+Request:
+  sku: string
+  barcode: string
+  name: string
+  description: string
+  brandId: string
+  costPrice: number
+  sellingPrice: number
+  wholesalePrice: number
+  categoryId: string
+  categoryName: string
+  manufacturingDate: string
+  expiryDate: string
+  bestBeforeDate: string
+  promoPrice: number
+  promoStartAt: string
+  promoEndAt: string
+  isTaxable: boolean
+  isReturnable: boolean
+  supplierId: string
+  isActive: boolean
+
+== DELETE /api/tenant/products/{id} ==
+
+== GET /api/tenant/profile/ ==
+
+== PUT /api/tenant/profile/ ==
+Request:
+  name: string
+  email: string
+  phone: string
+
+== GET /api/tenant/promotions/ ==
+
+== POST /api/tenant/promotions/ ==
+Request:
+  Required: ['code', 'name', 'discountType', 'discountValue', 'startDate', 'endDate']
+  code: string
+  name: string
+  description: string
+  discountType: string
+  discountValue: number
+  minPurchase: number
+  minQuantity: None
+  startDate: string
+  endDate: string
+  usageLimit: None
+  perUserLimit: None
+  applicableTo: string
+  priority: None
+  stackable: boolean
+  isActive: boolean
+  productIds: array
+  categoryIds: array
+
+== GET /api/tenant/promotions/{id} ==
+
+== PUT /api/tenant/promotions/{id} ==
+Request:
+  code: string
+  name: string
+  description: string
+  discountType: string
+  discountValue: number
+  minPurchase: number
+  minQuantity: None
+  startDate: string
+  endDate: string
+  usageLimit: None
+  perUserLimit: None
+  applicableTo: string
+  priority: None
+  stackable: boolean
+  isActive: boolean
+
+== DELETE /api/tenant/promotions/{id} ==
+
+== GET /api/tenant/purchase-orders/ ==
+
+== POST /api/tenant/purchase-orders/ ==
+Request:
+  Required: ['supplierId', 'subTotal', 'grandTotal', 'items']
+  supplierId: string
+  status: string
+  orderDate: string
+  expectedDate: string
+  subTotal: number
+  taxAmount: number
+  grandTotal: number
+  notes: string
+  items: array
+
+== GET /api/tenant/purchase-orders/{id} ==
+
+== PUT /api/tenant/purchase-orders/{id} ==
+Request:
+  status: string
+  expectedDate: string
+  notes: string
+  subTotal: number
+  taxAmount: number
+  grandTotal: number
+
+== DELETE /api/tenant/purchase-orders/{id} ==
+
+== POST /api/tenant/purchase-orders/{id}/receive ==
+Request:
+  Required: ['storeId']
+  storeId: string
+
+== GET /api/tenant/returns/ ==
+
+== POST /api/tenant/returns/ ==
+Request:
+  Required: ['orderId', 'totalAmount', 'refundMethod', 'reason', 'items']
+  orderId: string
+  customerId: string
+  totalAmount: number
+  refundMethod: string
+  refundStatus: string
+  reason: string
+  items: array
+
+== GET /api/tenant/returns/{id} ==
+
+== DELETE /api/tenant/returns/{id} ==
+
+== GET /api/tenant/sessions/ ==
+
+== GET /api/tenant/sessions/active/{userId} ==
+
+== POST /api/tenant/sessions/open ==
+Request:
+  Required: ['openingBalance']
+  openingBalance: number
+  storeId: string
+  registerId: string
+  notes: string
+
+== POST /api/tenant/sessions/{id}/close ==
+Request:
+  Required: ['closingBalance']
+  closingBalance: number
+  expectedBalance: number
+  discrepancy: number
+  cashSales: number
+  cardSales: number
+  digitalSales: number
+  notes: string
+
+== GET /api/tenant/staff/ ==
+
+== POST /api/tenant/staff/ ==
+Request:
+  Required: ['username', 'email', 'name', 'password', 'role', 'permissions']
+  username: string
+  email: string
+  name: string
+  password: string
+  storeId: string
+  role: string
+  permissions: array
+  isActive: boolean
+
+== GET /api/tenant/staff/{id} ==
+
+== PUT /api/tenant/staff/{id} ==
+Request:
+  username: string
+  email: string
+  name: string
+  password: string
+  role: string
+  permissions: array
+  isActive: boolean
+
+== DELETE /api/tenant/staff/{id} ==
+
+== GET /api/tenant/stock-transfers/ ==
+
+== POST /api/tenant/stock-transfers/ ==
+Request:
+  Required: ['fromStoreId', 'toStoreId', 'items']
+  fromStoreId: string
+  toStoreId: string
+  notes: string
+  items: array
+
+== GET /api/tenant/stock-transfers/{id} ==
+
+== DELETE /api/tenant/stock-transfers/{id} ==
+
+== POST /api/tenant/stock-transfers/{id}/complete ==
+
+== GET /api/tenant/store-settings/ ==
+
+== POST /api/tenant/store-settings/ ==
+Request:
+  Required: ['storeId', 'settingKey', 'settingValue']
+  storeId: string
+  settingKey: string
+  settingValue: None
+  description: string
+
+== GET /api/tenant/store-settings/{id} ==
+
+== DELETE /api/tenant/store-settings/{id} ==
+
+== POST /api/tenant/stores/ ==
+Request:
+  Required: ['code', 'name']
+  code: string
+  name: string
+  address: string
+  phone: string
+  email: string
+  taxNumber: string
+
+== GET /api/tenant/stores/ ==
+
+== GET /api/tenant/stores/{id} ==
+
+== PUT /api/tenant/stores/{id} ==
+Request:
+  code: string
+  name: string
+  address: string
+  phone: string
+  email: string
+  taxNumber: string
+  isActive: boolean
+
+== DELETE /api/tenant/stores/{id} ==
+
+== GET /api/tenant/stores/{id}/brands ==
+
+== GET /api/tenant/stores/{id}/categories ==
+
+== GET /api/tenant/stores/{id}/customers ==
+
+== GET /api/tenant/stores/{id}/orders ==
+
+== GET /api/tenant/stores/{id}/products ==
+
+== GET /api/tenant/stores/{id}/products/{productId} ==
+
+== GET /api/tenant/stores/{id}/suppliers ==
+
+== GET /api/tenant/supplier-payments/ ==
+
+== POST /api/tenant/supplier-payments/ ==
+Request:
+  Required: ['supplierId', 'amount', 'paymentMethod']
+  supplierId: string
+  amount: number
+  paymentMethod: string
+  referenceNumber: string
+  note: string
+
+== GET /api/tenant/supplier-payments/{id} ==
+
+== GET /api/tenant/suppliers/ ==
+
+== POST /api/tenant/suppliers/ ==
+Request:
+  Required: ['name']
+  code: string
+  name: string
+  contactName: string
+  phone: string
+  email: string
+  address: string
+  taxId: string
+  paymentTerms: None
+  creditLimit: number
+
+== GET /api/tenant/suppliers/{id} ==
+
+== PUT /api/tenant/suppliers/{id} ==
+Request:
+  code: string
+  name: string
+  contactName: string
+  phone: string
+  email: string
+  address: string
+  taxId: string
+  paymentTerms: None
+  creditLimit: number
+  isActive: boolean
+
+== DELETE /api/tenant/suppliers/{id} ==
+
+== GET /api/tenant/tax-rates/ ==
+
+== POST /api/tenant/tax-rates/ ==
+Request:
+  Required: ['name', 'rate']
+  name: string
+  rate: number
+  isCompound: boolean
+  appliesTo: array
+  validFrom: string
+  validTo: string
+
+== GET /api/tenant/tax-rates/{id} ==
+
+== PUT /api/tenant/tax-rates/{id} ==
+Request:
+  name: string
+  rate: number
+  isCompound: boolean
+  appliesTo: array
+  validFrom: string
+  validTo: string
+  isActive: boolean
+
+== DELETE /api/tenant/tax-rates/{id} ==
+
+== GET /api/tenant/wallets/ ==
+
+== GET /api/tenant/wallets/customer/{customerId} ==
+
+== POST /api/tenant/wallets/transactions ==
+Request:
+  Required: ['customerId', 'amount', 'type']
+  customerId: string
+  amount: number
+  type: string
+  referenceId: string
+  description: string
+
+== GET /api/tenant/webhooks/ ==
+
+== POST /api/tenant/webhooks/ ==
+Request:
+  Required: ['name', 'url', 'events']
+  name: string
+  url: string
+  events: array
+  secret: string
+
+== GET /api/tenant/webhooks/{id} ==
+
+== PUT /api/tenant/webhooks/{id} ==
+Request:
+  name: string
+  url: string
+  events: array
+  isActive: boolean
+
+== DELETE /api/tenant/webhooks/{id} ==
+

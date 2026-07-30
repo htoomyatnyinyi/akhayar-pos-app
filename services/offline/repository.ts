@@ -47,7 +47,9 @@ import {
   productVariants,
   products,
   sessions,
+  staff,
   stores,
+  suppliers,
   syncOutbox,
   type LocalBrand,
   type LocalCategory,
@@ -718,6 +720,321 @@ export async function upsertCustomers(
     });
 }
 
+// export async function upsertStaff(
+//   remoteStaff: Staff[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteStaff.length) return;
+//   const now = new Date().toISOString();
+
+//   const staffToInsert = remoteStaff.map((staff) => ({
+//     id: staff.id,
+//     remoteId: staff.remoteId,
+//     tenantId: staff.tenantId || defaultTenantId,
+//     code: staff.code || `STAFF-${Date.now()}`,
+//     name: staff.name || "Unnamed Staff",
+//     phone: staff.phone,
+//     email: staff.email,
+//     role: staff.role,
+//     isActive: staff.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: staff.createdAt ?? now,
+//     updatedAt: staff.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
+//   await getOfflineDb()
+//     .insert(staff)
+//     .values(staffToInsert)
+//     .onConflictDoUpdate({
+//       target: staff.id,
+//       set: {
+//         code: sql`excluded.code`,
+//         name: sql`excluded.name`,
+//         phone: sql`excluded.phone`,
+//         email: sql`excluded.email`,
+//         role: sql`excluded.role`,
+//         isActive: sql`excluded.is_active`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: now,
+//       },
+//     });
+// }
+// export async function upsertSuppliers(
+//   remoteSuppliers: Supplier[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteSuppliers.length) return;
+//   const now = new Date().toISOString();
+
+//   const suppliersToInsert = remoteSuppliers.map((supplier) => ({
+//     id: supplier.id,
+//     remoteId: supplier.remoteId,
+//     tenantId: supplier.tenantId || defaultTenantId,
+//     code: supplier.code || `SUPPLIER-${Date.now()}`,
+//     name: supplier.name || "Unnamed Supplier",
+//     address: supplier.address,
+//     phone: supplier.phone,
+//     email: supplier.email,
+//     taxNumber: supplier.taxNumber,
+//     isActive: supplier.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: supplier.createdAt ?? now,
+//     updatedAt: supplier.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
+//   await getOfflineDb()
+//     .insert(suppliers)
+//     .values(suppliersToInsert)
+//     .onConflictDoUpdate({
+//       target: suppliers.id,
+//       set: {
+//         code: sql`excluded.code`,
+//         name: sql`excluded.name`,
+//         phone: sql`excluded.phone`,
+//         email: sql`excluded.email`,
+//         address: sql`excluded.address`,
+//         taxNumber: sql`excluded.tax_number`,
+//         isActive: sql`excluded.is_active`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: now,
+//       },
+//     });
+// }
+
+export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
+  if (!remoteStaff.length) return;
+  const now = new Date().toISOString();
+
+  // Deduplicate by (tenantId, username)
+  const seen = new Set<string>();
+  const uniqueStaff = remoteStaff.filter((s) => {
+    const key = `${s.tenantId || defaultTenantId}:${(s.username || "").toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const staffToInsert = uniqueStaff.map((s) => ({
+    id: s.id,
+    remoteId: s.remoteId,
+    tenantId: s.tenantId || defaultTenantId,
+    storeId: s.storeId,
+    username: s.username,
+    email: s.email?.trim() || null,
+    name: s.name,
+    role: s.role,
+    permissions: s.permissions || [],
+    isActive: s.isActive ?? true,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: s.createdAt ?? now,
+    updatedAt: s.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
+  await getOfflineDb()
+    .insert(staff)
+    .values(staffToInsert)
+    .onConflictDoUpdate({
+      target: [staff.tenantId, staff.username], // ✅ Use composite index
+      set: {
+        username: sql`excluded.username`,
+        email: sql`excluded.email`,
+        name: sql`excluded.name`,
+        role: sql`excluded.role`,
+        permissions: sql`excluded.permissions`,
+        storeId: sql`excluded.store_id`,
+        isActive: sql`excluded.is_active`,
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: sql`excluded.updated_at`,
+        lastSyncedAt: now,
+      },
+    });
+}
+
+// // ============================================
+// // UPSERT STAFF (corrected)
+// // ============================================
+// export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
+//   if (!remoteStaff.length) return;
+//   const now = new Date().toISOString();
+
+//   const staffToInsert = remoteStaff.map((staff) => ({
+//     id: staff.id,
+//     remoteId: staff.remoteId,
+//     tenantId: staff.tenantId || defaultTenantId,
+//     storeId: staff.storeId,
+//     username: staff.username,
+//     email: staff.email,
+//     name: staff.name,
+//     role: staff.role,
+//     permissions: staff.permissions || [],
+//     isActive: staff.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: staff.createdAt ?? now,
+//     updatedAt: staff.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
+//   await getOfflineDb()
+//     .insert(staff)
+//     .values(staffToInsert)
+//     .onConflictDoUpdate({
+//       target: staff.id,
+//       set: {
+//         username: sql`excluded.username`,
+//         email: sql`excluded.email`,
+//         name: sql`excluded.name`,
+//         role: sql`excluded.role`,
+//         permissions: sql`excluded.permissions`,
+//         storeId: sql`excluded.store_id`,
+//         isActive: sql`excluded.is_active`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: now,
+//       },
+//     });
+// }
+
+// // ============================================
+// // UPSERT SUPPLIERS (corrected)
+// // ============================================
+// export async function upsertSuppliers(
+//   remoteSuppliers: any[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteSuppliers.length) return;
+//   const now = new Date().toISOString();
+
+//   const suppliersToInsert = remoteSuppliers.map((supplier) => ({
+//     id: supplier.id,
+//     remoteId: supplier.remoteId,
+//     tenantId: supplier.tenantId || defaultTenantId,
+//     storeId: supplier.storeId,
+//     code: supplier.code,
+//     name: supplier.name,
+//     contactName: supplier.contactName,
+//     phone: supplier.phone,
+//     email: supplier.email,
+//     address: supplier.address,
+//     taxNumber: supplier.taxNumber,
+//     paymentTerms: supplier.paymentTerms,
+//     creditLimit: supplier.creditLimit,
+//     currentBalance: supplier.currentBalance ?? 0,
+//     isActive: supplier.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: supplier.createdAt ?? now,
+//     updatedAt: supplier.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
+//   await getOfflineDb()
+//     .insert(suppliers)
+//     .values(suppliersToInsert)
+//     .onConflictDoUpdate({
+//       target: suppliers.id,
+//       set: {
+//         code: sql`excluded.code`,
+//         name: sql`excluded.name`,
+//         contactName: sql`excluded.contact_name`,
+//         phone: sql`excluded.phone`,
+//         email: sql`excluded.email`,
+//         address: sql`excluded.address`,
+//         taxNumber: sql`excluded.tax_number`,
+//         paymentTerms: sql`excluded.payment_terms`,
+//         creditLimit: sql`excluded.credit_limit`,
+//         currentBalance: sql`excluded.current_balance`,
+//         storeId: sql`excluded.store_id`,
+//         isActive: sql`excluded.is_active`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: now,
+//       },
+//     });
+// }
+
+// ============================================
+// UPSERT SUPPLIERS (fixed)
+// ============================================
+export async function upsertSuppliers(
+  remoteSuppliers: any[],
+  defaultTenantId: string,
+) {
+  if (!remoteSuppliers.length) return;
+  const now = new Date().toISOString();
+
+  // 1. Deduplicate by (tenantId, email) to avoid batch conflicts
+  const seen = new Set<string>();
+  const uniqueSuppliers = remoteSuppliers.filter((s) => {
+    const key = `${s.tenantId || defaultTenantId}:${(s.email || "").toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const suppliersToInsert = uniqueSuppliers.map((supplier) => ({
+    id: supplier.id,
+    remoteId: supplier.remoteId,
+    tenantId: supplier.tenantId || defaultTenantId,
+    storeId: supplier.storeId,
+    code: supplier.code,
+    name: supplier.name,
+    contactName: supplier.contactName,
+    phone: supplier.phone,
+    email: supplier.email?.trim() || null, // ✅ convert empty to null
+    address: supplier.address,
+    taxNumber: supplier.taxNumber,
+    paymentTerms: supplier.paymentTerms,
+    creditLimit: supplier.creditLimit,
+    currentBalance: supplier.currentBalance ?? 0,
+    isActive: supplier.isActive ?? true,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: supplier.createdAt ?? now,
+    updatedAt: supplier.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
+  // 2. Upsert using the composite unique index
+  await getOfflineDb()
+    .insert(suppliers)
+    .values(suppliersToInsert)
+    .onConflictDoUpdate({
+      target: [suppliers.tenantId, suppliers.email], // ✅ Use the composite index
+      set: {
+        code: sql`excluded.code`,
+        name: sql`excluded.name`,
+        contactName: sql`excluded.contact_name`,
+        phone: sql`excluded.phone`,
+        email: sql`excluded.email`,
+        address: sql`excluded.address`,
+        taxNumber: sql`excluded.tax_number`,
+        paymentTerms: sql`excluded.payment_terms`,
+        creditLimit: sql`excluded.credit_limit`,
+        currentBalance: sql`excluded.current_balance`,
+        storeId: sql`excluded.store_id`,
+        isActive: sql`excluded.is_active`,
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: sql`excluded.updated_at`,
+        lastSyncedAt: now,
+      },
+    });
+}
+
 export async function upsertStores(
   remoteStores: Store[],
   defaultTenantId: string,
@@ -1136,21 +1453,11 @@ export async function getLocalInventoryItem(id: string) {
   return row ? toInventoryItem(row) : undefined;
 }
 
-export async function getLocalCategories(storeId?: string | null) {
+export async function getLocalCategories(_storeId?: string | null) {
   const rows = await getOfflineDb()
     .select()
     .from(categories)
-    .where(
-      and(
-        eq(categories.isActive, true),
-        storeId !== undefined
-          ? or(
-              eq(categories.storeId, storeId ?? ""),
-              sql`${categories.storeId} IS NULL`,
-            )
-          : undefined,
-      ),
-    );
+    .where(eq(categories.isActive, true));
 
   return rows.map((row) => toCategory(row));
 }
@@ -1859,9 +2166,11 @@ export async function createOfflineOrder(
 
   return {
     id: created.id,
+    tenantId: created.tenantId,
     grandTotal: created.grandTotal,
     status: created.status as Order["status"],
     createdAt: created.createdAt,
+    updatedAt: created.updatedAt,
     subTotal: created.subTotal,
     taxAmount: created.taxAmount,
     discountAmount: created.discountAmount,
@@ -1887,9 +2196,16 @@ export async function createOfflineOrder(
       subTotal: item.subTotal,
       createdAt: item.createdAt,
       product: {
+        id: item.productId,
+        sku: "",
         name: item.productName ?? "",
         sellingPrice: String(item.unitPrice),
-      },
+        costPrice: 0,
+        isTaxable: true,
+        isActive: true,
+        isReturnable: true,
+        createdAt: item.createdAt,
+      } as any,
     })),
   };
 }
@@ -1941,6 +2257,12 @@ export async function createOfflineInventoryMovement(
       [now, payload.productId, payload.storeId],
     );
 
+    // Strip null/undefined values (e.g. variantId) before persisting
+    // to avoid server 422 validation errors during sync
+    const cleanPayload = Object.fromEntries(
+      Object.entries(payload).filter(([_, v]) => v !== null && v !== undefined),
+    );
+
     sqlite.runSync(
       `INSERT INTO sync_outbox (
         id, entity, entity_id, operation, endpoint, method, payload, status,
@@ -1953,7 +2275,7 @@ export async function createOfflineInventoryMovement(
         "create",
         "/api/tenant/inventory/movements",
         "POST",
-        JSON.stringify(payload),
+        JSON.stringify(cleanPayload),
         "pending",
         0,
         now,
@@ -2535,6 +2857,22 @@ export async function markOutboxFailed(
   attempts: number,
   error: string,
 ) {
+  const MAX_ATTEMPTS = 10;
+
+  // Escalate to "dead" after max attempts to stop infinite retries
+  if (attempts >= MAX_ATTEMPTS) {
+    await getOfflineDb()
+      .update(syncOutbox)
+      .set({
+        status: "dead",
+        attempts,
+        lastError: `[DEAD after ${MAX_ATTEMPTS} attempts] ${error}`,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(syncOutbox.id, id));
+    return;
+  }
+
   const delaySeconds = Math.min(300, Math.pow(2, attempts) * 5);
   const nextAttemptAt = new Date(
     Date.now() + delaySeconds * 1000,
@@ -3040,15 +3378,21 @@ function toProduct(product: LocalProduct): Product {
     name: product.name,
     description: product.description ?? undefined,
     brand: product.brandId ?? undefined,
-    brandId: product.brandId ?? undefined,
-    storeId: product.storeId ?? undefined,
     costPrice: product.costPrice,
     sellingPrice: product.sellingPrice,
     wholesalePrice: product.wholesalePrice ?? 0,
-    stockQuantity: 0,
     categoryId: product.categoryId ?? "",
     category: product.categoryId
-      ? { id: product.categoryId, name: "" }
+      ? {
+          id: product.categoryId,
+          tenantId: product.tenantId,
+          name: "",
+          slug: "",
+          isActive: true,
+          sortOrder: 0,
+          createdAt: product.createdAt,
+          updatedAt: product.createdAt,
+        }
       : undefined,
     supplierId: product.supplierId ?? undefined,
     tenantId: product.tenantId,
@@ -3057,7 +3401,9 @@ function toProduct(product: LocalProduct): Product {
     isReturnable: product.isReturnable,
     manufacturingDate: product.manufacturingDate ?? undefined,
     expiryDate: product.expiryDate ?? undefined,
+    version: product.version ?? 1,
     createdAt: product.createdAt,
+    updatedAt: product.updatedAt ?? product.createdAt,
   };
 }
 
@@ -3100,47 +3446,6 @@ function toInventoryItem(inv: LocalInventory): InventoryItem {
   };
 }
 
-// async function toOrder(order: LocalOrder): Promise<Order> {
-//   const items = await getOfflineDb()
-//     .select()
-//     .from(orderItems)
-//     .where(eq(orderItems.orderId, order.id));
-
-//   return {
-//     id: order.id,
-//     grandTotal: order.grandTotal,
-//     status: order.status as Order["status"],
-//     createdAt: order.createdAt,
-//     subTotal: order.subTotal,
-//     taxAmount: order.taxAmount,
-//     discountAmount: order.discountAmount,
-//     paidAmount: order.paidAmount,
-//     changeAmount: order.changeAmount,
-//     paymentMethod: order.paymentMethod as Order["paymentMethod"],
-//     paymentStatus: order.paymentStatus as Order["paymentStatus"],
-//     paymentBreakdown: parsePaymentBreakdown(order.paymentBreakdown),
-//     customerId: order.customerId ?? undefined,
-//     storeId: order.storeId ?? undefined,
-//     userId: order.userId,
-//     items: items.map((item) => ({
-//       id: item.id,
-//       orderId: item.orderId,
-//       productId: item.productId,
-//       variantId: item.variantId ?? undefined,
-//       productName: item.productName ?? "",
-//       quantity: item.quantity,
-//       unitPrice: item.unitPrice,
-//       discountAmount: item.discountAmount,
-//       subTotal: item.subTotal,
-//       createdAt: item.createdAt,
-//       product: {
-//         name: item.productName ?? "",
-//         sellingPrice: String(item.unitPrice),
-//       },
-//     })),
-//   };
-// }
-
 async function toOrder(order: LocalOrder): Promise<Order> {
   const items = await getOfflineDb()
     .select()
@@ -3149,9 +3454,11 @@ async function toOrder(order: LocalOrder): Promise<Order> {
 
   return {
     id: order.id,
+    tenantId: order.tenantId,
     grandTotal: order.grandTotal,
     status: order.status as Order["status"],
     createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
     subTotal: order.subTotal,
     taxAmount: order.taxAmount,
     discountAmount: order.discountAmount,
@@ -3189,12 +3496,15 @@ async function toOrder(order: LocalOrder): Promise<Order> {
     })),
   };
 }
+
 function toCategory(category: LocalCategory): Category {
   return {
     id: category.id,
+    remoteId: category.remoteId ?? null,
     tenantId: category.tenantId,
+    storeId: (category as any).storeId ?? null,
     name: category.name,
-    slug: category.slug,
+    slug: category.slug ?? "",
     description: category.description ?? undefined,
     parentId: category.parentId ?? undefined,
     isActive: category.isActive,
@@ -3204,32 +3514,10 @@ function toCategory(category: LocalCategory): Category {
   };
 }
 
-// function toCustomer(customer: LocalCustomer): Customer {
-//   return {
-//     id: customer.id,
-//     tenantId: customer.tenantId,
-//     code: customer.code,
-//     name: customer.name,
-//     phone: customer.phone ?? undefined,
-//     email: customer.email ?? undefined,
-//     address: customer.address ?? undefined,
-//     dateOfBirth: customer.dateOfBirth ?? undefined,
-//     gender: customer.gender ?? undefined,
-//     debtAmount: customer.debtAmount ?? 0,
-//     loyaltyPoints: customer.loyaltyPoints,
-//     totalSpent: customer.totalSpent,
-//     totalOrders: customer.totalOrders,
-//     tier: (customer.tier as Customer["tier"]) ?? "BRONZE",
-//     tierValidUntil: customer.tierValidUntil ?? undefined,
-//     isActive: customer.isActive,
-//     createdAt: customer.createdAt,
-//     updatedAt: customer.updatedAt,
-//   };
-// }
-
 function toCustomer(customer: LocalCustomer): Customer {
   return {
     id: customer.id,
+    remoteId: customer.remoteId ?? undefined,
     tenantId: customer.tenantId,
     code: customer.code,
     name: customer.name,

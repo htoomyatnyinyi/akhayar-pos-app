@@ -103,16 +103,13 @@ export default function POSScreen() {
 
   // Handlers
   const handleAddToCart = (product: any) => {
-    // Check if product has inventory
     const inventory = inventoryData?.find(
       (inv: any) => inv.productId === product.id,
     );
-
     if (inventory && inventory.quantity <= 0) {
       Alert.alert("Out of Stock", `${product.name} is currently out of stock.`);
       return;
     }
-
     dispatch(
       addToCart({
         id: product.id,
@@ -176,7 +173,6 @@ export default function POSScreen() {
       Alert.alert("Cart Empty", "Please add items to the cart first.");
       return;
     }
-
     if (hasOutOfStockItems) {
       Alert.alert(
         "Insufficient Stock",
@@ -184,14 +180,12 @@ export default function POSScreen() {
       );
       return;
     }
-
     if (!activeSession) {
       Alert.alert(
         "No Active Session",
         "Please open a session before placing an order.",
         [
           { text: "Open Session", onPress: () => router.push("/sessions") },
-          // { text: "Open Session", onPress: () => router.push("/sessions") },
           { text: "Cancel", style: "cancel" },
         ],
       );
@@ -226,7 +220,6 @@ export default function POSScreen() {
 
       const result = await createOrder(orderPayload).unwrap();
 
-      // Create inventory movements for each item
       for (const item of cartItems) {
         await createInventoryMovement({
           tenantId: user?.tenantId,
@@ -243,7 +236,6 @@ export default function POSScreen() {
       dispatch(clearCart());
       setSelectedCustomer(null);
       closeCart();
-
       router.push(`/receipt/${result.id}`);
       refetch();
     } catch (error: any) {
@@ -312,12 +304,14 @@ export default function POSScreen() {
     );
   };
 
+  // ✅ Updated renderProduct to show stock quantity
   const renderProduct = ({ item }: { item: any }) => {
     const inCart = cartItems.find((i) => i.id === item.id);
     const inventory = inventoryData?.find(
       (inv: any) => inv.productId === item.id,
     );
-    const isOutOfStock = inventory?.quantity === 0;
+    const stockQty = inventory?.quantity ?? 0;
+    const isOutOfStock = stockQty === 0;
 
     return (
       <TouchableOpacity
@@ -356,9 +350,15 @@ export default function POSScreen() {
             SKU: {item.sku}
           </Text>
           <View className="flex-row items-center justify-between mt-auto">
-            <Text className="text-white font-black text-lg">
-              ${item.sellingPrice?.toFixed(2) ?? "0.00"}
-            </Text>
+            <View>
+              <Text className="text-white font-black text-lg">
+                ${item.sellingPrice?.toFixed(2) ?? "0.00"}
+              </Text>
+              {/* ✅ Stock label */}
+              <Text className="text-slate-400 text-[10px] mt-0.5">
+                Stock: {stockQty}
+              </Text>
+            </View>
             {!isOutOfStock && (
               <View className="bg-sky-500/20 p-2 rounded-full border border-sky-500/20">
                 <MaterialIcons name="add" size={16} color="#7dd3fc" />
@@ -373,15 +373,12 @@ export default function POSScreen() {
   return (
     <SafeAreaView className="flex-1 bg-slate-950 pt-2">
       <Screen padded={false}>
-        {/* Header Area */}
         <View className="px-5 pt-4 pb-2">
           <Header
             eyebrow="Point of Sale"
             title="New Order"
             subtitle="Ready to take new orders"
           />
-
-          {/* Search Bar */}
           <View className="flex-row items-center bg-white/5 rounded-full px-1 border border-white/10">
             <MaterialIcons name="search" size={22} color="#94a3b8" />
             <TextInput
@@ -411,8 +408,6 @@ export default function POSScreen() {
               </TouchableOpacity>
             )}
           </View>
-
-          {/* Session Status */}
           <View className="mt-2 flex-row items-center">
             <View
               className={`w-2 h-2 rounded-full mr-2 ${
@@ -427,7 +422,6 @@ export default function POSScreen() {
           </View>
         </View>
 
-        {/* Categories Filter */}
         <View className="pl-5 mb-2 mt-3 h-10">
           <ScrollView
             horizontal
@@ -443,7 +437,6 @@ export default function POSScreen() {
                 tone={!selectedCategory ? "sky" : "amber"}
               />
             </TouchableOpacity>
-
             {categoriesData?.map((cat: any) => (
               <TouchableOpacity
                 key={cat.id}
@@ -459,7 +452,6 @@ export default function POSScreen() {
           </ScrollView>
         </View>
 
-        {/* Products Grid */}
         <FlatList
           data={productsData || []}
           keyExtractor={(item) => item.id}
@@ -486,7 +478,6 @@ export default function POSScreen() {
           }
         />
 
-        {/* Floating Cart Summary */}
         {cartCount > 0 && (
           <View className="absolute bottom-6 left-5 right-5">
             <TouchableOpacity
@@ -511,7 +502,6 @@ export default function POSScreen() {
           </View>
         )}
 
-        {/* Cart Modal */}
         <Modal
           visible={showCartModal}
           transparent
@@ -525,13 +515,10 @@ export default function POSScreen() {
               onPress={closeCart}
             />
             <Animated.View
-              style={{
-                transform: [{ translateY: slideAnim }],
-              }}
+              style={{ transform: [{ translateY: slideAnim }] }}
               className="bg-slate-900 rounded-t-3xl max-h-[85%] min-h-[50%]"
             >
               <View className="px-5 pt-5 pb-4">
-                {/* Header */}
                 <View className="flex-row justify-between items-center mb-4">
                   <Text className="text-white font-bold text-xl">
                     Your Cart ({cartCount} items)
@@ -541,7 +528,6 @@ export default function POSScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Customer Selection */}
                 <TouchableOpacity
                   className="flex-row items-center justify-between bg-white/5 rounded-xl p-3 mb-4 border border-white/10"
                   onPress={() => setShowCustomerSelect(!showCustomerSelect)}
@@ -601,7 +587,6 @@ export default function POSScreen() {
                   </View>
                 )}
 
-                {/* Cart Items */}
                 <FlatList
                   data={cartItems}
                   keyExtractor={(item) => item.id}
@@ -610,7 +595,6 @@ export default function POSScreen() {
                   showsVerticalScrollIndicator={false}
                 />
 
-                {/* Cart Summary */}
                 <View className="mt-4 pt-4 border-t border-white/10">
                   <View className="flex-row justify-between mb-1">
                     <Text className="text-slate-400">Subtotal</Text>
@@ -635,7 +619,6 @@ export default function POSScreen() {
                     </Text>
                   </View>
 
-                  {/* Payment Method */}
                   <View className="flex-row mt-4 gap-2">
                     {["CASH", "CARD", "DIGITAL"].map((method) => (
                       <TouchableOpacity
@@ -660,7 +643,6 @@ export default function POSScreen() {
                     ))}
                   </View>
 
-                  {/* Warning for out of stock */}
                   {hasOutOfStockItems && (
                     <View className="mt-3 bg-rose-500/20 p-3 rounded-xl border border-rose-500/30">
                       <Text className="text-rose-400 text-xs font-medium text-center">
@@ -669,7 +651,6 @@ export default function POSScreen() {
                     </View>
                   )}
 
-                  {/* Checkout Button */}
                   <TouchableOpacity
                     className={`mt-4 py-4 rounded-xl ${
                       cartItems.length === 0 ||
@@ -789,7 +770,6 @@ export default function POSScreen() {
 
 // export default function POSScreen() {
 //   const dispatch = useAppDispatch();
-//   // const { user } = useAuth();
 //   const user = useAppSelector((state) => state.auth.user);
 
 //   // State
@@ -941,6 +921,7 @@ export default function POSScreen() {
 //         "Please open a session before placing an order.",
 //         [
 //           { text: "Open Session", onPress: () => router.push("/sessions") },
+//           // { text: "Open Session", onPress: () => router.push("/sessions") },
 //           { text: "Cancel", style: "cancel" },
 //         ],
 //       );
@@ -994,32 +975,6 @@ export default function POSScreen() {
 //       closeCart();
 
 //       router.push(`/receipt/${result.id}`);
-
-//       // // Alert.alert(
-//       // //   "Order Complete! 🎉",
-//       // //   `Order #${result.orderNumber || result.id.slice(-6)} has been created successfully.`,
-//       // //   [
-//       // //     {
-//       // //       text: "View Order",
-//       // //       onPress: () => router.push(`/orders/${result.id}`),
-//       // //     },
-//       // //     { text: "Continue", style: "cancel" },
-//       // //   ],
-//       // // );
-
-//       // // After successful checkout
-//       // Alert.alert(
-//       //   "Order Complete! 🎉",
-//       //   `Order #${result.orderNumber || result.id.slice(-6)} has been created.`,
-//       //   [
-//       //     {
-//       //       text: "View Receipt",
-//       //       onPress: () => router.push(`/receipt/${result.id}`),
-//       //     },
-//       //     { text: "Continue", style: "cancel" },
-//       //   ],
-//       // );
-
 //       refetch();
 //     } catch (error: any) {
 //       Alert.alert(
@@ -1521,226 +1476,3 @@ export default function POSScreen() {
 //     </SafeAreaView>
 //   );
 // }
-
-// //  import { Card, Header, Pill, Screen } from "@/components/app-ui";
-// //  import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
-// //  import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
-// //  import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
-// //  import { addToCart } from "@/services/features/cart/cartSlice";
-// //  import {
-// //    useGetLocalCategoriesQuery,
-// //    useGetLocalProductsQuery,
-// //  } from "@/services/features/offline/localApi";
-// //  import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-// //  import React, { useState } from "react";
-// //  import {
-// //    FlatList,
-// //    SafeAreaView,
-// //    ScrollView,
-// //    Text,
-// //    TextInput,
-// //    TouchableOpacity,
-// //    View,
-// //  } from "react-native";
-// //  export default function POSScreen() {
-// //    const [searchQuery, setSearchQuery] = useState("");
-// //    const [showScannerModal, setShowScannerModal] = useState(false);
-// //    const [selectedCategory, setSelectedCategory] = useState<string | undefined>(
-// //      undefined,
-// //    );
-// //    const { data: productsData, isLoading: isProductsLoading } =
-// //      useGetLocalProductsQuery({
-// //        search: searchQuery,
-// //        categoryId: selectedCategory,
-// //      });
-// //    const { data: categoriesData } = useGetLocalCategoriesQuery();
-// //    const dispatch = useAppDispatch();
-// //    const cartItems = useAppSelector((state) => state.cart.items);
-// //    const cartTotal = cartItems.reduce(
-// //      (total, item) => total + item.price * item.qty,
-// //      0,
-// //    );
-// //    const cartCount = cartItems.reduce((count, item) => count + item.qty, 0);
-// //    const handleAddToCart = (product: any) => {
-// //      dispatch(
-// //        addToCart({
-// //          id: product.id,
-// //          name: product.name,
-// //          price: product.sellingPrice,
-// //          qty: 1,
-// //        }),
-// //      );
-// //    };
-// //    const handleScan = (data: string) => {
-// //      setShowScannerModal(false);
-// //      const product = productsData?.find(
-// //        (p: any) => p.barcode === data || p.sku === data || p.id === data,
-// //      );
-// //      if (product) {
-// //        handleAddToCart(product);
-// //      } else {
-// //        // Could also alert here, but let's just set it as search query if not found directly
-// //        setSearchQuery(data);
-// //      }
-// //    };
-// //    const renderProduct = ({ item }: { item: any }) => (
-// //      <TouchableOpacity
-// //        className="flex-1 m-2 active:scale-95 transition-transform"
-// //        onPress={() => handleAddToCart(item)}
-// //      >
-// //        <Card className="flex-1 p-4 bg-slate-900/80">
-// //          <View className="h-28 bg-slate-800/50 rounded-xl mb-3 items-center justify-center border border-white/5">
-// //            <MaterialIcons name="inventory-2" size={36} color="#64748b" />
-// //          </View>
-// //          <Text
-// //            className="text-slate-200 font-bold text-base mb-1"
-// //            numberOfLines={1}
-// //          >
-// //            {item.name}
-// //          </Text>
-// //          <Text
-// //            className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mb-3"
-// //            numberOfLines={1}
-// //          >
-// //            SKU: {item.sku}
-// //          </Text>
-// //          <View className="flex-row items-center justify-between mt-auto">
-// //            <Text className="text-white font-black text-lg">
-// //              ${item.sellingPrice?.toFixed(2) ?? "0.00"}
-// //            </Text>
-// //            <View className="bg-sky-500/20 p-2 rounded-full border border-sky-500/20">
-// //              <MaterialIcons name="add" size={16} color="#7dd3fc" />
-// //            </View>
-// //          </View>
-// //        </Card>
-// //      </TouchableOpacity>
-// //    );
-// //    return (
-// //      <SafeAreaView className="flex-1 bg-slate-950 pt-2">
-// //        <Screen padded={false}>
-// //          {/* Header Area */}
-// //          <View className="px-5 pt-4 pb-2">
-// //            <Header
-// //              eyebrow="Point of Sale"
-// //              title="New Order"
-// //              subtitle="Ready to take new orders"
-// //            />
-// //            {/* Search Bar */}
-// //            <View className="flex-row items-center bg-white/5 rounded-full px-1 border border-white/10">
-// //              <MaterialIcons name="search" size={22} color="#94a3b8" />
-// //              <TextInput
-// //                className="flex-1 ml-3 text-white text-sm font-medium"
-// //                placeholder="Search products, SKUs..."
-// //                placeholderTextColor="#64748b"
-// //                value={searchQuery}
-// //                onChangeText={setSearchQuery}
-// //              />
-// //              {searchQuery.length > 0 ? (
-// //                <TouchableOpacity
-// //                  onPress={() => setSearchQuery("")}
-// //                  className="bg-white/10 p-1.5 rounded-full"
-// //                >
-// //                  <MaterialIcons name="close" size={14} color="#cbd5e1" />
-// //                </TouchableOpacity>
-// //              ) : (
-// //                <TouchableOpacity
-// //                  onPress={() => setShowScannerModal(true)}
-// //                  className="bg-sky-500/20 p-1.5 rounded-full border border-sky-500/30"
-// //                >
-// //                  <MaterialIcons
-// //                    name="qr-code-scanner"
-// //                    size={16}
-// //                    color="#38bdf8"
-// //                  />
-// //                </TouchableOpacity>
-// //              )}
-// //            </View>
-// //          </View>
-// //          {/* Categories Filter */}
-// //          <View className="pl-5 mb-2 mt-3 h-10">
-// //            <ScrollView
-// //              horizontal
-// //              showsHorizontalScrollIndicator={false}
-// //              contentContainerStyle={{ paddingRight: 20 }}
-// //            >
-// //              <TouchableOpacity
-// //                className="mr-2"
-// //                onPress={() => setSelectedCategory(undefined)}
-// //              >
-// //                <Pill
-// //                  label="All Items"
-// //                  tone={!selectedCategory ? "sky" : "amber"}
-// //                />
-// //              </TouchableOpacity>
-// //              {categoriesData?.map((cat: any) => (
-// //                <TouchableOpacity
-// //                  key={cat.id}
-// //                  className="mr-2"
-// //                  onPress={() => setSelectedCategory(cat.id)}
-// //                >
-// //                  <Pill
-// //                    label={cat.name}
-// //                    tone={selectedCategory === cat.id ? "sky" : "amber"}
-// //                  />
-// //                </TouchableOpacity>
-// //              ))}
-// //            </ScrollView>
-// //          </View>
-// //          {/* Products Grid */}
-// //          <FlatList
-// //            data={productsData || []}
-// //            keyExtractor={(item) => item.id}
-// //            numColumns={2}
-// //            contentContainerStyle={{
-// //              paddingHorizontal: 12,
-// //              paddingBottom: 120,
-// //              paddingTop: 8,
-// //            }}
-// //            renderItem={renderProduct}
-// //            ListEmptyComponent={
-// //              <View className="flex-1 items-center justify-center mt-24">
-// //                <View className="h-20 w-20 bg-white/5 rounded-full items-center justify-center border border-white/10">
-// //                  <MaterialIcons name="inbox" size={32} color="#64748b" />
-// //                </View>
-// //                <Text className="text-white mt-4 text-lg font-bold">
-// //                  No products found
-// //                </Text>
-// //                <Text className="text-slate-500 mt-2 text-sm text-center px-10 leading-5">
-// //                  Try adjusting your search or sync to pull latest items from the
-// //                  server.
-// //                </Text>
-// //              </View>
-// //            }
-// //          />
-// //          {/* Floating Cart Summary */}
-// //          {cartCount > 0 && (
-// //            <View className="absolute bottom-6 left-5 right-5">
-// //              <TouchableOpacity
-// //                className="bg-sky-500 rounded-[24px] flex-row items-center justify-between p-4 shadow-lg shadow-sky-500/20 border border-sky-400"
-// //                activeOpacity={0.9}
-// //              >
-// //                <View className="flex-row items-center">
-// //                  <View className="bg-white/20 rounded-full w-10 h-10 items-center justify-center border border-white/20">
-// //                    <Text className="text-white font-black text-lg">
-// //                      {cartCount}
-// //                    </Text>
-// //                  </View>
-// //                  <Text className="text-white font-bold text-lg ml-3">
-// //                    View Cart
-// //                  </Text>
-// //                </View>
-// //                <Text className="text-white font-black text-xl">
-// //                  ${cartTotal.toFixed(2)}
-// //                </Text>
-// //              </TouchableOpacity>
-// //            </View>
-// //          )}
-// //          <BarcodeScannerModal
-// //            visible={showScannerModal}
-// //            onClose={() => setShowScannerModal(false)}
-// //            onScan={handleScan}
-// //          />
-// //        </Screen>
-// //      </SafeAreaView>
-// //    );
-// //  }

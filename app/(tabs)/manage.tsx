@@ -1348,7 +1348,7 @@ function EditorModal({
       presentationStyle="fullScreen" // ✅ add this
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-slate-150 px-4 pt-4">
+      <SafeAreaView className="flex-1 bg-slate-950 px-4 pt-4">
         <Header
           eyebrow="Editor"
           title={title}
