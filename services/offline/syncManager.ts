@@ -42,6 +42,8 @@ import {
   upsertStores,
   upsertStaff,
   upsertSuppliers,
+  markOrderSyncFailed,
+  markOutboxDead,
 } from "./repository";
 
 import {
@@ -180,49 +182,49 @@ export async function syncNow(
     }
 
     // --- PULL Stores ---
-    if (!silent) console.log("📥 Pulling stores...");
+    // if (!silent) console.log("📥 Pulling stores...");
     const storeResult = await pullStores(dispatch, tenantId);
     syncedItems += storeResult.synced;
     dispatch(setSyncProgress(10));
-    if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
+    // if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
 
     // --- PULL Brands ---
-    if (!silent) console.log("📥 Pulling brands...");
+    // if (!silent) console.log("📥 Pulling brands...");
     const brandResult = await pullBrands(dispatch, tenantId);
     syncedItems += brandResult.synced;
     dispatch(setSyncProgress(15));
-    if (!silent) console.log(`✅ Synced ${brandResult.synced} brands`);
+    // if (!silent) console.log(`✅ Synced ${brandResult.synced} brands`);
 
     // --- PULL Categories ---
-    if (!silent) console.log("📥 Pulling categories...");
+    // if (!silent) console.log("📥 Pulling categories...");
     const categoryResult = await pullCategories(dispatch, tenantId);
     syncedItems += categoryResult.synced;
     dispatch(setSyncProgress(20));
-    if (!silent) console.log(`✅ Synced ${categoryResult.synced} categories`);
+    // if (!silent) console.log(`✅ Synced ${categoryResult.synced} categories`);
 
     // --- PULL Customers ---
-    if (!silent) console.log("📥 Pulling customers...");
+    // if (!silent) console.log("📥 Pulling customers...");
     const customerResult = await pullCustomers(dispatch, tenantId);
     syncedItems += customerResult.synced;
     dispatch(setSyncProgress(25));
-    if (!silent) console.log(`✅ Synced ${customerResult.synced} customers`);
+    // if (!silent) console.log(`✅ Synced ${customerResult.synced} customers`);
 
     // --- PULL Staff --- (NEW)
-    if (!silent) console.log("📥 Pulling staff...");
+    // if (!silent) console.log("📥 Pulling staff...");
     const staffResult = await pullStaff(dispatch, tenantId);
     syncedItems += staffResult.synced;
     dispatch(setSyncProgress(30));
-    if (!silent) console.log(`✅ Synced ${staffResult.synced} staff`);
+    // if (!silent) console.log(`✅ Synced ${staffResult.synced} staff`);
 
     // --- PULL Suppliers --- (NEW)
-    if (!silent) console.log("📥 Pulling suppliers...");
+    // if (!silent) console.log("📥 Pulling suppliers...");
     const supplierResult = await pullSuppliers(dispatch, tenantId);
     syncedItems += supplierResult.synced;
     dispatch(setSyncProgress(33));
-    if (!silent) console.log(`✅ Synced ${supplierResult.synced} suppliers`);
+    // if (!silent) console.log(`✅ Synced ${supplierResult.synced} suppliers`);
 
     // --- PULL Products --- (includes variants)
-    if (!silent) console.log("📥 Pulling products...");
+    // if (!silent) console.log("📥 Pulling products...");
     const productResult = await pullProducts(dispatch, tenantId);
     syncedItems += productResult.synced;
     dispatch(setSyncProgress(45));
@@ -230,7 +232,7 @@ export async function syncNow(
       console.log(`✅ Synced ${productResult.synced} products (with variants)`);
 
     // --- PULL Inventory ---
-    if (!silent) console.log("📥 Pulling inventory...");
+    // if (!silent) console.log("📥 Pulling inventory...");
     const inventoryResult = await pullInventory(dispatch, tenantId);
     syncedItems += inventoryResult.synced;
     dispatch(setSyncProgress(55));
@@ -238,14 +240,14 @@ export async function syncNow(
       console.log(`✅ Synced ${inventoryResult.synced} inventory items`);
 
     // --- PULL Sessions ---
-    if (!silent) console.log("📥 Pulling sessions...");
+    // if (!silent) console.log("📥 Pulling sessions...");
     const sessionResult = await pullSessions(dispatch, tenantId);
     syncedItems += sessionResult.synced;
     dispatch(setSyncProgress(65));
-    if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
+    // if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
 
     // --- PULL Price History ---
-    if (!silent) console.log("📥 Pulling price history...");
+    // if (!silent) console.log("📥 Pulling price history...");
     const priceHistoryResult = await pullPriceHistory(dispatch, tenantId);
     syncedItems += priceHistoryResult.synced;
     dispatch(setSyncProgress(70));
@@ -305,6 +307,7 @@ export async function syncNow(
       if (!silent) console.log("✅ Sync completed successfully");
     }
 
+    console.log("=========== END ============");
     dispatch(setSyncProgress(100));
 
     return {
