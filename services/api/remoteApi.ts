@@ -1,22 +1,10 @@
-// ============================================
-// FILE: services/api/remoteApi.ts
-// ============================================
-
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
-
-// ------------------------------------------------------
-// 1. Base URL configuration
-// ------------------------------------------------------
 
 let POS_URL = process.env.EXPO_PUBLIC_POS_URL || "https://pos.oasislab.de5.net";
 if (!POS_URL.endsWith("/api")) {
   POS_URL = `${POS_URL}/api`;
 }
 export const POS_API_URL = POS_URL;
-
-// ------------------------------------------------------
-// 2. Create the base API with tag types
-// ------------------------------------------------------
 
 export const remoteApi = createApi({
   reducerPath: "remoteApi",

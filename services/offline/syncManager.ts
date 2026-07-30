@@ -67,6 +67,7 @@ let syncInterval: NodeJS.Timeout | undefined;
 let syncStartTime: number = 0;
 let lastSyncTime: number = 0;
 const MIN_SYNC_INTERVAL = 30000; // 30 seconds
+let debounceTimeout: NodeJS.Timeout | undefined;
 
 // ============================================
 // 1. INITIALIZATION (FIXED)
@@ -123,8 +124,6 @@ export async function initializeOfflineSystem(
     dispatch(setSyncError("Failed to initialize offline system"));
   }
 }
-
-let debounceTimeout: NodeJS.Timeout | undefined;
 
 // ============================================
 // 2. SYNC NOW
@@ -788,21 +787,92 @@ async function processOutboxItem(
       }
     }
 
-    // ---- Orders ----
+    // // original
+    // // ---- Orders ----
+    // case "orders": {
+    //   try {
+    //     // Only handle create
+    //     if (item.operation === "create") {
+    //       const { data, error } = await store.dispatch(
+    //         remoteApi.endpoints.createRemoteOrder.initiate(payload),
+    //       );
+    //       if (error) throw new Error(JSON.stringify(error));
+    //       await db
+    //         .update(orders)
+    //         .set({ remoteId: data.id, syncStatus: "synced" })
+    //         .where(eq(orders.id, item.entityId));
+    //     } else if (item.operation === "updateStatus") {
+    //       // For status updates
+    //       const { error } = await store.dispatch(
+    //         remoteApi.endpoints.updateRemoteOrderStatus.initiate({
+    //           id: item.entityId,
+    //           ...payload,
+    //         }),
+    //       );
+    //       if (error) throw new Error(JSON.stringify(error));
+    //       await db
+    //         .update(orders)
+    //         .set({ syncStatus: "synced" })
+    //         .where(eq(orders.id, item.entityId));
+    //     } else if (item.operation === "delete") {
+    //       const { error } = await store.dispatch(
+    //         remoteApi.endpoints.deleteRemoteOrder.initiate(item.entityId),
+    //       );
+    //       if (error) throw new Error(JSON.stringify(error));
+    //       await db.delete(orders).where(eq(orders.id, item.entityId));
+    //     }
+    //     await markOutboxSynced(item.id);
+    //     return { success: true };
+    //   } catch (error) {
+    //     return { success: false, error: (error as Error).message };
+    //   }
+    // }
+
     case "orders": {
       try {
         // Only handle create
         if (item.operation === "create") {
+          // ✅ Check if session is still open locally
+          const [session] = await db
+            .select()
+            .from(sessions)
+            .where(eq(sessions.id, payload.sessionId))
+            .limit(1);
+
+          if (!session || session.status !== "OPEN") {
+            const error = `Session ${payload.sessionId} is closed. Please reopen a session and retry.`;
+            console.warn(`⚠️ ${error}`);
+            await markOrderSyncFailed(item.entityId, error);
+            await markOutboxDead(item.id); // Stop retrying
+            return { success: false, error };
+          }
+
+          // Session open – proceed
           const { data, error } = await store.dispatch(
             remoteApi.endpoints.createRemoteOrder.initiate(payload),
           );
-          if (error) throw new Error(JSON.stringify(error));
+          if (error) {
+            const errorMessage =
+              error?.data?.message ||
+              error?.data ||
+              error?.error ||
+              JSON.stringify(error);
+            throw new Error(errorMessage);
+          }
+
+          const remoteId = data?.id || data?.order?.id || data?.data?.id;
+          if (!remoteId) {
+            throw new Error("Order created but no ID returned");
+          }
+
           await db
             .update(orders)
-            .set({ remoteId: data.id, syncStatus: "synced" })
+            .set({ remoteId, syncStatus: "synced" })
             .where(eq(orders.id, item.entityId));
+
+          await markOutboxSynced(item.id);
+          return { success: true };
         } else if (item.operation === "updateStatus") {
-          // For status updates
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteOrderStatus.initiate({
               id: item.entityId,
@@ -814,12 +884,16 @@ async function processOutboxItem(
             .update(orders)
             .set({ syncStatus: "synced" })
             .where(eq(orders.id, item.entityId));
+          await markOutboxSynced(item.id);
+          return { success: true };
         } else if (item.operation === "delete") {
           const { error } = await store.dispatch(
             remoteApi.endpoints.deleteRemoteOrder.initiate(item.entityId),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db.delete(orders).where(eq(orders.id, item.entityId));
+          await markOutboxSynced(item.id);
+          return { success: true };
         }
         await markOutboxSynced(item.id);
         return { success: true };
@@ -966,21 +1040,104 @@ async function processOutboxItem(
       }
     }
 
-    // ---- Inventory Movements ----
+    // // ---- Inventory Movements ----
+    // case "inventory_movements": {
+    //   try {
+    //     // Only create is supported by the endpoint
+    //     if (item.operation === "create") {
+    //       const { data, error } = await store.dispatch(
+    //         remoteApi.endpoints.createRemoteInventoryMovement.initiate(payload),
+    //       );
+    //       if (error) throw new Error(JSON.stringify(error));
+    //       await db
+    //         .update(inventoryMovements)
+    //         .set({ remoteId: data.id, syncStatus: "synced" })
+    //         .where(eq(inventoryMovements.id, item.entityId));
+    //     } else {
+    //       // For update/delete, we just mark as synced (or you can implement if needed)
+    //       await markOutboxSynced(item.id);
+    //     }
+    //     await markOutboxSynced(item.id);
+    //     return { success: true };
+    //   } catch (error) {
+    //     return { success: false, error: (error as Error).message };
+    //   }
+    // }
+
     case "inventory_movements": {
       try {
-        // Only create is supported by the endpoint
+        // Only create is supported
         if (item.operation === "create") {
+          // ✅ Ensure the referenced order is synced before sending movement
+          const [order] = await db
+            .select()
+            .from(orders)
+            .where(eq(orders.id, payload.referenceId))
+            .limit(1);
+
+          if (!order || order.syncStatus !== "synced") {
+            const error = `Order ${payload.referenceId} not synced yet. Skipping movement.`;
+            console.warn(`⚠️ ${error}`);
+            await markOutboxSynced(item.id); // Just clear it
+            return { success: true };
+          }
+
+          // ✅ Map type to server enum
+          let mappedType = payload.type;
+          // Use the same mapping helper from repository (we'll import it or duplicate)
+          // We'll duplicate the logic here to keep syncManager self-contained.
+          const referenceType = payload.referenceType;
+          if (referenceType === "STOCK_ADJUSTMENT") {
+            mappedType = "ADJUSTMENT";
+          } else if (referenceType === "ORDER") {
+            if (payload.type === "OUT") mappedType = "SALE";
+            else if (payload.type === "IN") mappedType = "RETURN_IN";
+          } else if (
+            referenceType === "PURCHASE" ||
+            referenceType === "PURCHASE_ORDER"
+          ) {
+            mappedType = "PURCHASE";
+          } else if (
+            referenceType === "TRANSFER" ||
+            referenceType === "STOCK_TRANSFER"
+          ) {
+            if (payload.type === "IN") mappedType = "TRANSFER_IN";
+            else if (payload.type === "OUT") mappedType = "TRANSFER_OUT";
+          } else if (
+            referenceType === "INVENTORY_COUNT" ||
+            referenceType === "COUNT"
+          ) {
+            mappedType = "COUNTING";
+          } else if (referenceType === "OPENING_STOCK") {
+            mappedType = "OPENING_STOCK";
+          } else {
+            if (payload.type === "IN") mappedType = "PURCHASE";
+            else if (payload.type === "OUT") mappedType = "SALE";
+          }
+
+          const cleanPayload = {
+            ...payload,
+            type: mappedType,
+          };
+
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.createRemoteInventoryMovement.initiate(payload),
+            remoteApi.endpoints.createRemoteInventoryMovement.initiate(
+              cleanPayload,
+            ),
           );
-          if (error) throw new Error(JSON.stringify(error));
+          if (error) {
+            const errorMessage =
+              error?.data?.message ||
+              error?.data ||
+              error?.error ||
+              JSON.stringify(error);
+            throw new Error(errorMessage);
+          }
           await db
             .update(inventoryMovements)
             .set({ remoteId: data.id, syncStatus: "synced" })
             .where(eq(inventoryMovements.id, item.entityId));
         } else {
-          // For update/delete, we just mark as synced (or you can implement if needed)
           await markOutboxSynced(item.id);
         }
         await markOutboxSynced(item.id);
