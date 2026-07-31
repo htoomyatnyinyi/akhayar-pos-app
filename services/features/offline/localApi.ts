@@ -1645,8 +1645,6 @@ export const localApi = createApi({
             .from(inventory)
             .where(eq(inventory.id, existingInventory.id));
 
-
-
           await db.insert(syncOutbox).values({
             id: createLocalId("outbox"),
             entity: "inventory_movements",

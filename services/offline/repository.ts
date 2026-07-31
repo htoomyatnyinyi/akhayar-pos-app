@@ -1,7 +1,3 @@
-// ============================================
-// FILE: services/offline/repository.ts
-// ============================================
-
 import type {
   Category,
   CreateCategoryPayload,
