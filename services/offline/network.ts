@@ -1,3 +1,18 @@
+import NetInfo from "@react-native-community/netinfo";
+
+export async function isOnline() {
+  const state = await NetInfo.fetch();
+  return Boolean(state.isConnected && state.isInternetReachable !== false);
+}
+
+export function subscribeToOnlineStatus(listener: (online: boolean) => void) {
+  return NetInfo.addEventListener((state) => {
+    listener(Boolean(state.isConnected && state.isInternetReachable !== false));
+  });
+}
+
+/*
+
 // services/offline/network.ts
 import NetInfo from "@react-native-community/netinfo";
 import { POS_API_URL } from "@/services/api/remoteApi";
@@ -45,20 +60,5 @@ export function subscribeToOnlineStatus(callback: (online: boolean) => void) {
   isOnline().then(callback);
   return unsubscribe;
 }
-
-/*
-import NetInfo from "@react-native-community/netinfo";
-
-export async function isOnline() {
-  const state = await NetInfo.fetch();
-  return Boolean(state.isConnected && state.isInternetReachable !== false);
-}
-
-export function subscribeToOnlineStatus(listener: (online: boolean) => void) {
-  return NetInfo.addEventListener((state) => {
-    listener(Boolean(state.isConnected && state.isInternetReachable !== false));
-  });
-}
-
 
 */

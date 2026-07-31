@@ -244,7 +244,7 @@ export async function syncNow(
     const sessionResult = await pullSessions(dispatch, tenantId);
     syncedItems += sessionResult.synced;
     dispatch(setSyncProgress(65));
-    // if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
+    if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
 
     // --- PULL Price History ---
     // if (!silent) console.log("📥 Pulling price history...");
@@ -910,16 +910,21 @@ async function processOutboxItem(
       try {
         let result;
         if (item.operation === "open") {
+          console.log("Opening session with ID:", item);
           result = await store.dispatch(
             remoteApi.endpoints.openRemoteSession.initiate(payload),
           );
+
+          console.log(result, "session open return data");
         } else if (item.operation === "close") {
+          console.log("Closing session with ID:", item);
           result = await store.dispatch(
             remoteApi.endpoints.closeRemoteSession.initiate({
               id: item.entityId,
               ...payload,
             }),
           );
+          console.log(result, "session close return data");
         } else {
           throw new Error(`Unknown session operation: ${item.operation}`);
         }
