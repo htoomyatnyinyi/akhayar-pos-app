@@ -1,360 +1,1018 @@
-// ============================================
-// FILE: services/api/remoteApi.ts
-// ============================================
+import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 
-import { posApi } from "./posApi";
+let POS_URL = process.env.EXPO_PUBLIC_POS_URL || "https://pos.oasislab.de5.net";
+if (!POS_URL.endsWith("/api")) {
+  POS_URL = `${POS_URL}/api`;
+}
+export const POS_API_URL = POS_URL;
 
-export const remoteApi = posApi.injectEndpoints({
-  overrideExisting: true,
+export const remoteApi = createApi({
+  reducerPath: "remoteApi",
+  baseQuery: fetchBaseQuery({
+    baseUrl: POS_URL,
+    prepareHeaders: (headers, { getState }) => {
+      const token = (getState() as any).auth?.user?.token;
+      if (token) {
+        headers.set("authorization", `Bearer ${token}`);
+      }
+      return headers;
+    },
+  }),
+  refetchOnFocus: true,
+  refetchOnReconnect: true,
+  tagTypes: [
+    "Auth",
+    "Products",
+    "ProductVariants",
+    "Categories",
+    "Customers",
+    "Stores",
+    "Sessions",
+    "Orders",
+    "Inventory",
+    "InventoryMovements",
+    "InventoryCounts",
+    "PriceHistory",
+    "Staff",
+    "Suppliers",
+    "Brands", // added for brands
+    "Payments",
+    "Returns",
+    "PurchaseOrders",
+    "StockTransfers",
+    "Promotions",
+    "StoreSettings",
+    "Notifications",
+    "TaxRates",
+    "Expenses",
+    "CashRegisters",
+    "GiftCards",
+    "Wallets",
+    "SupplierPayments",
+    "ApiKeys",
+    "Webhooks",
+    "AuditLogs",
+    "Accounts",
+    "JournalEntries",
+    "Reports",
+    "Dashboard",
+    "Sync",
+  ],
   endpoints: (builder) => ({
-    // ============================================
-    // 1. AUTH (Platform-specific only)
-    // ============================================
+    // // ================================================================
+    // // AUTH ENDPOINTS
+    // // ================================================================
 
-    getMe: builder.query({
-      query: () => "/auth/me",
+    // register: builder.mutation<
+    //   unknown,
+    //   {
+    //     name: string;
+    //     email: string;
+    //     password: string;
+    //     tenantName?: string;
+    //     tenantCode?: string;
+    //   }
+    // >({
+    //   query: (body) => ({
+    //     url: "/auth/register",
+    //     method: "POST",
+    //     body,
+    //   }),
+    //   invalidatesTags: ["Auth"],
+    // }),
+
+    // login: builder.mutation<
+    //   unknown,
+    //   {
+    //     email: string;
+    //     password: string;
+    //     tenantCode: string;
+    //   }
+    // >({
+    //   query: (body) => ({
+    //     url: "/auth/login",
+    //     method: "POST",
+    //     body,
+    //   }),
+    //   invalidatesTags: ["Auth"],
+    // }),
+
+    // verifyEmail: builder.mutation<unknown, { code: string }>({
+    //   query: (body) => ({
+    //     url: "/auth/verify-email",
+    //     method: "POST",
+    //     body,
+    //   }),
+    // }),
+
+    // resendOtp: builder.mutation<unknown, void>({
+    //   query: () => ({
+    //     url: "/auth/resend-otp",
+    //     method: "POST",
+    //   }),
+    // }),
+
+    // forgotPassword: builder.mutation<unknown, { email: string }>({
+    //   query: (body) => ({
+    //     url: "/auth/forgot-password",
+    //     method: "POST",
+    //     body,
+    //   }),
+    // }),
+
+    // resetPassword: builder.mutation<
+    //   unknown,
+    //   {
+    //     email: string;
+    //     code: string;
+    //     newPassword: string;
+    //   }
+    // >({
+    //   query: (body) => ({
+    //     url: "/auth/reset-password",
+    //     method: "POST",
+    //     body,
+    //   }),
+    // }),
+
+    // getMe: builder.query<unknown, void>({
+    //   query: () => ({
+    //     url: "/auth/me",
+    //     method: "GET",
+    //   }),
+    //   providesTags: ["Auth"],
+    // }),
+
+    // googleAuth: builder.query<unknown, void>({
+    //   query: () => ({
+    //     url: "/auth/google",
+    //     method: "GET",
+    //   }),
+    // }),
+
+    // googleAuthCallback: builder.query<unknown, void>({
+    //   query: () => ({
+    //     url: "/auth/google/callback",
+    //     method: "GET",
+    //   }),
+    // }),
+
+    // platformLogin: builder.mutation<
+    //   unknown,
+    //   {
+    //     email: string;
+    //     password: string;
+    //   }
+    // >({
+    //   query: (body) => ({
+    //     url: "/platform/auth/login",
+    //     method: "POST",
+    //     body,
+    //   }),
+    // }),
+
+    // platformGetMe: builder.query<unknown, void>({
+    //   query: () => ({
+    //     url: "/platform/auth/me",
+    //     method: "GET",
+    //   }),
+    //   providesTags: ["Auth"],
+    // }),
+
+    // ================================================================
+    // SYNC ENDPOINTS (pull changes since a timestamp)
+    // ================================================================
+
+    getSyncOrders: builder.query<unknown, { since?: string }>({
+      query: ({ since }) => ({
+        url: "/sync/orders",
+        params: since ? { since } : undefined,
+      }),
+      providesTags: ["Orders", "Sync"],
+    }),
+
+    getSyncProducts: builder.query<unknown, { since?: string }>({
+      query: ({ since }) => ({
+        url: "/sync/products",
+        params: since ? { since } : undefined,
+      }),
+      providesTags: ["Products", "Sync"],
+    }),
+
+    getSyncCustomers: builder.query<unknown, { since?: string }>({
+      query: ({ since }) => ({
+        url: "/sync/customers",
+        params: since ? { since } : undefined,
+      }),
+      providesTags: ["Customers", "Sync"],
+    }),
+
+    getSyncInventory: builder.query<unknown, { since?: string }>({
+      query: ({ since }) => ({
+        url: "/sync/inventory",
+        params: since ? { since } : undefined,
+      }),
+      providesTags: ["Inventory", "Sync"],
+    }),
+
+    // ================================================================
+    // DASHBOARD ENDPOINTS
+    // ================================================================
+
+    getDashboardStats: builder.query<unknown, void>({
+      query: () => ({
+        url: "/dashboard/stats",
+        method: "GET",
+      }),
+      providesTags: ["Dashboard"],
+    }),
+
+    getDashboardRevenue: builder.query<unknown, { days?: number }>({
+      query: ({ days }) => ({
+        url: "/dashboard/revenue",
+        params: days ? { days } : undefined,
+      }),
+      providesTags: ["Dashboard"],
+    }),
+
+    getDashboardTopProducts: builder.query<unknown, { limit?: number }>({
+      query: ({ limit }) => ({
+        url: "/dashboard/top-products",
+        params: limit ? { limit } : undefined,
+      }),
+      providesTags: ["Dashboard"],
+    }),
+
+    getPlatformDashboardStats: builder.query<unknown, void>({
+      query: () => ({
+        url: "/dashboard/platform/stats",
+        method: "GET",
+      }),
+      providesTags: ["Dashboard"],
+    }),
+
+    getPlatformDashboardRevenue: builder.query<unknown, { days?: number }>({
+      query: ({ days }) => ({
+        url: "/dashboard/platform/revenue",
+        params: days ? { days } : undefined,
+      }),
+      providesTags: ["Dashboard"],
+    }),
+
+    getPlatformDashboardTopProducts: builder.query<unknown, { limit?: number }>(
+      {
+        query: ({ limit }) => ({
+          url: "/dashboard/platform/top-products",
+          params: limit ? { limit } : undefined,
+        }),
+        providesTags: ["Dashboard"],
+      },
+    ),
+
+    // ================================================================
+    // PLATFORM ADMIN ENDPOINTS
+    // ================================================================
+
+    // API Keys (platform)
+    getPlatformApiKeys: builder.query<unknown, void>({
+      query: () => ({
+        url: "/platform/api-keys/",
+        method: "GET",
+      }),
+      providesTags: ["ApiKeys"],
+    }),
+
+    createPlatformApiKey: builder.mutation<
+      unknown,
+      {
+        userId: string;
+        name: string;
+        permissions?: string[];
+        expiresAt?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/platform/api-keys/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["ApiKeys"],
+    }),
+
+    deletePlatformApiKey: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/platform/api-keys/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["ApiKeys"],
+    }),
+
+    // Tenants (platform)
+    getPlatformTenants: builder.query<
+      unknown,
+      { page?: number; limit?: number }
+    >({
+      query: ({ page, limit }) => ({
+        url: "/platform/tenants/",
+        params: { page, limit },
+      }),
       providesTags: ["Auth"],
     }),
 
-    platformLogin: builder.mutation({
-      query: (credentials) => ({
-        url: "/platform/auth/login",
+    createPlatformTenant: builder.mutation<
+      unknown,
+      {
+        name: string;
+        code?: string;
+        email?: string;
+        phone?: string;
+        userId?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/platform/tenants/",
         method: "POST",
-        body: credentials,
+        body,
+      }),
+      invalidatesTags: ["Auth"],
+    }),
+
+    getPlatformTenantById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/platform/tenants/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["Auth"],
+    }),
+
+    updatePlatformTenant: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        email?: string;
+        phone?: string;
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/platform/tenants/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Auth"],
+    }),
+
+    deletePlatformTenant: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/platform/tenants/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Auth"],
+    }),
+
+    assignSubscription: builder.mutation<
+      unknown,
+      {
+        id: string;
+        planId: string;
+        billingCycle?: string;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/platform/tenants/${id}/subscription`,
+        method: "POST",
+        body,
       }),
     }),
 
-    getPlatformMe: builder.query({
-      query: () => "/platform/auth/me",
+    // Audit Logs (platform)
+    getPlatformAuditLogs: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        userId?: string;
+        entity?: string;
+        action?: string;
+      }
+    >({
+      query: (params) => ({
+        url: "/platform/audit-logs/",
+        params,
+      }),
+      providesTags: ["AuditLogs"],
+    }),
+
+    createPlatformAuditLog: builder.mutation<
+      unknown,
+      {
+        action: string;
+        entity: string;
+        entityId: string;
+        userId?: string;
+        oldData?: any;
+        newData?: any;
+        changes?: any;
+        ipAddress?: string;
+        userAgent?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/platform/audit-logs/",
+        method: "POST",
+        body,
+      }),
+    }),
+
+    getPlatformAuditLogById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/platform/audit-logs/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["AuditLogs"],
+    }),
+
+    // Store Settings (platform)
+    getPlatformStoreSettings: builder.query<
+      unknown,
+      {
+        storeId?: string;
+        settingKey?: string;
+      }
+    >({
+      query: (params) => ({
+        url: "/platform/store-settings/",
+        params,
+      }),
+      providesTags: ["StoreSettings"],
+    }),
+
+    createPlatformStoreSetting: builder.mutation<
+      unknown,
+      {
+        storeId: string;
+        settingKey: string;
+        settingValue: any;
+        description?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/platform/store-settings/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["StoreSettings"],
+    }),
+
+    getPlatformStoreSettingById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/platform/store-settings/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["StoreSettings"],
+    }),
+
+    deletePlatformStoreSetting: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/platform/store-settings/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["StoreSettings"],
+    }),
+
+    // Accounts (platform accounting)
+    getPlatformAccounts: builder.query<unknown, { tenantId?: string }>({
+      query: (params) => ({
+        url: "/platform/accounts/",
+        params,
+      }),
+      providesTags: ["Accounts"],
+    }),
+
+    createPlatformAccount: builder.mutation<
+      unknown,
+      {
+        tenantId: string;
+        code: string;
+        name: string;
+        type: string;
+        parentId?: string;
+        subType?: string;
+        description?: string;
+        isSystem?: boolean;
+      }
+    >({
+      query: (body) => ({
+        url: "/platform/accounts/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Accounts"],
+    }),
+
+    getPlatformAccountById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/platform/accounts/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["Accounts"],
+    }),
+
+    updatePlatformAccount: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        parentId?: string;
+        subType?: string;
+        description?: string;
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/platform/accounts/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Accounts"],
+    }),
+
+    deletePlatformAccount: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/platform/accounts/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["Accounts"],
+    }),
+
+    // Journal Entries (platform accounting)
+    getPlatformJournalEntries: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        tenantId?: string;
+        status?: string;
+        fromDate?: string;
+        toDate?: string;
+      }
+    >({
+      query: (params) => ({
+        url: "/platform/journal-entries/",
+        params,
+      }),
+      providesTags: ["JournalEntries"],
+    }),
+
+    createPlatformJournalEntry: builder.mutation<
+      unknown,
+      {
+        tenantId: string;
+        lines: Array<{
+          accountId: string;
+          amount: number;
+          side: string;
+          description?: string;
+        }>;
+        date?: string;
+        description?: string;
+        reference?: string;
+        entryType?: string;
+        status?: string;
+        orderId?: string;
+        paymentId?: string;
+        currencyCode?: string;
+        exchangeRate?: number;
+      }
+    >({
+      query: (body) => ({
+        url: "/platform/journal-entries/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["JournalEntries"],
+    }),
+
+    getPlatformJournalEntryById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/platform/journal-entries/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["JournalEntries"],
+    }),
+
+    deletePlatformJournalEntry: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/platform/journal-entries/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["JournalEntries"],
+    }),
+
+    postPlatformJournalEntry: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/platform/journal-entries/${id}/post`,
+        method: "POST",
+      }),
+      invalidatesTags: ["JournalEntries"],
+    }),
+
+    // Reports (platform)
+    getTrialBalance: builder.query<
+      unknown,
+      { tenantId: string; asOfDate?: string }
+    >({
+      query: (params) => ({
+        url: "/platform/reports/trial-balance",
+        params,
+      }),
+      providesTags: ["Reports"],
+    }),
+
+    // ================================================================
+    // TENANT ENDPOINTS (main business)
+    // ================================================================
+
+    // ---------- Profile ----------
+    getTenantProfile: builder.query<unknown, void>({
+      query: () => ({
+        url: "/tenant/profile/",
+        method: "GET",
+      }),
       providesTags: ["Auth"],
     }),
 
-    // ============================================
-    // 2. PRODUCTS
-    // ============================================
-    getRemoteProducts: builder.query({
+    updateTenantProfile: builder.mutation<
+      unknown,
+      {
+        name?: string;
+        email?: string;
+        phone?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/profile/",
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: ["Auth"],
+    }),
+
+    // ---------- Products ----------
+    getRemoteProducts: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        search?: string;
+        categoryId?: string;
+        storeId?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/products/",
         params,
       }),
-      providesTags: ["Products"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.products) || Array.isArray(result.data)
+              ? (result.products || result.data || []).map((p: any) => ({
+                  type: "Products" as const,
+                  id: p.id,
+                }))
+              : []
+            ).concat({ type: "Products", id: "LIST" })
+          : [{ type: "Products", id: "LIST" }],
     }),
 
-    getRemoteProductById: builder.query({
-      query: (id) => `/tenant/products/${id}`,
+    getRemoteProductById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/products/${id}`,
+        method: "GET",
+      }),
       providesTags: (result, error, id) => [{ type: "Products", id }],
     }),
 
-    getRemoteProductByBarcode: builder.query({
-      query: (barcode) => `/tenant/products/barcode/${barcode}`,
+    getRemoteProductByBarcode: builder.query<unknown, string>({
+      query: (barcode) => ({
+        url: `/tenant/products/barcode/${barcode}`,
+        method: "GET",
+      }),
       providesTags: ["Products"],
     }),
 
-    getRemoteProductBySku: builder.query({
-      query: (sku) => `/tenant/products/sku/${sku}`,
-      providesTags: ["Products"],
-    }),
-
-    createRemoteProduct: builder.mutation({
-      query: (product) => ({
+    createRemoteProduct: builder.mutation<unknown, any>({
+      query: (body) => ({
         url: "/tenant/products/",
         method: "POST",
-        body: product,
+        body,
       }),
-      invalidatesTags: ["Products", "Inventory", "ProductVariants"],
+      invalidatesTags: [{ type: "Products", id: "LIST" }],
     }),
 
-    updateRemoteProduct: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    updateRemoteProduct: builder.mutation<unknown, { id: string } & any>({
+      query: ({ id, ...body }) => ({
         url: `/tenant/products/${id}`,
         method: "PUT",
-        body: patch,
+        body,
       }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "Products", id },
-        "Products",
-        "Inventory",
-      ],
+      invalidatesTags: (result, error, { id }) => [{ type: "Products", id }],
     }),
 
-    deleteRemoteProduct: builder.mutation({
+    deleteRemoteProduct: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/products/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Products", "Inventory", "ProductVariants"],
+      invalidatesTags: (result, error, id) => [{ type: "Products", id }],
     }),
 
-    // ============================================
-    // 3. PRODUCT VARIANTS
-    // ============================================
-    getRemoteProductVariants: builder.query({
-      query: (params) => ({
-        url: "/tenant/products/variants/",
-        params,
-      }),
-      providesTags: ["ProductVariants"],
-    }),
-
-    getRemoteProductVariantById: builder.query({
-      query: (id) => `/tenant/products/variants/${id}`,
-      providesTags: (result, error, id) => [{ type: "ProductVariants", id }],
-    }),
-
-    getRemoteProductVariantByBarcode: builder.query({
-      query: (barcode) => `/tenant/products/variants/barcode/${barcode}`,
-      providesTags: ["ProductVariants"],
-    }),
-
-    getRemoteProductVariantsByProduct: builder.query({
-      query: (productId) => `/tenant/products/${productId}/variants`,
-      providesTags: ["ProductVariants"],
-    }),
-
-    createRemoteProductVariant: builder.mutation({
-      query: (variant) => ({
-        url: "/tenant/products/variants/",
-        method: "POST",
-        body: variant,
-      }),
-      invalidatesTags: ["ProductVariants", "Products", "Inventory"],
-    }),
-
-    updateRemoteProductVariant: builder.mutation({
-      query: ({ id, ...patch }) => ({
-        url: `/tenant/products/variants/${id}`,
-        method: "PUT",
-        body: patch,
-      }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "ProductVariants", id },
-        "ProductVariants",
-        "Products",
-      ],
-    }),
-
-    deleteRemoteProductVariant: builder.mutation({
-      query: (id) => ({
-        url: `/tenant/products/variants/${id}`,
-        method: "DELETE",
-      }),
-      invalidatesTags: ["ProductVariants", "Products", "Inventory"],
-    }),
-
-    // ============================================
-    // 4. CATEGORIES
-    // ============================================
-    getRemoteCategories: builder.query({
+    // ---------- Categories ----------
+    getRemoteCategories: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        search?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/categories/",
         params,
       }),
-      providesTags: ["Categories"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.categories) || Array.isArray(result.data)
+              ? (result.categories || result.data || []).map((c: any) => ({
+                  type: "Categories" as const,
+                  id: c.id,
+                }))
+              : []
+            ).concat({ type: "Categories", id: "LIST" })
+          : [{ type: "Categories", id: "LIST" }],
     }),
 
-    getRemoteCategoryById: builder.query({
-      query: (id) => `/tenant/categories/${id}`,
+    getRemoteCategoryById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/categories/${id}`,
+        method: "GET",
+      }),
       providesTags: (result, error, id) => [{ type: "Categories", id }],
     }),
 
-    getRemoteCategoryBySlug: builder.query({
-      query: (slug) => `/tenant/categories/slug/${slug}`,
-      providesTags: ["Categories"],
-    }),
-
-    createRemoteCategory: builder.mutation({
-      query: (category) => ({
+    createRemoteCategory: builder.mutation<
+      unknown,
+      {
+        name: string;
+        slug?: string;
+        description?: string;
+        parentId?: string;
+        sortOrder?: number;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/categories/",
         method: "POST",
-        body: category,
+        body,
       }),
-      invalidatesTags: ["Categories"],
+      invalidatesTags: [{ type: "Categories", id: "LIST" }],
     }),
 
-    updateRemoteCategory: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    updateRemoteCategory: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        slug?: string;
+        description?: string;
+        parentId?: string;
+        sortOrder?: number;
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
         url: `/tenant/categories/${id}`,
         method: "PUT",
-        body: patch,
+        body,
       }),
       invalidatesTags: (result, error, { id }) => [{ type: "Categories", id }],
     }),
 
-    deleteRemoteCategory: builder.mutation({
+    deleteRemoteCategory: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/categories/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Categories", "Products"],
+      invalidatesTags: (result, error, id) => [{ type: "Categories", id }],
     }),
 
-    // ============================================
-    // 5. CUSTOMERS
-    // ============================================
-    getRemoteCustomers: builder.query({
+    // ---------- Customers ----------
+    getRemoteCustomers: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        search?: string;
+        tier?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/customers/",
         params,
       }),
-      providesTags: ["Customers"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.customers) || Array.isArray(result.data)
+              ? (result.customers || result.data || []).map((c: any) => ({
+                  type: "Customers" as const,
+                  id: c.id,
+                }))
+              : []
+            ).concat({ type: "Customers", id: "LIST" })
+          : [{ type: "Customers", id: "LIST" }],
     }),
 
-    getRemoteCustomerById: builder.query({
-      query: (id) => `/tenant/customers/${id}`,
+    getRemoteCustomerById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/customers/${id}`,
+        method: "GET",
+      }),
       providesTags: (result, error, id) => [{ type: "Customers", id }],
     }),
 
-    getRemoteCustomerByPhone: builder.query({
-      query: (phone) => `/tenant/customers/phone/${phone}`,
-      providesTags: ["Customers"],
-    }),
-
-    getRemoteCustomerByCode: builder.query({
-      query: (code) => `/tenant/customers/code/${code}`,
-      providesTags: ["Customers"],
-    }),
-
-    createRemoteCustomer: builder.mutation({
-      query: (customer) => ({
+    createRemoteCustomer: builder.mutation<
+      unknown,
+      {
+        name: string;
+        code?: string;
+        phone?: string;
+        email?: string;
+        address?: string;
+        dateOfBirth?: string;
+        gender?: string;
+        tier?: string;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/customers/",
         method: "POST",
-        body: customer,
+        body,
       }),
-      invalidatesTags: ["Customers"],
+      invalidatesTags: [{ type: "Customers", id: "LIST" }],
     }),
 
-    updateRemoteCustomer: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    updateRemoteCustomer: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        code?: string;
+        phone?: string;
+        email?: string;
+        address?: string;
+        dateOfBirth?: string;
+        gender?: string;
+        tier?: string;
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
         url: `/tenant/customers/${id}`,
         method: "PUT",
-        body: patch,
+        body,
       }),
       invalidatesTags: (result, error, { id }) => [{ type: "Customers", id }],
     }),
 
-    deleteRemoteCustomer: builder.mutation({
+    deleteRemoteCustomer: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/customers/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Customers"],
+      invalidatesTags: (result, error, id) => [{ type: "Customers", id }],
     }),
 
-    // ============================================
-    // 6. ORDERS
-    // ============================================
-    getRemoteOrders: builder.query({
-      query: (params) => ({
-        url: "/tenant/orders/",
-        params,
+    // ---------- Stores ----------
+    getRemoteStores: builder.query<unknown, void>({
+      query: () => ({
+        url: "/tenant/stores/",
+        method: "GET",
       }),
-      providesTags: ["Orders"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.stores) || Array.isArray(result.data)
+              ? (result.stores || result.data || []).map((s: any) => ({
+                  type: "Stores" as const,
+                  id: s.id,
+                }))
+              : []
+            ).concat({ type: "Stores", id: "LIST" })
+          : [{ type: "Stores", id: "LIST" }],
     }),
 
-    getRemoteOrderById: builder.query({
-      query: (id) => `/tenant/orders/${id}`,
-      providesTags: (result, error, id) => [{ type: "Orders", id }],
-    }),
-
-    getRemoteOrderByNumber: builder.query({
-      query: (orderNumber) => `/tenant/orders/number/${orderNumber}`,
-      providesTags: ["Orders"],
-    }),
-
-    getRemoteOrdersByCustomer: builder.query({
-      query: (customerId) => `/tenant/orders/customer/${customerId}`,
-      providesTags: ["Orders"],
-    }),
-
-    getRemoteOrdersBySession: builder.query({
-      query: (sessionId) => `/tenant/orders/session/${sessionId}`,
-      providesTags: ["Orders"],
-    }),
-
-    createRemoteOrder: builder.mutation({
-      query: (order) => ({
-        url: "/tenant/orders/",
-        method: "POST",
-        body: order,
-      }),
-      invalidatesTags: ["Orders", "Inventory", "Customers"],
-    }),
-
-    updateRemoteOrder: builder.mutation({
-      query: ({ id, ...patch }) => ({
-        url: `/tenant/orders/${id}`,
-        method: "PUT",
-        body: patch,
-      }),
-      invalidatesTags: (result, error, { id }) => [{ type: "Orders", id }],
-    }),
-
-    deleteRemoteOrder: builder.mutation({
+    getRemoteStoreById: builder.query<unknown, string>({
       query: (id) => ({
-        url: `/tenant/orders/${id}`,
+        url: `/tenant/stores/${id}`,
+        method: "GET",
+      }),
+      providesTags: (result, error, id) => [{ type: "Stores", id }],
+    }),
+
+    createRemoteStore: builder.mutation<
+      unknown,
+      {
+        code: string;
+        name: string;
+        address?: string;
+        phone?: string;
+        email?: string;
+        taxNumber?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/stores/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Stores", id: "LIST" }],
+    }),
+
+    updateRemoteStore: builder.mutation<
+      unknown,
+      {
+        id: string;
+        code?: string;
+        name?: string;
+        address?: string;
+        phone?: string;
+        email?: string;
+        taxNumber?: string;
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/tenant/stores/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "Stores", id }],
+    }),
+
+    deleteRemoteStore: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/stores/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Orders", "Inventory"],
+      invalidatesTags: (result, error, id) => [{ type: "Stores", id }],
     }),
 
-    updateOrderStatus: builder.mutation({
-      query: ({ id, status }) => ({
-        url: `/tenant/orders/${id}/status`,
-        method: "PATCH",
-        body: { status },
-      }),
-      invalidatesTags: (result, error, { id }) => [{ type: "Orders", id }],
-    }),
-
-    voidOrder: builder.mutation({
-      query: ({ id, reason }) => ({
-        url: `/tenant/orders/${id}/void`,
-        method: "POST",
-        body: { reason },
-      }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "Orders", id },
-        "Inventory",
-      ],
-    }),
-
-    refundOrder: builder.mutation({
-      query: ({ id, items, reason }) => ({
-        url: `/tenant/orders/${id}/refund`,
-        method: "POST",
-        body: { items, reason },
-      }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "Orders", id },
-        "Inventory",
-      ],
-    }),
-
-    // ============================================
-    // 7. SESSIONS
-    // ============================================
-    getRemoteSessions: builder.query({
+    // ---------- Sessions ----------
+    getRemoteSessions: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        storeId?: string;
+        status?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/sessions/",
         params,
       }),
-      providesTags: ["Sessions"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.sessions) || Array.isArray(result.data)
+              ? (result.sessions || result.data || []).map((s: any) => ({
+                  type: "Sessions" as const,
+                  id: s.id,
+                }))
+              : []
+            ).concat({ type: "Sessions", id: "LIST" })
+          : [{ type: "Sessions", id: "LIST" }],
     }),
 
-    getRemoteSessionById: builder.query({
-      query: (id) => `/tenant/sessions/${id}`,
-      providesTags: (result, error, id) => [{ type: "Sessions", id }],
-    }),
-
-    getActiveSession: builder.query({
+    getRemoteActiveSession: builder.query<
+      unknown,
+      { userId: string; storeId?: string }
+    >({
       query: ({ userId, storeId }) => ({
         url: `/tenant/sessions/active/${userId}`,
-        params: { storeId },
+        params: storeId ? { storeId } : undefined,
       }),
       providesTags: ["Sessions"],
     }),
 
-    createRemoteSession: builder.mutation({
+    openRemoteSession: builder.mutation<
+      unknown,
+      {
+        openingBalance: number;
+        storeId?: string;
+        registerId?: string;
+        notes?: string;
+      }
+    >({
       query: (body) => ({
         url: "/tenant/sessions/open",
         method: "POST",
@@ -363,354 +1021,732 @@ export const remoteApi = posApi.injectEndpoints({
       invalidatesTags: ["Sessions"],
     }),
 
-    openSession: builder.mutation({
-      query: (data) => ({
-        url: "/tenant/sessions/open",
-        method: "POST",
-        body: data,
-      }),
-      invalidatesTags: ["Sessions"],
-    }),
-
-    closeRemoteSession: builder.mutation({
-      query: ({ id, ...data }) => ({
+    closeRemoteSession: builder.mutation<
+      unknown,
+      {
+        id: string;
+        closingBalance: number;
+        expectedBalance?: number;
+        discrepancy?: number;
+        cashSales?: number;
+        cardSales?: number;
+        digitalSales?: number;
+        notes?: string;
+      }
+    >({
+      query: ({ id, ...body }) => ({
         url: `/tenant/sessions/${id}/close`,
         method: "POST",
-        body: data,
+        body,
       }),
-      invalidatesTags: ["Sessions"],
+      invalidatesTags: (result, error, { id }) => [{ type: "Sessions", id }],
     }),
 
-    closeSession: builder.mutation({
-      query: ({ id, ...data }) => ({
-        url: `/tenant/sessions/${id}/close`,
-        method: "POST",
-        body: data,
+    // ---------- Orders ----------
+    getRemoteOrders: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        storeId?: string;
+        sessionId?: string;
+        status?: string;
+      }
+    >({
+      query: (params) => ({
+        url: "/tenant/orders/",
+        params,
       }),
-      invalidatesTags: ["Sessions"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.orders) || Array.isArray(result.data)
+              ? (result.orders || result.data || []).map((o: any) => ({
+                  type: "Orders" as const,
+                  id: o.id,
+                }))
+              : []
+            ).concat({ type: "Orders", id: "LIST" })
+          : [{ type: "Orders", id: "LIST" }],
     }),
 
-    suspendSession: builder.mutation({
-      query: ({ id, reason }) => ({
-        url: `/tenant/sessions/${id}/suspend`,
-        method: "POST",
-        body: { reason },
-      }),
-      invalidatesTags: ["Sessions"],
-    }),
-
-    resumeSession: builder.mutation({
+    getRemoteOrderById: builder.query<unknown, string>({
       query: (id) => ({
-        url: `/tenant/sessions/${id}/resume`,
-        method: "POST",
+        url: `/tenant/orders/${id}`,
+        method: "GET",
       }),
-      invalidatesTags: ["Sessions"],
+      providesTags: (result, error, id) => [{ type: "Orders", id }],
     }),
 
-    // ============================================
-    // 8. INVENTORY
-    // ============================================
-    getRemoteInventory: builder.query({
+    createRemoteOrder: builder.mutation<unknown, any>({
+      query: (body) => ({
+        url: "/tenant/orders/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Orders", "Inventory"],
+    }),
+
+    deleteRemoteOrder: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/orders/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, id) => [{ type: "Orders", id }],
+    }),
+
+    completeRemoteOrder: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/orders/${id}/complete`,
+        method: "PATCH",
+      }),
+      invalidatesTags: (result, error, id) => [{ type: "Orders", id }],
+    }),
+
+    updateRemoteOrderStatus: builder.mutation<
+      unknown,
+      {
+        id: string;
+        status: string;
+      }
+    >({
+      query: ({ id, status }) => ({
+        url: `/tenant/orders/${id}/status`,
+        method: "PATCH",
+        body: { status },
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "Orders", id }],
+    }),
+
+    // ---------- Inventory ----------
+    getRemoteInventory: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        storeId?: string;
+        productId?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/inventory/",
         params,
       }),
-      providesTags: ["Inventory"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.inventory) || Array.isArray(result.data)
+              ? (result.inventory || result.data || []).map((i: any) => ({
+                  type: "Inventory" as const,
+                  id: i.id,
+                }))
+              : []
+            ).concat({ type: "Inventory", id: "LIST" })
+          : [{ type: "Inventory", id: "LIST" }],
     }),
 
-    getRemoteInventoryByProduct: builder.query({
-      query: ({ productId, storeId }) => ({
-        url: `/tenant/inventory/product/${productId}`,
-        params: { storeId },
-      }),
-      providesTags: ["Inventory"],
-    }),
-
-    getRemoteInventoryByVariant: builder.query({
-      query: ({ variantId, storeId }) => ({
-        url: `/tenant/inventory/variant/${variantId}`,
-        params: { storeId },
-      }),
-      providesTags: ["Inventory"],
-    }),
-
-    getRemoteInventoryByStore: builder.query({
-      query: (storeId) => `/tenant/inventory/store/${storeId}`,
-      providesTags: ["Inventory"],
-    }),
-
-    upsertRemoteInventory: builder.mutation({
-      query: (inventory) => ({
-        url: "/tenant/inventory/",
-        method: "POST",
-        body: inventory,
-      }),
-      invalidatesTags: ["Inventory", "Products"],
-    }),
-
-    updateRemoteInventory: builder.mutation({
-      query: ({ id, ...patch }) => ({
-        url: `/tenant/inventory/${id}`,
-        method: "PUT",
-        body: patch,
-      }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "Inventory", id },
-        "Inventory",
-      ],
-    }),
-
-    adjustInventory: builder.mutation({
-      query: ({ id, quantity, reason }) => ({
-        url: `/tenant/inventory/${id}/adjust`,
-        method: "POST",
-        body: { quantity, reason },
-      }),
-      invalidatesTags: ["Inventory", "Products"],
-    }),
-
-    // ============================================
-    // 9. INVENTORY MOVEMENTS
-    // ============================================
-    getInventoryMovements: builder.query({
+    // ---------- Inventory Movements ----------
+    getRemoteInventoryMovements: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        storeId?: string;
+        type?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/inventory/movements/",
         params,
       }),
-      providesTags: ["InventoryMovements"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.movements) || Array.isArray(result.data)
+              ? (result.movements || result.data || []).map((m: any) => ({
+                  type: "InventoryMovements" as const,
+                  id: m.id,
+                }))
+              : []
+            ).concat({ type: "InventoryMovements", id: "LIST" })
+          : [{ type: "InventoryMovements", id: "LIST" }],
     }),
 
-    getInventoryMovementsByProduct: builder.query({
-      query: (productId) => `/tenant/inventory/movements/product/${productId}`,
-      providesTags: ["InventoryMovements"],
-    }),
-
-    getInventoryMovementsByVariant: builder.query({
-      query: (variantId) => `/tenant/inventory/movements/variant/${variantId}`,
-      providesTags: ["InventoryMovements"],
-    }),
-
-    createRemoteInventoryMovement: builder.mutation({
-      query: (movement) => ({
+    createRemoteInventoryMovement: builder.mutation<
+      unknown,
+      {
+        storeId: string;
+        productId: string;
+        variantId?: string;
+        quantity: number;
+        type: string;
+        referenceId: string;
+        referenceType: string;
+        reason?: string;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/inventory/movements/",
         method: "POST",
-        body: movement,
+        body,
       }),
       invalidatesTags: ["InventoryMovements", "Inventory"],
     }),
 
-    // ============================================
-    // 10. INVENTORY COUNTS
-    // ============================================
-    getInventoryCounts: builder.query({
+    // ---------- Inventory Counts ----------
+    getRemoteInventoryCounts: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        storeId?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/inventory/counts/",
         params,
       }),
-      providesTags: ["InventoryCounts"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.counts) || Array.isArray(result.data)
+              ? (result.counts || result.data || []).map((c: any) => ({
+                  type: "InventoryCounts" as const,
+                  id: c.id,
+                }))
+              : []
+            ).concat({ type: "InventoryCounts", id: "LIST" })
+          : [{ type: "InventoryCounts", id: "LIST" }],
     }),
 
-    getInventoryCountById: builder.query({
-      query: (id) => `/tenant/inventory/counts/${id}`,
-      providesTags: (result, error, id) => [{ type: "InventoryCounts", id }],
-    }),
-
-    createRemoteInventoryCount: builder.mutation({
-      query: (count) => ({
+    createRemoteInventoryCount: builder.mutation<
+      unknown,
+      {
+        storeId: string;
+        items: Array<{
+          productId: string;
+          variantId?: string;
+          systemQuantity: number;
+          countedQuantity: number;
+          reason?: string;
+        }>;
+        scheduledDate?: string;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/inventory/counts/",
         method: "POST",
-        body: count,
+        body,
       }),
       invalidatesTags: ["InventoryCounts", "Inventory"],
     }),
 
-    completeInventoryCount: builder.mutation({
-      query: ({ id, items }) => ({
-        url: `/tenant/inventory/counts/${id}/complete`,
-        method: "POST",
-        body: { items },
-      }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "InventoryCounts", id },
-        "Inventory",
-      ],
-    }),
-
-    cancelInventoryCount: builder.mutation({
-      query: (id) => ({
-        url: `/tenant/inventory/counts/${id}/cancel`,
-        method: "POST",
-      }),
-      invalidatesTags: (result, error, id) => [{ type: "InventoryCounts", id }],
-    }),
-
-    // ============================================
-    // 11. PRICE HISTORY
-    // ============================================
-    getRemotePriceHistory: builder.query({
-      query: (params) => ({
-        url: "/tenant/price-history/",
-        params,
-      }),
-      providesTags: ["PriceHistory"],
-    }),
-
-    getRemotePriceHistoryByProduct: builder.query({
-      query: (productId) => `/tenant/price-history/product/${productId}`,
-      providesTags: ["PriceHistory"],
-    }),
-
-    getRemotePriceHistoryByVariant: builder.query({
-      query: (variantId) => `/tenant/price-history/variant/${variantId}`,
-      providesTags: ["PriceHistory"],
-    }),
-
-    createRemotePriceHistory: builder.mutation({
-      query: (priceHistory) => ({
-        url: "/tenant/price-history/",
-        method: "POST",
-        body: priceHistory,
-      }),
-      invalidatesTags: ["PriceHistory", "Products", "ProductVariants"],
-    }),
-
-    // ============================================
-    // 12. STORES
-    // ============================================
-    getRemoteStores: builder.query({
-      query: () => "/tenant/stores/",
-      providesTags: ["Stores"],
-    }),
-
-    getRemoteStoreById: builder.query({
-      query: (id) => `/tenant/stores/${id}`,
-      providesTags: (result, error, id) => [{ type: "Stores", id }],
-    }),
-
-    getRemoteStoreByCode: builder.query({
-      query: (code) => `/tenant/stores/code/${code}`,
-      providesTags: ["Stores"],
-    }),
-
-    createRemoteStore: builder.mutation({
-      query: (store) => ({
-        url: "/tenant/stores/",
-        method: "POST",
-        body: store,
-      }),
-      invalidatesTags: ["Stores"],
-    }),
-
-    updateRemoteStore: builder.mutation({
-      query: ({ id, ...patch }) => ({
-        url: `/tenant/stores/${id}`,
-        method: "PUT",
-        body: patch,
-      }),
-      invalidatesTags: (result, error, { id }) => [{ type: "Stores", id }],
-    }),
-
-    deleteRemoteStore: builder.mutation({
-      query: (id) => ({
-        url: `/tenant/stores/${id}`,
-        method: "DELETE",
-      }),
-      invalidatesTags: ["Stores", "Inventory"],
-    }),
-
-    // ============================================
-    // 13. STAFF
-    // ============================================
-    getRemoteStaff: builder.query({
+    // ---------- Staff ----------
+    getRemoteStaff: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        storeId?: string;
+        role?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/staff/",
         params,
       }),
-      providesTags: ["Staff"],
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.staff) || Array.isArray(result.data)
+              ? (result.staff || result.data || []).map((s: any) => ({
+                  type: "Staff" as const,
+                  id: s.id,
+                }))
+              : []
+            ).concat({ type: "Staff", id: "LIST" })
+          : [{ type: "Staff", id: "LIST" }],
     }),
 
-    getRemoteStaffById: builder.query({
-      query: (id) => `/tenant/staff/${id}`,
+    getRemoteStaffById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/staff/${id}`,
+        method: "GET",
+      }),
       providesTags: (result, error, id) => [{ type: "Staff", id }],
     }),
 
-    createRemoteStaff: builder.mutation({
-      query: (staff) => ({
+    createRemoteStaff: builder.mutation<
+      unknown,
+      {
+        username: string;
+        email: string;
+        name: string;
+        password: string;
+        role: string;
+        permissions: string[];
+        storeId?: string;
+        isActive?: boolean;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/staff/",
         method: "POST",
-        body: staff,
+        body,
       }),
-      invalidatesTags: ["Staff"],
+      invalidatesTags: [{ type: "Staff", id: "LIST" }],
     }),
 
-    updateRemoteStaff: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    updateRemoteStaff: builder.mutation<
+      unknown,
+      {
+        id: string;
+        username?: string;
+        email?: string;
+        name?: string;
+        password?: string;
+        role?: string;
+        permissions?: string[];
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
         url: `/tenant/staff/${id}`,
         method: "PUT",
-        body: patch,
+        body,
       }),
       invalidatesTags: (result, error, { id }) => [{ type: "Staff", id }],
     }),
 
-    deleteRemoteStaff: builder.mutation({
+    deleteRemoteStaff: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/staff/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Staff"],
+      invalidatesTags: (result, error, id) => [{ type: "Staff", id }],
     }),
 
-    // ============================================
-    // 14. PAYMENTS
-    // ============================================
-    getPayments: builder.query({
+    // ---------- Suppliers ----------
+    getRemoteSuppliers: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        search?: string;
+      }
+    >({
       query: (params) => ({
-        url: "/tenant/payments/",
+        url: "/tenant/suppliers/",
         params,
+      }),
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.suppliers) || Array.isArray(result.data)
+              ? (result.suppliers || result.data || []).map((s: any) => ({
+                  type: "Suppliers" as const,
+                  id: s.id,
+                }))
+              : []
+            ).concat({ type: "Suppliers", id: "LIST" })
+          : [{ type: "Suppliers", id: "LIST" }],
+    }),
+
+    getRemoteSupplierById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/suppliers/${id}`,
+        method: "GET",
+      }),
+      providesTags: (result, error, id) => [{ type: "Suppliers", id }],
+    }),
+
+    createRemoteSupplier: builder.mutation<
+      unknown,
+      {
+        name: string;
+        code?: string;
+        contactName?: string;
+        phone?: string;
+        email?: string;
+        address?: string;
+        taxId?: string;
+        paymentTerms?: number;
+        creditLimit?: number;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/suppliers/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Suppliers", id: "LIST" }],
+    }),
+
+    updateRemoteSupplier: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        code?: string;
+        contactName?: string;
+        phone?: string;
+        email?: string;
+        address?: string;
+        taxId?: string;
+        paymentTerms?: number;
+        creditLimit?: number;
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/tenant/suppliers/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "Suppliers", id }],
+    }),
+
+    deleteRemoteSupplier: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/suppliers/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, id) => [{ type: "Suppliers", id }],
+    }),
+
+    // ---------- Brands (added for local sync) ----------
+    getRemoteBrands: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        isActive?: boolean;
+      }
+    >({
+      query: (params) => ({
+        url: "/tenant/brands",
+        params,
+      }),
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.brands) || Array.isArray(result.data)
+              ? (result.brands || result.data || []).map((b: any) => ({
+                  type: "Brands" as const,
+                  id: b.id,
+                }))
+              : []
+            ).concat({ type: "Brands", id: "LIST" })
+          : [{ type: "Brands", id: "LIST" }],
+    }),
+
+    getRemoteBrandById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/brands/${id}`,
+        method: "GET",
+      }),
+      providesTags: (result, error, id) => [{ type: "Brands", id }],
+    }),
+
+    createRemoteBrand: builder.mutation<
+      unknown,
+      {
+        name: string;
+        description?: string;
+        isActive?: boolean;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/brands",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [{ type: "Brands", id: "LIST" }],
+    }),
+
+    updateRemoteBrand: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        description?: string;
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/tenant/brands/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "Brands", id }],
+    }),
+
+    deleteRemoteBrand: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/brands/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, id) => [{ type: "Brands", id }],
+    }),
+
+    // ---------- Price History (if separate endpoint) ----------
+    // Note: spec doesn't list price history endpoint under /tenant; it's under /tenant/price-history? Actually not in spec.
+    // But localApi has it, so we'll add it if exists.
+    getRemotePriceHistory: builder.query<
+      unknown,
+      {
+        productId?: string;
+        variantId?: string;
+        limit?: number;
+      }
+    >({
+      query: (params) => ({
+        url: "/tenant/price-history",
+        params,
+      }),
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.priceHistory) || Array.isArray(result.data)
+              ? (result.priceHistory || result.data || []).map((ph: any) => ({
+                  type: "PriceHistory" as const,
+                  id: ph.id,
+                }))
+              : []
+            ).concat({ type: "PriceHistory", id: "LIST" })
+          : [{ type: "PriceHistory", id: "LIST" }],
+    }),
+
+    createRemotePriceHistory: builder.mutation<
+      unknown,
+      {
+        productId: string;
+        variantId?: string;
+        oldPrice: number;
+        newPrice: number;
+        changedBy?: string;
+        reason?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/price-history",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["PriceHistory", "Products"],
+    }),
+
+    // ---------- Product Variants (if separate endpoint) ----------
+    // The spec does not define explicit variant endpoints, but local expects them.
+    // We'll provide them based on common patterns.
+    getRemoteProductVariants: builder.query<unknown, { productId?: string }>({
+      query: (params) => ({
+        url: "/tenant/product-variants",
+        params,
+      }),
+      providesTags: (result) =>
+        result
+          ? (Array.isArray(result.variants) || Array.isArray(result.data)
+              ? (result.variants || result.data || []).map((v: any) => ({
+                  type: "ProductVariants" as const,
+                  id: v.id,
+                }))
+              : []
+            ).concat({ type: "ProductVariants", id: "LIST" })
+          : [{ type: "ProductVariants", id: "LIST" }],
+    }),
+
+    createRemoteProductVariant: builder.mutation<unknown, any>({
+      query: (body) => ({
+        url: "/tenant/product-variants",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["ProductVariants", "Products"],
+    }),
+
+    updateRemoteProductVariant: builder.mutation<unknown, { id: string } & any>(
+      {
+        query: ({ id, ...body }) => ({
+          url: `/tenant/product-variants/${id}`,
+          method: "PUT",
+          body,
+        }),
+        invalidatesTags: (result, error, { id }) => [
+          { type: "ProductVariants", id },
+        ],
+      },
+    ),
+
+    deleteRemoteProductVariant: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/product-variants/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, id) => [{ type: "ProductVariants", id }],
+    }),
+
+    // ---------- Extra Tenant Endpoints (optional, but included for completeness) ----------
+
+    // Store-specific products
+    getStoreProducts: builder.query<
+      unknown,
+      {
+        id: string;
+        page?: number;
+        limit?: number;
+        search?: string;
+        categoryId?: string;
+      }
+    >({
+      query: ({ id, ...params }) => ({
+        url: `/tenant/stores/${id}/products`,
+        params,
+      }),
+      providesTags: ["Products"],
+    }),
+
+    getStoreProduct: builder.query<
+      unknown,
+      { storeId: string; productId: string }
+    >({
+      query: ({ storeId, productId }) => ({
+        url: `/tenant/stores/${storeId}/products/${productId}`,
+        method: "GET",
+      }),
+      providesTags: ["Products"],
+    }),
+
+    getStoreCategories: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/stores/${id}/categories`,
+        method: "GET",
+      }),
+      providesTags: ["Categories"],
+    }),
+
+    getStoreOrders: builder.query<
+      unknown,
+      {
+        id: string;
+        page?: number;
+        limit?: number;
+        search?: string;
+      }
+    >({
+      query: ({ id, ...params }) => ({
+        url: `/tenant/stores/${id}/orders`,
+        params,
+      }),
+      providesTags: ["Orders"],
+    }),
+
+    getStoreCustomers: builder.query<
+      unknown,
+      {
+        id: string;
+        page?: number;
+        limit?: number;
+        search?: string;
+      }
+    >({
+      query: ({ id, ...params }) => ({
+        url: `/tenant/stores/${id}/customers`,
+        params,
+      }),
+      providesTags: ["Customers"],
+    }),
+
+    getStoreBrands: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/stores/${id}/brands`,
+        method: "GET",
+      }),
+      providesTags: ["Brands"],
+    }),
+
+    getStoreSuppliers: builder.query<
+      unknown,
+      {
+        id: string;
+        page?: number;
+        limit?: number;
+        search?: string;
+      }
+    >({
+      query: ({ id, ...params }) => ({
+        url: `/tenant/stores/${id}/suppliers`,
+        params,
+      }),
+      providesTags: ["Suppliers"],
+    }),
+
+    // ---------- Other resources (payments, returns, purchase orders, etc.) ----------
+    // You can add them following the same pattern if needed.
+    // I'll include a few as examples, but you can extend.
+
+    getPayments: builder.query<unknown, void>({
+      query: () => ({
+        url: "/tenant/payments/",
+        method: "GET",
       }),
       providesTags: ["Payments"],
     }),
 
-    getPaymentById: builder.query({
-      query: (id) => `/tenant/payments/${id}`,
-      providesTags: (result, error, id) => [{ type: "Payments", id }],
-    }),
-
-    getPaymentsByOrder: builder.query({
-      query: (orderId) => `/tenant/payments/order/${orderId}`,
-      providesTags: ["Payments"],
-    }),
-
-    createPayment: builder.mutation({
-      query: (payment) => ({
+    createPayment: builder.mutation<
+      unknown,
+      {
+        orderId: string;
+        amount: number;
+        method: string;
+        referenceNumber?: string;
+        status?: string;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/payments/",
         method: "POST",
-        body: payment,
+        body,
       }),
       invalidatesTags: ["Payments", "Orders"],
     }),
 
-    updatePayment: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    getPaymentById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/payments/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["Payments"],
+    }),
+
+    updatePayment: builder.mutation<
+      unknown,
+      {
+        id: string;
+        amount?: number;
+        method?: string;
+        referenceNumber?: string;
+        status?: string;
+      }
+    >({
+      query: ({ id, ...body }) => ({
         url: `/tenant/payments/${id}`,
         method: "PUT",
-        body: patch,
+        body,
       }),
       invalidatesTags: (result, error, { id }) => [{ type: "Payments", id }],
     }),
 
-    deletePayment: builder.mutation({
+    deletePayment: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/payments/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Payments", "Orders"],
+      invalidatesTags: (result, error, id) => [{ type: "Payments", id }],
     }),
 
-    // ============================================
-    // 15. RETURNS
-    // ============================================
-    getReturns: builder.query({
+    // Returns
+    getReturns: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        orderId?: string;
+        refundStatus?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/returns/",
         params,
@@ -718,58 +1754,57 @@ export const remoteApi = posApi.injectEndpoints({
       providesTags: ["Returns"],
     }),
 
-    getReturnById: builder.query({
-      query: (id) => `/tenant/returns/${id}`,
-      providesTags: (result, error, id) => [{ type: "Returns", id }],
-    }),
-
-    getReturnsByOrder: builder.query({
-      query: (orderId) => `/tenant/returns/order/${orderId}`,
-      providesTags: ["Returns"],
-    }),
-
-    createReturn: builder.mutation({
-      query: (returnData) => ({
+    createReturn: builder.mutation<
+      unknown,
+      {
+        orderId: string;
+        totalAmount: number;
+        refundMethod: string;
+        reason: string;
+        items: Array<{
+          orderItemId: string;
+          quantity: number;
+          refundAmount: number;
+          reason?: string;
+        }>;
+        customerId?: string;
+        refundStatus?: string;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/returns/",
         method: "POST",
-        body: returnData,
+        body,
       }),
       invalidatesTags: ["Returns", "Orders", "Inventory"],
     }),
 
-    updateReturn: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    getReturnById: builder.query<unknown, string>({
+      query: (id) => ({
         url: `/tenant/returns/${id}`,
-        method: "PUT",
-        body: patch,
+        method: "GET",
       }),
-      invalidatesTags: (result, error, { id }) => [{ type: "Returns", id }],
+      providesTags: ["Returns"],
     }),
 
-    deleteReturn: builder.mutation({
+    deleteReturn: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/returns/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Returns", "Orders"],
+      invalidatesTags: (result, error, id) => [{ type: "Returns", id }],
     }),
 
-    approveReturn: builder.mutation({
-      query: ({ id, approve }) => ({
-        url: `/tenant/returns/${id}/approve`,
-        method: "POST",
-        body: { approve },
-      }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "Returns", id },
-        "Inventory",
-      ],
-    }),
-
-    // ============================================
-    // 16. PURCHASE ORDERS
-    // ============================================
-    getPurchaseOrders: builder.query({
+    // ---------- Purchase Orders ----------
+    getPurchaseOrders: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        supplierId?: string;
+        status?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/purchase-orders/",
         params,
@@ -777,55 +1812,76 @@ export const remoteApi = posApi.injectEndpoints({
       providesTags: ["PurchaseOrders"],
     }),
 
-    getPurchaseOrderById: builder.query({
-      query: (id) => `/tenant/purchase-orders/${id}`,
-      providesTags: (result, error, id) => [{ type: "PurchaseOrders", id }],
-    }),
-
-    createPurchaseOrder: builder.mutation({
-      query: (purchaseOrder) => ({
+    createPurchaseOrder: builder.mutation<unknown, any>({
+      query: (body) => ({
         url: "/tenant/purchase-orders/",
         method: "POST",
-        body: purchaseOrder,
+        body,
       }),
       invalidatesTags: ["PurchaseOrders", "Inventory"],
     }),
 
-    updatePurchaseOrder: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    getPurchaseOrderById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/purchase-orders/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["PurchaseOrders"],
+    }),
+
+    updatePurchaseOrder: builder.mutation<
+      unknown,
+      {
+        id: string;
+        status?: string;
+        expectedDate?: string;
+        notes?: string;
+        subTotal?: number;
+        taxAmount?: number;
+        grandTotal?: number;
+      }
+    >({
+      query: ({ id, ...body }) => ({
         url: `/tenant/purchase-orders/${id}`,
         method: "PUT",
-        body: patch,
+        body,
       }),
       invalidatesTags: (result, error, { id }) => [
         { type: "PurchaseOrders", id },
       ],
     }),
 
-    deletePurchaseOrder: builder.mutation({
+    deletePurchaseOrder: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/purchase-orders/${id}`,
         method: "DELETE",
       }),
+      invalidatesTags: (result, error, id) => [{ type: "PurchaseOrders", id }],
+    }),
+
+    receivePurchaseOrder: builder.mutation<
+      unknown,
+      { id: string; storeId: string }
+    >({
+      query: ({ id, storeId }) => ({
+        url: `/tenant/purchase-orders/${id}/receive`,
+        method: "POST",
+        body: { storeId },
+      }),
       invalidatesTags: ["PurchaseOrders", "Inventory"],
     }),
 
-    receivePurchaseOrder: builder.mutation({
-      query: ({ id, storeId, items }) => ({
-        url: `/tenant/purchase-orders/${id}/receive`,
-        method: "POST",
-        body: { storeId, items },
-      }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "PurchaseOrders", id },
-        "Inventory",
-      ],
-    }),
-
-    // ============================================
-    // 17. STOCK TRANSFERS
-    // ============================================
-    getStockTransfers: builder.query({
+    // ---------- Stock Transfers ----------
+    getStockTransfers: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        fromStoreId?: string;
+        toStoreId?: string;
+        status?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/stock-transfers/",
         params,
@@ -833,96 +1889,61 @@ export const remoteApi = posApi.injectEndpoints({
       providesTags: ["StockTransfers"],
     }),
 
-    getStockTransferById: builder.query({
-      query: (id) => `/tenant/stock-transfers/${id}`,
-      providesTags: (result, error, id) => [{ type: "StockTransfers", id }],
-    }),
-
-    createStockTransfer: builder.mutation({
-      query: (transfer) => ({
+    createStockTransfer: builder.mutation<
+      unknown,
+      {
+        fromStoreId: string;
+        toStoreId: string;
+        items: Array<{
+          productId: string;
+          variantId?: string;
+          quantity: number;
+        }>;
+        notes?: string;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/stock-transfers/",
         method: "POST",
-        body: transfer,
+        body,
       }),
       invalidatesTags: ["StockTransfers", "Inventory"],
     }),
 
-    updateStockTransfer: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    getStockTransferById: builder.query<unknown, string>({
+      query: (id) => ({
         url: `/tenant/stock-transfers/${id}`,
-        method: "PUT",
-        body: patch,
+        method: "GET",
       }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "StockTransfers", id },
-      ],
+      providesTags: ["StockTransfers"],
     }),
 
-    deleteStockTransfer: builder.mutation({
+    deleteStockTransfer: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/stock-transfers/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["StockTransfers", "Inventory"],
+      invalidatesTags: (result, error, id) => [{ type: "StockTransfers", id }],
     }),
 
-    completeStockTransfer: builder.mutation({
+    completeStockTransfer: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/stock-transfers/${id}/complete`,
         method: "POST",
       }),
-      invalidatesTags: (result, error, id) => [
-        { type: "StockTransfers", id },
-        "Inventory",
-      ],
+      invalidatesTags: (result, error, id) => [{ type: "StockTransfers", id }],
     }),
 
-    // ============================================
-    // 18. SUPPLIERS
-    // ============================================
-    getSuppliers: builder.query({
-      query: (params) => ({
-        url: "/tenant/suppliers/",
-        params,
-      }),
-      providesTags: ["Suppliers"],
-    }),
-
-    getSupplierById: builder.query({
-      query: (id) => `/tenant/suppliers/${id}`,
-      providesTags: (result, error, id) => [{ type: "Suppliers", id }],
-    }),
-
-    createSupplier: builder.mutation({
-      query: (supplier) => ({
-        url: "/tenant/suppliers/",
-        method: "POST",
-        body: supplier,
-      }),
-      invalidatesTags: ["Suppliers"],
-    }),
-
-    updateSupplier: builder.mutation({
-      query: ({ id, ...patch }) => ({
-        url: `/tenant/suppliers/${id}`,
-        method: "PUT",
-        body: patch,
-      }),
-      invalidatesTags: (result, error, { id }) => [{ type: "Suppliers", id }],
-    }),
-
-    deleteSupplier: builder.mutation({
-      query: (id) => ({
-        url: `/tenant/suppliers/${id}`,
-        method: "DELETE",
-      }),
-      invalidatesTags: ["Suppliers", "Products"],
-    }),
-
-    // ============================================
-    // 19. PROMOTIONS
-    // ============================================
-    getPromotions: builder.query({
+    // ---------- Promotions ----------
+    getPromotions: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        search?: string;
+        isActive?: boolean;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/promotions/",
         params,
@@ -930,41 +1951,48 @@ export const remoteApi = posApi.injectEndpoints({
       providesTags: ["Promotions"],
     }),
 
-    getPromotionById: builder.query({
-      query: (id) => `/tenant/promotions/${id}`,
-      providesTags: (result, error, id) => [{ type: "Promotions", id }],
-    }),
-
-    createPromotion: builder.mutation({
-      query: (promotion) => ({
+    createPromotion: builder.mutation<unknown, any>({
+      query: (body) => ({
         url: "/tenant/promotions/",
         method: "POST",
-        body: promotion,
+        body,
       }),
-      invalidatesTags: ["Promotions", "Products"],
+      invalidatesTags: ["Promotions"],
     }),
 
-    updatePromotion: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    getPromotionById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/promotions/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["Promotions"],
+    }),
+
+    updatePromotion: builder.mutation<unknown, { id: string } & any>({
+      query: ({ id, ...body }) => ({
         url: `/tenant/promotions/${id}`,
         method: "PUT",
-        body: patch,
+        body,
       }),
       invalidatesTags: (result, error, { id }) => [{ type: "Promotions", id }],
     }),
 
-    deletePromotion: builder.mutation({
+    deletePromotion: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/promotions/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["Promotions", "Products"],
+      invalidatesTags: (result, error, id) => [{ type: "Promotions", id }],
     }),
 
-    // ============================================
-    // 20. STORE SETTINGS
-    // ============================================
-    getStoreSettings: builder.query({
+    // ---------- Store Settings (tenant) ----------
+    getTenantStoreSettings: builder.query<
+      unknown,
+      {
+        storeId?: string;
+        settingKey?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/store-settings/",
         params,
@@ -972,43 +2000,50 @@ export const remoteApi = posApi.injectEndpoints({
       providesTags: ["StoreSettings"],
     }),
 
-    getStoreSettingById: builder.query({
-      query: (id) => `/tenant/store-settings/${id}`,
-      providesTags: (result, error, id) => [{ type: "StoreSettings", id }],
-    }),
-
-    createStoreSetting: builder.mutation({
-      query: (setting) => ({
+    createTenantStoreSetting: builder.mutation<
+      unknown,
+      {
+        storeId: string;
+        settingKey: string;
+        settingValue: any;
+        description?: string;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/store-settings/",
         method: "POST",
-        body: setting,
+        body,
       }),
-      invalidatesTags: ["StoreSettings", "Stores"],
+      invalidatesTags: ["StoreSettings"],
     }),
 
-    updateStoreSetting: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    getTenantStoreSettingById: builder.query<unknown, string>({
+      query: (id) => ({
         url: `/tenant/store-settings/${id}`,
-        method: "PUT",
-        body: patch,
+        method: "GET",
       }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: "StoreSettings", id },
-      ],
+      providesTags: ["StoreSettings"],
     }),
 
-    deleteStoreSetting: builder.mutation({
+    deleteTenantStoreSetting: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/store-settings/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["StoreSettings", "Stores"],
+      invalidatesTags: ["StoreSettings"],
     }),
 
-    // ============================================
-    // 21. NOTIFICATIONS
-    // ============================================
-    getNotifications: builder.query({
+    // ---------- Notifications ----------
+    getNotifications: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        isRead?: boolean;
+        type?: string;
+        since?: string;
+      }
+    >({
       query: (params) => ({
         url: "/tenant/notifications/",
         params,
@@ -1016,28 +2051,41 @@ export const remoteApi = posApi.injectEndpoints({
       providesTags: ["Notifications"],
     }),
 
-    getUnreadCount: builder.query({
-      query: () => "/tenant/notifications/unread-count",
-      providesTags: ["Notifications"],
-    }),
-
-    markAllRead: builder.mutation({
-      query: () => ({
-        url: "/tenant/notifications/read-all",
-        method: "PATCH",
+    createNotification: builder.mutation<
+      unknown,
+      {
+        userId: string;
+        type: string;
+        title: string;
+        message: string;
+        metadata?: any;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/notifications/",
+        method: "POST",
+        body,
       }),
       invalidatesTags: ["Notifications"],
     }),
 
-    markNotificationRead: builder.mutation({
-      query: (id) => ({
-        url: `/tenant/notifications/${id}/read`,
-        method: "PATCH",
+    getUnreadCount: builder.query<unknown, void>({
+      query: () => ({
+        url: "/tenant/notifications/unread-count",
+        method: "GET",
       }),
-      invalidatesTags: (result, error, id) => [{ type: "Notifications", id }],
+      providesTags: ["Notifications"],
     }),
 
-    deleteNotification: builder.mutation({
+    getNotificationById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/notifications/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["Notifications"],
+    }),
+
+    deleteNotification: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/notifications/${id}`,
         method: "DELETE",
@@ -1045,10 +2093,24 @@ export const remoteApi = posApi.injectEndpoints({
       invalidatesTags: ["Notifications"],
     }),
 
-    // ============================================
-    // 22. TAX RATES
-    // ============================================
-    getTaxRates: builder.query({
+    markAllNotificationsRead: builder.mutation<unknown, void>({
+      query: () => ({
+        url: "/tenant/notifications/read-all",
+        method: "PATCH",
+      }),
+      invalidatesTags: ["Notifications"],
+    }),
+
+    markNotificationRead: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/notifications/${id}/read`,
+        method: "PATCH",
+      }),
+      invalidatesTags: (result, error, id) => [{ type: "Notifications", id }],
+    }),
+
+    // ---------- Tax Rates ----------
+    getTaxRates: builder.query<unknown, { isActive?: boolean }>({
       query: (params) => ({
         url: "/tenant/tax-rates/",
         params,
@@ -1056,865 +2118,702 @@ export const remoteApi = posApi.injectEndpoints({
       providesTags: ["TaxRates"],
     }),
 
-    getTaxRateById: builder.query({
-      query: (id) => `/tenant/tax-rates/${id}`,
-      providesTags: (result, error, id) => [{ type: "TaxRates", id }],
-    }),
-
-    createTaxRate: builder.mutation({
-      query: (taxRate) => ({
+    createTaxRate: builder.mutation<
+      unknown,
+      {
+        name: string;
+        rate: number;
+        isCompound?: boolean;
+        appliesTo?: string[];
+        validFrom?: string;
+        validTo?: string;
+      }
+    >({
+      query: (body) => ({
         url: "/tenant/tax-rates/",
         method: "POST",
-        body: taxRate,
+        body,
       }),
-      invalidatesTags: ["TaxRates", "Products"],
+      invalidatesTags: ["TaxRates"],
     }),
 
-    updateTaxRate: builder.mutation({
-      query: ({ id, ...patch }) => ({
+    getTaxRateById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/tax-rates/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["TaxRates"],
+    }),
+
+    updateTaxRate: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        rate?: number;
+        isCompound?: boolean;
+        appliesTo?: string[];
+        validFrom?: string;
+        validTo?: string;
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
         url: `/tenant/tax-rates/${id}`,
         method: "PUT",
-        body: patch,
+        body,
       }),
       invalidatesTags: (result, error, { id }) => [{ type: "TaxRates", id }],
     }),
 
-    deleteTaxRate: builder.mutation({
+    deleteTaxRate: builder.mutation<unknown, string>({
       query: (id) => ({
         url: `/tenant/tax-rates/${id}`,
         method: "DELETE",
       }),
-      invalidatesTags: ["TaxRates", "Products"],
+      invalidatesTags: (result, error, id) => [{ type: "TaxRates", id }],
     }),
 
-    // ============================================
-    // 23. DASHBOARD / STATISTICS
-    // ============================================
-    getDashboardStats: builder.query({
-      query: (params) => ({
-        url: "/tenant/dashboard/stats",
-        params,
+    // ---------- Expenses ----------
+    getExpenses: builder.query<unknown, void>({
+      query: () => ({
+        url: "/tenant/expenses/",
+        method: "GET",
       }),
-      providesTags: ["Dashboard"],
+      providesTags: ["Expenses"],
     }),
 
-    getSalesStats: builder.query({
-      query: (params) => ({
-        url: "/tenant/dashboard/sales",
-        params,
+    createExpense: builder.mutation<
+      unknown,
+      {
+        categoryId: string;
+        amount: number;
+        storeId?: string;
+        description?: string;
+        receiptUrl?: string;
+        expenseDate?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/expenses/",
+        method: "POST",
+        body,
       }),
-      providesTags: ["Dashboard"],
+      invalidatesTags: ["Expenses"],
     }),
 
-    getInventoryStats: builder.query({
-      query: (params) => ({
-        url: "/tenant/dashboard/inventory",
-        params,
+    getExpenseById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/expenses/${id}`,
+        method: "GET",
       }),
-      providesTags: ["Dashboard"],
+      providesTags: ["Expenses"],
     }),
 
-    // ============================================
-    // 24. REPORTS
-    // ============================================
-    getSalesReport: builder.query({
-      query: (params) => ({
-        url: "/tenant/reports/sales",
-        params,
+    updateExpense: builder.mutation<
+      unknown,
+      {
+        id: string;
+        categoryId?: string;
+        amount?: number;
+        storeId?: string;
+        description?: string;
+        receiptUrl?: string;
+        expenseDate?: string;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/tenant/expenses/${id}`,
+        method: "PUT",
+        body,
       }),
-      providesTags: ["Reports"],
+      invalidatesTags: (result, error, { id }) => [{ type: "Expenses", id }],
     }),
 
-    getInventoryReport: builder.query({
-      query: (params) => ({
-        url: "/tenant/reports/inventory",
-        params,
+    deleteExpense: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/expenses/${id}`,
+        method: "DELETE",
       }),
-      providesTags: ["Reports"],
+      invalidatesTags: (result, error, id) => [{ type: "Expenses", id }],
     }),
 
-    getTaxReport: builder.query({
+    // ---------- Cash Registers ----------
+    getCashRegisters: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        storeId?: string;
+        status?: string;
+      }
+    >({
       query: (params) => ({
-        url: "/tenant/reports/tax",
+        url: "/tenant/cash-registers/",
         params,
       }),
-      providesTags: ["Reports"],
+      providesTags: ["CashRegisters"],
     }),
 
-    getCustomerReport: builder.query({
+    createCashRegister: builder.mutation<
+      unknown,
+      {
+        storeId: string;
+        name: string;
+        status?: "OPEN" | "CLOSED" | "SUSPENDED" | "MAINTENANCE";
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/cash-registers/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["CashRegisters"],
+    }),
+
+    getCashRegisterById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/cash-registers/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["CashRegisters"],
+    }),
+
+    updateCashRegister: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        status?: "OPEN" | "CLOSED" | "SUSPENDED" | "MAINTENANCE";
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/tenant/cash-registers/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (result, error, { id }) => [
+        { type: "CashRegisters", id },
+      ],
+    }),
+
+    deleteCashRegister: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/cash-registers/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, id) => [{ type: "CashRegisters", id }],
+    }),
+
+    // ---------- Gift Cards ----------
+    getGiftCards: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        status?: string;
+        customerId?: string;
+        search?: string;
+      }
+    >({
       query: (params) => ({
-        url: "/tenant/reports/customers",
+        url: "/tenant/gift-cards/",
         params,
       }),
-      providesTags: ["Reports"],
+      providesTags: ["GiftCards"],
+    }),
+
+    createGiftCard: builder.mutation<
+      unknown,
+      {
+        initialAmount: number;
+        cardNumber?: string;
+        pinCode?: string;
+        customerId?: string;
+        expiresAt?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/gift-cards/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["GiftCards"],
+    }),
+
+    lookupGiftCard: builder.query<unknown, string>({
+      query: (cardNumber) => ({
+        url: `/tenant/gift-cards/lookup/${cardNumber}`,
+        method: "GET",
+      }),
+      providesTags: ["GiftCards"],
+    }),
+
+    reloadGiftCard: builder.mutation<unknown, { id: string; amount: number }>({
+      query: ({ id, amount }) => ({
+        url: `/tenant/gift-cards/${id}/reload`,
+        method: "POST",
+        body: { amount },
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "GiftCards", id }],
+    }),
+
+    updateGiftCardStatus: builder.mutation<
+      unknown,
+      { id: string; status: string }
+    >({
+      query: ({ id, status }) => ({
+        url: `/tenant/gift-cards/${id}/status`,
+        method: "PATCH",
+        body: { status },
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "GiftCards", id }],
+    }),
+
+    // ---------- Wallets ----------
+    getWallets: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        search?: string;
+      }
+    >({
+      query: (params) => ({
+        url: "/tenant/wallets/",
+        params,
+      }),
+      providesTags: ["Wallets"],
+    }),
+
+    getWalletByCustomer: builder.query<unknown, string>({
+      query: (customerId) => ({
+        url: `/tenant/wallets/customer/${customerId}`,
+        method: "GET",
+      }),
+      providesTags: ["Wallets"],
+    }),
+
+    createWalletTransaction: builder.mutation<
+      unknown,
+      {
+        customerId: string;
+        amount: number;
+        type: string;
+        referenceId?: string;
+        description?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/wallets/transactions",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Wallets"],
+    }),
+
+    // ---------- Supplier Payments ----------
+    getSupplierPayments: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        supplierId?: string;
+        paymentMethod?: string;
+      }
+    >({
+      query: (params) => ({
+        url: "/tenant/supplier-payments/",
+        params,
+      }),
+      providesTags: ["SupplierPayments"],
+    }),
+
+    createSupplierPayment: builder.mutation<
+      unknown,
+      {
+        supplierId: string;
+        amount: number;
+        paymentMethod: string;
+        referenceNumber?: string;
+        note?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/supplier-payments/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["SupplierPayments", "Suppliers"],
+    }),
+
+    getSupplierPaymentById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/supplier-payments/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["SupplierPayments"],
+    }),
+
+    // ---------- Tenant API Keys ----------
+    getTenantApiKeys: builder.query<unknown, void>({
+      query: () => ({
+        url: "/tenant/api-keys/",
+        method: "GET",
+      }),
+      providesTags: ["ApiKeys"],
+    }),
+
+    createTenantApiKey: builder.mutation<
+      unknown,
+      {
+        userId: string;
+        name: string;
+        permissions?: string[];
+        expiresAt?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/api-keys/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["ApiKeys"],
+    }),
+
+    deleteTenantApiKey: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/api-keys/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: ["ApiKeys"],
+    }),
+
+    // ---------- Webhooks ----------
+    getWebhooks: builder.query<
+      unknown,
+      {
+        page?: number;
+        limit?: number;
+        all?: boolean;
+      }
+    >({
+      query: (params) => ({
+        url: "/tenant/webhooks/",
+        params,
+      }),
+      providesTags: ["Webhooks"],
+    }),
+
+    createWebhook: builder.mutation<
+      unknown,
+      {
+        name: string;
+        url: string;
+        events: string[];
+        secret?: string;
+      }
+    >({
+      query: (body) => ({
+        url: "/tenant/webhooks/",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Webhooks"],
+    }),
+
+    getWebhookById: builder.query<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/webhooks/${id}`,
+        method: "GET",
+      }),
+      providesTags: ["Webhooks"],
+    }),
+
+    updateWebhook: builder.mutation<
+      unknown,
+      {
+        id: string;
+        name?: string;
+        url?: string;
+        events?: string[];
+        isActive?: boolean;
+      }
+    >({
+      query: ({ id, ...body }) => ({
+        url: `/tenant/webhooks/${id}`,
+        method: "PUT",
+        body,
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: "Webhooks", id }],
+    }),
+
+    deleteWebhook: builder.mutation<unknown, string>({
+      query: (id) => ({
+        url: `/tenant/webhooks/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (result, error, id) => [{ type: "Webhooks", id }],
     }),
   }),
 });
 
-export const { endpoints: remoteEndpoints } = remoteApi;
-
-// // services/api/remoteApi.ts
-// import { posApi } from "./posApi";
-
-// export const remoteApi = posApi.injectEndpoints({
-//   overrideExisting: true,
-//   endpoints: (builder) => ({
-//     // ============================================
-//     // 1. AUTH (Platform-specific only)
-//     // NOTE: login, register, verifyEmail, forgotPassword,
-//     // resetPassword, resendOtp are defined in authApi.ts
-//     // ============================================
-
-//     /*
-//         login: builder.mutation({
-//       query: (credentials) => ({
-//         url: "/auth/login",
-//         method: "POST",
-//         body: credentials,
-//       }),
-//       invalidatesTags: ["Auth"],
-//     }),
-
-//     register: builder.mutation({
-//       query: (userData) => ({
-//         url: "/auth/register",
-//         method: "POST",
-//         body: userData,
-//       }),
-//     }),
-
-//     verifyEmail: builder.mutation({
-//       query: ({ code }) => ({
-//         url: "/auth/verify-email",
-//         method: "POST",
-//         body: { code },
-//       }),
-//     }),
-
-//     resendOTP: builder.mutation({
-//       query: () => ({
-//         url: "/auth/resend-otp",
-//         method: "POST",
-//       }),
-//     }),
-
-//     forgotPassword: builder.mutation({
-//       query: ({ email }) => ({
-//         url: "/auth/forgot-password",
-//         method: "POST",
-//         body: { email },
-//       }),
-//     }),
-
-//     resetPassword: builder.mutation({
-//       query: ({ email, code, newPassword }) => ({
-//         url: "/auth/reset-password",
-//         method: "POST",
-//         body: { email, code, newPassword },
-//       }),
-//     }),
-
-//     */
-//     getMe: builder.query({
-//       query: () => "/auth/me",
-//       providesTags: ["Auth"],
-//     }),
-
-//     platformLogin: builder.mutation({
-//       query: (credentials) => ({
-//         url: "/platform/auth/login",
-//         method: "POST",
-//         body: credentials,
-//       }),
-//     }),
-
-//     getPlatformMe: builder.query({
-//       query: () => "/platform/auth/me",
-//       providesTags: ["Auth"],
-//     }),
-
-//     // ============================================
-//     // 2. PRODUCTS
-//     // ============================================
-//     getRemoteProducts: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/products/",
-//         params,
-//       }),
-//       providesTags: ["Products"],
-//     }),
-
-//     getRemoteProductById: builder.query({
-//       query: (id) => `/tenant/products/${id}`,
-//       providesTags: (result, error, id) => [{ type: "Products", id }],
-//     }),
-
-//     // getRemoteProductByBarcode: builder.query({
-//     //   query: (barcode) => `/tenant/products/barcode/${barcode}`,
-//     //   providesTags: ["Products"],
-//     // }),
-
-//     createRemoteProduct: builder.mutation({
-//       query: (product) => ({
-//         url: "/tenant/products/",
-//         method: "POST",
-//         body: product,
-//       }),
-//       invalidatesTags: ["Products", "Inventory"],
-//     }),
-
-//     updateRemoteProduct: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/products/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: (result, error, { id }) => [{ type: "Products", id }],
-//     }),
-
-//     deleteRemoteProduct: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/products/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Products"],
-//     }),
-
-//     // ============================================
-//     // 3. CATEGORIES
-//     // ============================================
-//     getRemoteCategories: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/categories/",
-//         params,
-//       }),
-//       providesTags: ["Categories"],
-//     }),
-
-//     getRemoteCategoryById: builder.query({
-//       query: (id) => `/tenant/categories/${id}`,
-//       providesTags: (result, error, id) => [{ type: "Categories", id }],
-//     }),
-
-//     createRemoteCategory: builder.mutation({
-//       query: (category) => ({
-//         url: "/tenant/categories/",
-//         method: "POST",
-//         body: category,
-//       }),
-//       invalidatesTags: ["Categories"],
-//     }),
-
-//     updateRemoteCategory: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/categories/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: (result, error, { id }) => [{ type: "Categories", id }],
-//     }),
-
-//     deleteRemoteCategory: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/categories/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Categories"],
-//     }),
-
-//     // ============================================
-//     // 4. CUSTOMERS
-//     // ============================================
-//     getRemoteCustomers: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/customers/",
-//         params,
-//       }),
-//       providesTags: ["Customers"],
-//     }),
-
-//     getRemoteCustomerById: builder.query({
-//       query: (id) => `/tenant/customers/${id}`,
-//       providesTags: (result, error, id) => [{ type: "Customers", id }],
-//     }),
-
-//     createRemoteCustomer: builder.mutation({
-//       query: (customer) => ({
-//         url: "/tenant/customers/",
-//         method: "POST",
-//         body: customer,
-//       }),
-//       invalidatesTags: ["Customers"],
-//     }),
-
-//     updateRemoteCustomer: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/customers/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: (result, error, { id }) => [{ type: "Customers", id }],
-//     }),
-
-//     deleteRemoteCustomer: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/customers/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Customers"],
-//     }),
-
-//     // ============================================
-//     // 5. ORDERS
-//     // ============================================
-//     getRemoteOrders: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/orders/",
-//         params,
-//       }),
-//       providesTags: ["Orders"],
-//     }),
-
-//     getRemoteOrderById: builder.query({
-//       query: (id) => `/tenant/orders/${id}`,
-//       providesTags: (result, error, id) => [{ type: "Orders", id }],
-//     }),
-
-//     createRemoteOrder: builder.mutation({
-//       query: (order) => ({
-//         url: "/tenant/orders/",
-//         method: "POST",
-//         body: order,
-//       }),
-//       invalidatesTags: ["Orders", "Inventory"],
-//     }),
-
-//     deleteRemoteOrder: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/orders/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Orders"],
-//     }),
-
-//     updateOrderStatus: builder.mutation({
-//       query: ({ id, status }) => ({
-//         url: `/tenant/orders/${id}/status`,
-//         method: "PATCH",
-//         body: { status },
-//       }),
-//       invalidatesTags: (result, error, { id }) => [{ type: "Orders", id }],
-//     }),
-
-//     // ============================================
-//     // 6. SESSIONS
-//     // ============================================
-//     getRemoteSessions: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/sessions/",
-//         params,
-//       }),
-//       providesTags: ["Sessions"],
-//     }),
-
-//     createRemoteSession: builder.mutation({
-//       query: (body) => ({
-//         url: "/tenant/sessions/open",
-//         method: "POST",
-//         body,
-//       }),
-//       invalidatesTags: ["Sessions"],
-//     }),
-
-//     closeRemoteSession: builder.mutation({
-//       query: ({ id, ...data }) => ({
-//         url: `/tenant/sessions/${id}/close`,
-//         method: "POST",
-//         body: data,
-//       }),
-//       invalidatesTags: ["Sessions"],
-//     }),
-
-//     getRemoteSessionById: builder.query({
-//       query: (id) => `/tenant/sessions/${id}`,
-//       providesTags: (result, error, id) => [{ type: "Sessions", id }],
-//     }),
-
-//     getActiveSession: builder.query({
-//       query: ({ userId, storeId }) => ({
-//         url: `/tenant/sessions/active/${userId}`,
-//         params: { storeId },
-//       }),
-//       providesTags: ["Sessions"],
-//     }),
-
-//     openSession: builder.mutation({
-//       query: (data) => ({
-//         url: "/tenant/sessions/open",
-//         method: "POST",
-//         body: data,
-//       }),
-//       invalidatesTags: ["Sessions"],
-//     }),
-
-//     closeSession: builder.mutation({
-//       query: ({ id, ...data }) => ({
-//         url: `/tenant/sessions/${id}/close`,
-//         method: "POST",
-//         body: data,
-//       }),
-//       invalidatesTags: ["Sessions"],
-//     }),
-
-//     // ============================================
-//     // 7. INVENTORY
-//     // ============================================
-//     getRemoteInventory: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/inventory/",
-//         params,
-//       }),
-//       providesTags: ["Inventory"],
-//     }),
-
-//     getInventoryMovements: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/inventory/movements/",
-//         params,
-//       }),
-//       providesTags: ["Inventory"],
-//     }),
-
-//     createInventoryMovement: builder.mutation({
-//       query: (movement) => ({
-//         url: "/tenant/inventory/movements/",
-//         method: "POST",
-//         body: movement,
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     getInventoryCounts: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/inventory/counts/",
-//         params,
-//       }),
-//       providesTags: ["Inventory"],
-//     }),
-
-//     createInventoryCount: builder.mutation({
-//       query: (count) => ({
-//         url: "/tenant/inventory/counts/",
-//         method: "POST",
-//         body: count,
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     // ============================================
-//     // 8. STORES
-//     // ============================================
-//     getRemoteStores: builder.query({
-//       query: () => "/tenant/stores/",
-//       providesTags: ["Stores"],
-//     }),
-
-//     getRemoteStoreById: builder.query({
-//       query: (id) => `/tenant/stores/${id}`,
-//       providesTags: (result, error, id) => [{ type: "Stores", id }],
-//     }),
-
-//     createRemoteStore: builder.mutation({
-//       query: (store) => ({
-//         url: "/tenant/stores/",
-//         method: "POST",
-//         body: store,
-//       }),
-//       invalidatesTags: ["Stores"],
-//     }),
-
-//     updateRemoteStore: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/stores/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: (result, error, { id }) => [{ type: "Stores", id }],
-//     }),
-
-//     deleteRemoteStore: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/stores/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Stores"],
-//     }),
-
-//     // ============================================
-//     // 9. STAFF
-//     // ============================================
-//     getRemoteStaff: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/staff/",
-//         params,
-//       }),
-//       providesTags: ["Staff"],
-//     }),
-
-//     getRemoteStaffById: builder.query({
-//       query: (id) => `/tenant/staff/${id}`,
-//       providesTags: (result, error, id) => [{ type: "Staff", id }],
-//     }),
-
-//     createRemoteStaff: builder.mutation({
-//       query: (staff) => ({
-//         url: "/tenant/staff/",
-//         method: "POST",
-//         body: staff,
-//       }),
-//       invalidatesTags: ["Staff"],
-//     }),
-
-//     updateRemoteStaff: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/staff/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: (result, error, { id }) => [{ type: "Staff", id }],
-//     }),
-
-//     deleteRemoteStaff: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/staff/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Staff"],
-//     }),
-
-//     // ============================================
-//     // 10. PAYMENTS
-//     // ============================================
-//     getPayments: builder.query({
-//       query: () => "/tenant/payments/",
-//       providesTags: ["Orders"],
-//     }),
-
-//     createPayment: builder.mutation({
-//       query: (payment) => ({
-//         url: "/tenant/payments/",
-//         method: "POST",
-//         body: payment,
-//       }),
-//       invalidatesTags: ["Orders"],
-//     }),
-
-//     updatePayment: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/payments/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: ["Orders"],
-//     }),
-
-//     deletePayment: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/payments/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Orders"],
-//     }),
-
-//     // ============================================
-//     // 11. RETURNS
-//     // ============================================
-//     getReturns: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/returns/",
-//         params,
-//       }),
-//       providesTags: ["Orders"],
-//     }),
-
-//     createReturn: builder.mutation({
-//       query: (returnData) => ({
-//         url: "/tenant/returns/",
-//         method: "POST",
-//         body: returnData,
-//       }),
-//       invalidatesTags: ["Orders", "Inventory"],
-//     }),
-
-//     deleteReturn: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/returns/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Orders"],
-//     }),
-
-//     // ============================================
-//     // 12. PURCHASE ORDERS
-//     // ============================================
-//     getPurchaseOrders: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/purchase-orders/",
-//         params,
-//       }),
-//       providesTags: ["Inventory"],
-//     }),
-
-//     createPurchaseOrder: builder.mutation({
-//       query: (purchaseOrder) => ({
-//         url: "/tenant/purchase-orders/",
-//         method: "POST",
-//         body: purchaseOrder,
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     updatePurchaseOrder: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/purchase-orders/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     deletePurchaseOrder: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/purchase-orders/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     receivePurchaseOrder: builder.mutation({
-//       query: ({ id, storeId }) => ({
-//         url: `/tenant/purchase-orders/${id}/receive`,
-//         method: "POST",
-//         body: { storeId },
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     // ============================================
-//     // 13. STOCK TRANSFERS
-//     // ============================================
-//     getStockTransfers: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/stock-transfers/",
-//         params,
-//       }),
-//       providesTags: ["Inventory"],
-//     }),
-
-//     createStockTransfer: builder.mutation({
-//       query: (transfer) => ({
-//         url: "/tenant/stock-transfers/",
-//         method: "POST",
-//         body: transfer,
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     deleteStockTransfer: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/stock-transfers/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     completeStockTransfer: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/stock-transfers/${id}/complete`,
-//         method: "POST",
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     // ============================================
-//     // 14. SUPPLIERS
-//     // ============================================
-//     getSuppliers: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/suppliers/",
-//         params,
-//       }),
-//       providesTags: ["Inventory"],
-//     }),
-
-//     createSupplier: builder.mutation({
-//       query: (supplier) => ({
-//         url: "/tenant/suppliers/",
-//         method: "POST",
-//         body: supplier,
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     updateSupplier: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/suppliers/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     deleteSupplier: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/suppliers/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Inventory"],
-//     }),
-
-//     // ============================================
-//     // 15. PROMOTIONS
-//     // ============================================
-//     getPromotions: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/promotions/",
-//         params,
-//       }),
-//       providesTags: ["Products"],
-//     }),
-
-//     createPromotion: builder.mutation({
-//       query: (promotion) => ({
-//         url: "/tenant/promotions/",
-//         method: "POST",
-//         body: promotion,
-//       }),
-//       invalidatesTags: ["Products"],
-//     }),
-
-//     updatePromotion: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/promotions/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: ["Products"],
-//     }),
-
-//     deletePromotion: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/promotions/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Products"],
-//     }),
-
-//     // ============================================
-//     // 16. STORE SETTINGS
-//     // ============================================
-//     getStoreSettings: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/store-settings/",
-//         params,
-//       }),
-//       providesTags: ["Stores"],
-//     }),
-
-//     createStoreSetting: builder.mutation({
-//       query: (setting) => ({
-//         url: "/tenant/store-settings/",
-//         method: "POST",
-//         body: setting,
-//       }),
-//       invalidatesTags: ["Stores"],
-//     }),
-
-//     deleteStoreSetting: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/store-settings/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Stores"],
-//     }),
-
-//     // ============================================
-//     // 17. NOTIFICATIONS
-//     // ============================================
-//     getNotifications: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/notifications/",
-//         params,
-//       }),
-//       providesTags: ["Staff"],
-//     }),
-
-//     getUnreadCount: builder.query({
-//       query: () => "/tenant/notifications/unread-count",
-//       providesTags: ["Staff"],
-//     }),
-
-//     markAllRead: builder.mutation({
-//       query: () => ({
-//         url: "/tenant/notifications/read-all",
-//         method: "PATCH",
-//       }),
-//       invalidatesTags: ["Staff"],
-//     }),
-
-//     markNotificationRead: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/notifications/${id}/read`,
-//         method: "PATCH",
-//       }),
-//       invalidatesTags: ["Staff"],
-//     }),
-
-//     deleteNotification: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/notifications/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Staff"],
-//     }),
-
-//     // ============================================
-//     // 18. TAX RATES
-//     // ============================================
-//     getTaxRates: builder.query({
-//       query: (params) => ({
-//         url: "/tenant/tax-rates/",
-//         params,
-//       }),
-//       providesTags: ["Products"],
-//     }),
-
-//     createTaxRate: builder.mutation({
-//       query: (taxRate) => ({
-//         url: "/tenant/tax-rates/",
-//         method: "POST",
-//         body: taxRate,
-//       }),
-//       invalidatesTags: ["Products"],
-//     }),
-
-//     updateTaxRate: builder.mutation({
-//       query: ({ id, ...patch }) => ({
-//         url: `/tenant/tax-rates/${id}`,
-//         method: "PUT",
-//         body: patch,
-//       }),
-//       invalidatesTags: ["Products"],
-//     }),
-
-//     deleteTaxRate: builder.mutation({
-//       query: (id) => ({
-//         url: `/tenant/tax-rates/${id}`,
-//         method: "DELETE",
-//       }),
-//       invalidatesTags: ["Products"],
-//     }),
-//   }),
-// });
-
-// export const { endpoints: remoteEndpoints } = remoteApi;
+// ================================================================
+// Export all hooks
+// ================================================================
+
+export const {
+  // Auth
+  useRegisterMutation,
+  useLoginMutation,
+  useVerifyEmailMutation,
+  useResendOtpMutation,
+  useForgotPasswordMutation,
+  useResetPasswordMutation,
+  useGetMeQuery,
+  useGoogleAuthQuery,
+  useGoogleAuthCallbackQuery,
+  usePlatformLoginMutation,
+  usePlatformGetMeQuery,
+
+  // Sync
+  useGetSyncOrdersQuery,
+  useGetSyncProductsQuery,
+  useGetSyncCustomersQuery,
+  useGetSyncInventoryQuery,
+
+  // Dashboard
+  useGetDashboardStatsQuery,
+  useGetDashboardRevenueQuery,
+  useGetDashboardTopProductsQuery,
+  useGetPlatformDashboardStatsQuery,
+  useGetPlatformDashboardRevenueQuery,
+  useGetPlatformDashboardTopProductsQuery,
+
+  // Platform Admin
+  useGetPlatformApiKeysQuery,
+  useCreatePlatformApiKeyMutation,
+  useDeletePlatformApiKeyMutation,
+  useGetPlatformTenantsQuery,
+  useCreatePlatformTenantMutation,
+  useGetPlatformTenantByIdQuery,
+  useUpdatePlatformTenantMutation,
+  useDeletePlatformTenantMutation,
+  useAssignSubscriptionMutation,
+  useGetPlatformAuditLogsQuery,
+  useCreatePlatformAuditLogMutation,
+  useGetPlatformAuditLogByIdQuery,
+  useGetPlatformStoreSettingsQuery,
+  useCreatePlatformStoreSettingMutation,
+  useGetPlatformStoreSettingByIdQuery,
+  useDeletePlatformStoreSettingMutation,
+  useGetPlatformAccountsQuery,
+  useCreatePlatformAccountMutation,
+  useGetPlatformAccountByIdQuery,
+  useUpdatePlatformAccountMutation,
+  useDeletePlatformAccountMutation,
+  useGetPlatformJournalEntriesQuery,
+  useCreatePlatformJournalEntryMutation,
+  useGetPlatformJournalEntryByIdQuery,
+  useDeletePlatformJournalEntryMutation,
+  usePostPlatformJournalEntryMutation,
+  useGetTrialBalanceQuery,
+
+  // Tenant
+  useGetTenantProfileQuery,
+  useUpdateTenantProfileMutation,
+
+  // Products
+  useGetRemoteProductsQuery,
+  useGetRemoteProductByIdQuery,
+  useGetRemoteProductByBarcodeQuery,
+  useCreateRemoteProductMutation,
+  useUpdateRemoteProductMutation,
+  useDeleteRemoteProductMutation,
+
+  // Categories
+  useGetRemoteCategoriesQuery,
+  useGetRemoteCategoryByIdQuery,
+  useCreateRemoteCategoryMutation,
+  useUpdateRemoteCategoryMutation,
+  useDeleteRemoteCategoryMutation,
+
+  // Customers
+  useGetRemoteCustomersQuery,
+  useGetRemoteCustomerByIdQuery,
+  useCreateRemoteCustomerMutation,
+  useUpdateRemoteCustomerMutation,
+  useDeleteRemoteCustomerMutation,
+
+  // Stores
+  useGetRemoteStoresQuery,
+  useGetRemoteStoreByIdQuery,
+  useCreateRemoteStoreMutation,
+  useUpdateRemoteStoreMutation,
+  useDeleteRemoteStoreMutation,
+
+  // Sessions
+  useGetRemoteSessionsQuery,
+  useGetRemoteActiveSessionQuery,
+  useOpenRemoteSessionMutation,
+  useCloseRemoteSessionMutation,
+
+  // Orders
+  useGetRemoteOrdersQuery,
+  useGetRemoteOrderByIdQuery,
+  useCreateRemoteOrderMutation,
+  useDeleteRemoteOrderMutation,
+  useCompleteRemoteOrderMutation,
+  useUpdateRemoteOrderStatusMutation,
+
+  // Inventory
+  useGetRemoteInventoryQuery,
+
+  // Inventory Movements
+  useGetRemoteInventoryMovementsQuery,
+  useCreateRemoteInventoryMovementMutation,
+
+  // Inventory Counts
+  useGetRemoteInventoryCountsQuery,
+  useCreateRemoteInventoryCountMutation,
+
+  // Staff
+  useGetRemoteStaffQuery,
+  useGetRemoteStaffByIdQuery,
+  useCreateRemoteStaffMutation,
+  useUpdateRemoteStaffMutation,
+  useDeleteRemoteStaffMutation,
+
+  // Suppliers
+  useGetRemoteSuppliersQuery,
+  useGetRemoteSupplierByIdQuery,
+  useCreateRemoteSupplierMutation,
+  useUpdateRemoteSupplierMutation,
+  useDeleteRemoteSupplierMutation,
+
+  // Brands
+  useGetRemoteBrandsQuery,
+  useGetRemoteBrandByIdQuery,
+  useCreateRemoteBrandMutation,
+  useUpdateRemoteBrandMutation,
+  useDeleteRemoteBrandMutation,
+
+  // Price History
+  useGetRemotePriceHistoryQuery,
+  useCreateRemotePriceHistoryMutation,
+
+  // Product Variants
+  useGetRemoteProductVariantsQuery,
+  useCreateRemoteProductVariantMutation,
+  useUpdateRemoteProductVariantMutation,
+  useDeleteRemoteProductVariantMutation,
+
+  // Store-specific
+  useGetStoreProductsQuery,
+  useGetStoreProductQuery,
+  useGetStoreCategoriesQuery,
+  useGetStoreOrdersQuery,
+  useGetStoreCustomersQuery,
+  useGetStoreBrandsQuery,
+  useGetStoreSuppliersQuery,
+
+  // Payments
+  useGetPaymentsQuery,
+  useCreatePaymentMutation,
+  useGetPaymentByIdQuery,
+  useUpdatePaymentMutation,
+  useDeletePaymentMutation,
+
+  // Returns
+  useGetReturnsQuery,
+  useCreateReturnMutation,
+  useGetReturnByIdQuery,
+  useDeleteReturnMutation,
+
+  // Purchase Orders
+  useGetPurchaseOrdersQuery,
+  useCreatePurchaseOrderMutation,
+  useGetPurchaseOrderByIdQuery,
+  useUpdatePurchaseOrderMutation,
+  useDeletePurchaseOrderMutation,
+  useReceivePurchaseOrderMutation,
+
+  // Stock Transfers
+  useGetStockTransfersQuery,
+  useCreateStockTransferMutation,
+  useGetStockTransferByIdQuery,
+  useDeleteStockTransferMutation,
+  useCompleteStockTransferMutation,
+
+  // Promotions
+  useGetPromotionsQuery,
+  useCreatePromotionMutation,
+  useGetPromotionByIdQuery,
+  useUpdatePromotionMutation,
+  useDeletePromotionMutation,
+
+  // Store Settings (tenant)
+  useGetTenantStoreSettingsQuery,
+  useCreateTenantStoreSettingMutation,
+  useGetTenantStoreSettingByIdQuery,
+  useDeleteTenantStoreSettingMutation,
+
+  // Notifications
+  useGetNotificationsQuery,
+  useCreateNotificationMutation,
+  useGetUnreadCountQuery,
+  useGetNotificationByIdQuery,
+  useDeleteNotificationMutation,
+  useMarkAllNotificationsReadMutation,
+  useMarkNotificationReadMutation,
+
+  // Tax Rates
+  useGetTaxRatesQuery,
+  useCreateTaxRateMutation,
+  useGetTaxRateByIdQuery,
+  useUpdateTaxRateMutation,
+  useDeleteTaxRateMutation,
+
+  // Expenses
+  useGetExpensesQuery,
+  useCreateExpenseMutation,
+  useGetExpenseByIdQuery,
+  useUpdateExpenseMutation,
+  useDeleteExpenseMutation,
+
+  // Cash Registers
+  useGetCashRegistersQuery,
+  useCreateCashRegisterMutation,
+  useGetCashRegisterByIdQuery,
+  useUpdateCashRegisterMutation,
+  useDeleteCashRegisterMutation,
+
+  // Gift Cards
+  useGetGiftCardsQuery,
+  useCreateGiftCardMutation,
+  useLookupGiftCardQuery,
+  useReloadGiftCardMutation,
+  useUpdateGiftCardStatusMutation,
+
+  // Wallets
+  useGetWalletsQuery,
+  useGetWalletByCustomerQuery,
+  useCreateWalletTransactionMutation,
+
+  // Supplier Payments
+  useGetSupplierPaymentsQuery,
+  useCreateSupplierPaymentMutation,
+  useGetSupplierPaymentByIdQuery,
+
+  // Tenant API Keys
+  useGetTenantApiKeysQuery,
+  useCreateTenantApiKeyMutation,
+  useDeleteTenantApiKeyMutation,
+
+  // Webhooks
+  useGetWebhooksQuery,
+  useCreateWebhookMutation,
+  useGetWebhookByIdQuery,
+  useUpdateWebhookMutation,
+  useDeleteWebhookMutation,
+} = remoteApi;

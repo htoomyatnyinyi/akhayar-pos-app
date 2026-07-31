@@ -1,7 +1,3 @@
-// ============================================
-// FILE: app/(main)/sync/index.tsx
-// ============================================
-
 import {
   ActionButton,
   Card,
@@ -39,6 +35,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { clearAllOutboxItems } from "@/services/offline/repository";
 import { useDispatch } from "react-redux";
 
 export default function SyncScreen() {
@@ -132,6 +129,7 @@ export default function SyncScreen() {
               Alert.alert("Success", "Offline database cleared.");
               loadDetails();
               loadDbSize();
+              router.replace("/login");
             } catch (error) {
               Alert.alert("Error", "Failed to clear database.");
             }
@@ -151,11 +149,17 @@ export default function SyncScreen() {
           text: "Sign Out",
           style: "destructive",
           onPress: async () => {
-            await clearOfflineDatabase();
-            await resetDatabaseCompletely();
-            dispatch(resetOfflineState());
-
-            dispatch(logout());
+            try {
+              await clearOfflineDatabase();
+              // Reset the database connection completely
+              await resetDatabaseCompletely();
+              // Reset Redux state
+              dispatch(resetOfflineState());
+              // Logout (clears auth and navigates to login)
+              dispatch(logout());
+            } catch (error) {
+              Alert.alert("Sign Out Failed", "Could not clear data.");
+            }
           },
         },
       ],
@@ -412,6 +416,17 @@ export default function SyncScreen() {
             disabled={isSyncing || !isOnline}
           />
 
+          <ActionButton
+            title="Clear All Outbox"
+            icon="delete-sweep"
+            accent="rose"
+            onPress={async () => {
+              const count = await clearAllOutboxItems();
+              Alert.alert("Cleared", `${count} items removed from outbox`);
+              refresh();
+            }}
+          />
+
           {failedCount > 0 && (
             <ActionButton
               title="Retry All"
@@ -455,12 +470,6 @@ export default function SyncScreen() {
           <Text className="text-slate-600 text-xs">
             Offline Mode v2.0 • Data stored locally
           </Text>
-          <TouchableOpacity
-            onPress={handleSignOut}
-            className="mt-4 py-2 px-4 rounded-lg border border-rose-500"
-          >
-            <Text className="text-rose-500 text-center">Clear Database</Text>
-          </TouchableOpacity>
           {isLoadingDetails && (
             <ActivityIndicator size="small" color="#38bdf8" className="mt-2" />
           )}
@@ -517,192 +526,3 @@ export default function SyncScreen() {
     </Screen>
   );
 }
-
-// import {
-//   ActionButton,
-//   Card,
-//   Divider,
-//   Header,
-//   MetricCard,
-//   Pill,
-//   RowItem,
-//   Screen,
-//   SectionTitle,
-//   StatRow,
-// } from "@/components/app-ui";
-// import { useSync } from "@/services/offline/syncManager";
-// import React from "react";
-// import { ScrollView, Text, View } from "react-native";
-// // import { userLoggedOut } from "@/services/slices/userSessionSlice";
-// import { logout } from "@/services/features/auth/authSlice";
-// import { resetOfflineState } from "@/services/features/offline/offlineSlice";
-// import { clearOfflineDatabase } from "@/services/offline/db";
-// import { useDispatch } from "react-redux";
-
-// export default function SyncScreen() {
-//   const dispatch = useDispatch();
-
-//   const {
-//     isOnline,
-//     isSyncing,
-//     isLoading,
-//     syncStatus,
-//     syncError,
-//     queueCount,
-//     failedCount,
-//     syncProgress,
-//     lastSyncAt,
-//     sync,
-//     retry,
-//     refresh,
-//   } = useSync();
-
-//   const handleSyncNow = () => {
-//     sync({ force: true });
-//   };
-
-//   const handleRetry = () => {
-//     retry();
-//   };
-
-//   const handleSignOut = async () => {
-//     // Clear offline database to prevent other users from accessing the data
-//     await clearOfflineDatabase();
-//     // Reset offline Redux state
-//     dispatch(resetOfflineState());
-//     // Logout (clears auth and current store from Redux, triggering persist update)
-//     dispatch(logout());
-//   };
-
-//   return (
-//     <Screen padded={false}>
-//       <View className="px-5 pt-6 pb-4">
-//         <Header
-//           eyebrow="System Status"
-//           title="Synchronization"
-//           subtitle="Manage offline data and connectivity"
-//           right={
-//             <View className="mt-2">
-//               <Pill
-//                 label={isOnline ? "ONLINE" : "OFFLINE"}
-//                 tone={isOnline ? "emerald" : "rose"}
-//               />
-//               <View className="flex-row items-center gap-3 mt-3">
-//                 <View className="flex-1">
-//                   <ActionButton
-//                     title="Sign out"
-//                     icon="logout"
-//                     accent="rose"
-//                     onPress={handleSignOut}
-//                   />
-//                 </View>
-//               </View>
-//             </View>
-//           }
-//         />
-//       </View>
-
-//       <ScrollView
-//         className="flex-1 px-5"
-//         contentContainerStyle={{ paddingBottom: 40 }}
-//       >
-//         <SectionTitle title="Overview" />
-
-//         <View className="flex-row gap-3 mb-5 mt-2">
-//           <MetricCard
-//             icon="cloud-upload"
-//             label="Pending"
-//             value={queueCount?.toString() ?? "0"}
-//             tone="sky"
-//           />
-//           <MetricCard
-//             icon="error-outline"
-//             label="Failed"
-//             value={failedCount?.toString() ?? "0"}
-//             tone={failedCount > 0 ? "rose" : "emerald"}
-//           />
-//         </View>
-
-//         <SectionTitle title="Details" action="Refresh" />
-
-//         <Card className="mb-6 mt-2">
-//           <StatRow
-//             label="Last Synced"
-//             value={
-//               lastSyncAt ? new Date(lastSyncAt).toLocaleTimeString() : "Never"
-//             }
-//           />
-//           <Divider />
-//           <StatRow
-//             label="Network Connection"
-//             value={isOnline ? "Connected" : "Disconnected"}
-//           />
-//           <Divider />
-//           <StatRow
-//             label="Current Status"
-//             value={
-//               isSyncing
-//                 ? "Syncing..."
-//                 : syncStatus === "failed"
-//                   ? "Failed"
-//                   : "Idle"
-//             }
-//           />
-
-//           {isSyncing && (
-//             <View className="mt-5">
-//               <View className="flex-row items-center justify-between mb-2">
-//                 <Text className="text-slate-300 font-semibold text-xs uppercase tracking-widest">
-//                   Progress
-//                 </Text>
-//                 <Text className="text-sky-400 font-bold text-xs">
-//                   {Math.round(syncProgress)}%
-//                 </Text>
-//               </View>
-//               <View className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-//                 <View
-//                   className="h-full bg-sky-500 rounded-full"
-//                   style={{ width: `${syncProgress}%` }}
-//                 />
-//               </View>
-//             </View>
-//           )}
-
-//           {syncError && (
-//             <View className="mt-4 p-3 bg-rose-500/10 rounded-xl border border-rose-500/20">
-//               <Text className="text-rose-400 text-sm font-medium">
-//                 {syncError}
-//               </Text>
-//             </View>
-//           )}
-//         </Card>
-
-//         <SectionTitle title="Actions" />
-
-//         <View className="flex-row gap-3 mt-2 mb-3">
-//           <ActionButton
-//             title={isSyncing ? "Syncing..." : "Sync Now"}
-//             icon="sync"
-//             accent={isOnline && !isSyncing ? "sky" : "amber"}
-//             onPress={isOnline && !isSyncing ? handleSyncNow : undefined}
-//           />
-
-//           {failedCount > 0 && (
-//             <ActionButton
-//               title="Retry Failed"
-//               icon="refresh"
-//               accent="rose"
-//               onPress={isOnline && !isSyncing ? handleRetry : undefined}
-//             />
-//           )}
-//         </View>
-
-//         <RowItem
-//           title="Refresh Statistics"
-//           subtitle="Manually update queue counts"
-//           icon="update"
-//         />
-//       </ScrollView>
-//     </Screen>
-//   );
-// }

@@ -1,7 +1,3 @@
-// ============================================
-// FILE: app/(tabs)/receipt/[id].tsx
-// ============================================
-
 import {
   ActionButton,
   Card,
@@ -285,6 +281,7 @@ function BluetoothPrinterModal({
 
 export default function ReceiptScreen() {
   const router = useRouter();
+  const { user } = useAppSelector((state) => state.auth);
   const { id } = useLocalSearchParams<{ id: string }>();
   const user = useAppSelector((state) => state.auth.user);
 

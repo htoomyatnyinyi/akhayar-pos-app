@@ -1,10 +1,6 @@
-// ============================================
-// FILE: services/offline/syncManager.ts
-// ============================================
-
 import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
-import { remoteApi } from "@/services/api/remoteApi";
+import { POS_API_URL, remoteApi } from "@/services/api/remoteApi";
 import { localApi } from "@/services/features/offline/localApi";
 import {
   incrementFailedCount,
@@ -35,6 +31,7 @@ import {
   markOutboxFailed,
   markOutboxSynced,
   retryOutboxItem,
+  upsertBrands,
   upsertCategories,
   upsertCustomers,
   upsertInventory,
@@ -43,8 +40,14 @@ import {
   upsertProductVariants,
   upsertSessions,
   upsertStores,
+  upsertStaff,
+  upsertSuppliers,
+  markOrderSyncFailed,
+  markOutboxDead,
 } from "./repository";
+
 import {
+  brands,
   inventory,
   inventoryCounts,
   inventoryMovements,
@@ -64,9 +67,12 @@ let syncInFlight = false;
 let unsubscribeNetwork: (() => void) | undefined;
 let syncInterval: NodeJS.Timeout | undefined;
 let syncStartTime: number = 0;
+let lastSyncTime: number = 0;
+const MIN_SYNC_INTERVAL = 30000; // 30 seconds
+let debounceTimeout: NodeJS.Timeout | undefined;
 
 // ============================================
-// 1. INITIALIZATION
+// 1. INITIALIZATION (FIXED)
 // ============================================
 
 export async function initializeOfflineSystem(
@@ -74,36 +80,35 @@ export async function initializeOfflineSystem(
   getState: () => RootState,
 ) {
   try {
-    // 1. Migrate database
     await runMigrations();
     dispatch(setInitialized(true));
 
-    // 2. Get initial queue count
     const count = await getQueuedCount();
     dispatch(setQueuedCount(count));
 
     const failedCount = await getFailedCount();
     dispatch(setFailedCount(failedCount));
 
-    // 3. Check online status
     const online = await isOnline();
     dispatch(setOnline(online));
 
-    // 4. Subscribe to network changes
     unsubscribeNetwork?.();
     unsubscribeNetwork = subscribeToOnlineStatus((nextOnline) => {
       dispatch(setOnline(nextOnline));
       if (nextOnline) {
-        void syncNow(dispatch, getState);
+        // Debounce: avoid multiple syncs on rapid network changes
+        if (debounceTimeout) clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+          void syncNow(dispatch, getState);
+        }, 2000);
       }
     });
 
-    // 5. Initial sync if online
     if (online) {
       await syncNow(dispatch, getState);
     }
 
-    // 6. Set up periodic sync (every 5 minutes)
+    // ✅ Fix: Use the global syncInterval – do NOT redeclare it
     if (syncInterval) {
       clearInterval(syncInterval);
     }
@@ -123,7 +128,7 @@ export async function initializeOfflineSystem(
 }
 
 // ============================================
-// 2. SYNC NOW (Main Sync Function)
+// 2. SYNC NOW
 // ============================================
 
 export async function syncNow(
@@ -137,22 +142,27 @@ export async function syncNow(
 ) {
   const { force = false, maxItems = 50, silent = false } = options;
 
-  // Prevent concurrent syncs
+  // Cooldown (skip if not forced)
+  const now = Date.now();
+  if (!force && now - lastSyncTime < MIN_SYNC_INTERVAL) {
+    if (!silent) console.log("⏳ Sync cooldown, skipping...");
+    return { skipped: true, message: "Cooldown active" };
+  }
+
   if (syncInFlight && !force) {
     if (!silent) console.log("⏳ Sync already in progress, skipping...");
     return { skipped: true, message: "Sync already in progress" };
   }
 
-  // Check online status
   const online = await isOnline();
   if (!online) {
     if (!silent) console.log("📶 Offline mode, skipping sync");
     return { skipped: true, message: "Offline mode" };
   }
 
-  // Start sync
   syncInFlight = true;
   syncStartTime = Date.now();
+  lastSyncTime = now;
 
   dispatch(setSyncing(true));
   dispatch(setSyncError(null as any));
@@ -165,83 +175,86 @@ export async function syncNow(
     if (!silent) console.log("🔄 Starting sync...");
     dispatch(setSyncProgress(5));
 
-    // ============================================
-    // STEP 1: PULL Products
-    // ============================================
-    if (!silent) console.log("📥 Pulling products...");
-    const productResult = await pullProducts(dispatch);
-    syncedItems += productResult.synced;
+    const state = store.getState();
+    const tenantId = state.auth?.user?.tenantId;
+    if (!tenantId) {
+      throw new Error("No tenantId found in Redux state. Cannot sync.");
+    }
+
+    // --- PULL Stores ---
+    // if (!silent) console.log("📥 Pulling stores...");
+    const storeResult = await pullStores(dispatch, tenantId);
+    syncedItems += storeResult.synced;
+    dispatch(setSyncProgress(10));
+    // if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
+
+    // --- PULL Brands ---
+    // if (!silent) console.log("📥 Pulling brands...");
+    const brandResult = await pullBrands(dispatch, tenantId);
+    syncedItems += brandResult.synced;
     dispatch(setSyncProgress(15));
-    if (!silent) console.log(`✅ Synced ${productResult.synced} products`);
+    // if (!silent) console.log(`✅ Synced ${brandResult.synced} brands`);
 
-    // ============================================
-    // STEP 2: PULL Product Variants
-    // ============================================
-    if (!silent) console.log("📥 Pulling product variants...");
-    const variantResult = await pullProductVariants(dispatch);
-    syncedItems += variantResult.synced;
+    // --- PULL Categories ---
+    // if (!silent) console.log("📥 Pulling categories...");
+    const categoryResult = await pullCategories(dispatch, tenantId);
+    syncedItems += categoryResult.synced;
+    dispatch(setSyncProgress(20));
+    // if (!silent) console.log(`✅ Synced ${categoryResult.synced} categories`);
+
+    // --- PULL Customers ---
+    // if (!silent) console.log("📥 Pulling customers...");
+    const customerResult = await pullCustomers(dispatch, tenantId);
+    syncedItems += customerResult.synced;
     dispatch(setSyncProgress(25));
-    if (!silent) console.log(`✅ Synced ${variantResult.synced} variants`);
+    // if (!silent) console.log(`✅ Synced ${customerResult.synced} customers`);
 
-    // ============================================
-    // STEP 3: PULL Inventory
-    // ============================================
-    if (!silent) console.log("📥 Pulling inventory...");
-    const inventoryResult = await pullInventory(dispatch);
+    // --- PULL Staff --- (NEW)
+    // if (!silent) console.log("📥 Pulling staff...");
+    const staffResult = await pullStaff(dispatch, tenantId);
+    syncedItems += staffResult.synced;
+    dispatch(setSyncProgress(30));
+    // if (!silent) console.log(`✅ Synced ${staffResult.synced} staff`);
+
+    // --- PULL Suppliers --- (NEW)
+    // if (!silent) console.log("📥 Pulling suppliers...");
+    const supplierResult = await pullSuppliers(dispatch, tenantId);
+    syncedItems += supplierResult.synced;
+    dispatch(setSyncProgress(33));
+    // if (!silent) console.log(`✅ Synced ${supplierResult.synced} suppliers`);
+
+    // --- PULL Products --- (includes variants)
+    // if (!silent) console.log("📥 Pulling products...");
+    const productResult = await pullProducts(dispatch, tenantId);
+    syncedItems += productResult.synced;
+    dispatch(setSyncProgress(45));
+    if (!silent)
+      console.log(`✅ Synced ${productResult.synced} products (with variants)`);
+
+    // --- PULL Inventory ---
+    // if (!silent) console.log("📥 Pulling inventory...");
+    const inventoryResult = await pullInventory(dispatch, tenantId);
     syncedItems += inventoryResult.synced;
-    dispatch(setSyncProgress(35));
+    dispatch(setSyncProgress(55));
     if (!silent)
       console.log(`✅ Synced ${inventoryResult.synced} inventory items`);
 
-    // ============================================
-    // STEP 4: PULL Categories
-    // ============================================
-    if (!silent) console.log("📥 Pulling categories...");
-    const categoryResult = await pullCategories(dispatch);
-    syncedItems += categoryResult.synced;
-    dispatch(setSyncProgress(40));
-    if (!silent) console.log(`✅ Synced ${categoryResult.synced} categories`);
-
-    // ============================================
-    // STEP 5: PULL Customers
-    // ============================================
-    if (!silent) console.log("📥 Pulling customers...");
-    const customerResult = await pullCustomers(dispatch);
-    syncedItems += customerResult.synced;
-    dispatch(setSyncProgress(50));
-    if (!silent) console.log(`✅ Synced ${customerResult.synced} customers`);
-
-    // ============================================
-    // STEP 6: PULL Stores
-    // ============================================
-    if (!silent) console.log("📥 Pulling stores...");
-    const storeResult = await pullStores(dispatch);
-    syncedItems += storeResult.synced;
-    dispatch(setSyncProgress(55));
-    if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
-
-    // ============================================
-    // STEP 7: PULL Sessions
-    // ============================================
-    if (!silent) console.log("📥 Pulling sessions...");
-    const sessionResult = await pullSessions(dispatch);
+    // --- PULL Sessions ---
+    // if (!silent) console.log("📥 Pulling sessions...");
+    const sessionResult = await pullSessions(dispatch, tenantId);
     syncedItems += sessionResult.synced;
-    dispatch(setSyncProgress(60));
-    if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
-
-    // ============================================
-    // STEP 8: PULL Price History
-    // ============================================
-    if (!silent) console.log("📥 Pulling price history...");
-    const priceHistoryResult = await pullPriceHistory(dispatch);
-    syncedItems += priceHistoryResult.synced;
     dispatch(setSyncProgress(65));
+    // if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
+
+    // --- PULL Price History ---
+    // if (!silent) console.log("📥 Pulling price history...");
+    const priceHistoryResult = await pullPriceHistory(dispatch, tenantId);
+    syncedItems += priceHistoryResult.synced;
+    dispatch(setSyncProgress(70));
     if (!silent)
       console.log(`✅ Synced ${priceHistoryResult.synced} price history items`);
 
-    // ============================================
-    // STEP 9: PUSH Outbox Items
-    // ============================================
+    // --- PUSH Outbox ---
     if (!silent) console.log("📤 Pushing outbox items...");
     const pushResult = await pushOutboxItems(dispatch, maxItems);
     syncedItems += pushResult.synced;
@@ -252,18 +265,12 @@ export async function syncNow(
         `✅ Pushed ${pushResult.synced} items, ${pushResult.failed} failed`,
       );
 
-    // ============================================
-    // STEP 10: Update Queue Counts
-    // ============================================
     const remainingCount = await getQueuedCount();
     dispatch(setQueuedCount(remainingCount));
 
     const totalFailed = await getFailedCount();
     dispatch(setFailedCount(totalFailed));
 
-    // ============================================
-    // STEP 11: Invalidate RTK Query Cache
-    // ============================================
     store.dispatch(
       localApi.util.invalidateTags([
         "LocalProducts",
@@ -272,6 +279,9 @@ export async function syncNow(
         "LocalCategories",
         "LocalCustomers",
         "LocalStores",
+        "LocalBrands",
+        "LocalStaff",
+        "LocalSuppliers",
         "LocalSessions",
         "LocalOrders",
         "LocalInventoryMovements",
@@ -280,9 +290,6 @@ export async function syncNow(
       ]),
     );
 
-    // ============================================
-    // STEP 12: Update Stats & Complete
-    // ============================================
     const duration = Date.now() - syncStartTime;
     dispatch(setSyncDuration(duration));
     dispatch(incrementSyncedCount(syncedItems));
@@ -300,6 +307,7 @@ export async function syncNow(
       if (!silent) console.log("✅ Sync completed successfully");
     }
 
+    console.log("=========== END ============");
     dispatch(setSyncProgress(100));
 
     return {
@@ -322,232 +330,66 @@ export async function syncNow(
 }
 
 // ============================================
-// 3. PULL FUNCTIONS
+// PULL FUNCTIONS
 // ============================================
 
-async function pullProducts(dispatch: AppDispatch) {
+async function pullBrands(dispatch: AppDispatch, tenantId: string) {
   try {
     const state = store.getState();
     const token = state.auth?.user?.token;
-
     if (!token) {
-      console.warn("⚠️ No auth token found, skipping product pull");
+      console.warn("⚠️ No auth token found, skipping brand pull");
       return { synced: 0 };
     }
-
+    if (!remoteApi.endpoints.getRemoteBrands) {
+      console.warn("⚠️ getRemoteBrands endpoint not available");
+      return { synced: 0 };
+    }
     const { data, error } = await store.dispatch(
-      remoteApi.endpoints.getRemoteProducts.initiate(undefined, {
+      remoteApi.endpoints.getRemoteBrands.initiate(undefined, {
         forceRefetch: true,
       }),
     );
-
     if (error) {
-      console.error("❌ Product pull failed:", error);
-      return { synced: 0 };
-    }
-
-    const productsData = data?.products || data?.data || data || [];
-
-    if (productsData.length > 0) {
-      await upsertProducts(productsData);
-      return { synced: productsData.length };
-    }
-
-    return { synced: 0 };
-  } catch (error) {
-    console.error("❌ Failed to pull products:", error);
-    return { synced: 0 };
-  }
-}
-
-async function pullProductVariants(dispatch: AppDispatch) {
-  try {
-    const state = store.getState();
-    const token = state.auth?.user?.token;
-
-    if (!token) {
-      console.warn("⚠️ No auth token found, skipping variant pull");
-      return { synced: 0 };
-    }
-
-    // Check if endpoint exists before calling
-    if (!remoteApi.endpoints.getRemoteProductVariants) {
-      console.warn("⚠️ getRemoteProductVariants endpoint not available");
-      return { synced: 0 };
-    }
-
-    const { data, error } = await store.dispatch(
-      remoteApi.endpoints.getRemoteProductVariants.initiate(undefined, {
-        forceRefetch: true,
-      }),
-    );
-
-    if (error) {
-      // Handle 404 gracefully
-      if (error?.status === 404) {
-        console.log("ℹ️ Variant endpoint not available yet");
+      if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
         return { synced: 0 };
-      }
-      console.error("❌ Variant pull failed:", error);
+      console.error("❌ Brand pull failed:", error);
       return { synced: 0 };
     }
-
-    const variants = data?.variants || data?.data || data || [];
-
-    if (variants.length > 0) {
-      await upsertProductVariants(variants);
-      return { synced: variants.length };
+    const brandsData = data?.brands || data?.data || data || [];
+    if (brandsData.length > 0) {
+      await upsertBrands(brandsData, tenantId);
+      return { synced: brandsData.length };
     }
-
     return { synced: 0 };
   } catch (error) {
-    console.error("❌ Failed to pull variants:", error);
+    console.error("❌ Failed to pull brands:", error);
     return { synced: 0 };
   }
 }
 
-async function pullInventory(dispatch: AppDispatch) {
+async function pullStores(dispatch: AppDispatch, tenantId: string) {
   try {
     const state = store.getState();
     const token = state.auth?.user?.token;
-
-    if (!token) {
-      console.warn("⚠️ No auth token found, skipping inventory pull");
-      return { synced: 0 };
-    }
-
-    if (!remoteApi.endpoints.getRemoteInventory) {
-      console.warn("⚠️ getRemoteInventory endpoint not available");
-      return { synced: 0 };
-    }
-
-    const { data, error } = await store.dispatch(
-      remoteApi.endpoints.getRemoteInventory.initiate(undefined, {
-        forceRefetch: true,
-      }),
-    );
-
-    if (error) {
-      if (error?.status === 404) {
-        console.log("ℹ️ Inventory endpoint not available yet");
-        return { synced: 0 };
-      }
-      console.error("❌ Inventory pull failed:", error);
-      return { synced: 0 };
-    }
-
-    const inventoryItems = data?.inventory || data?.data || data || [];
-
-    if (inventoryItems.length > 0) {
-      await upsertInventory(inventoryItems);
-      return { synced: inventoryItems.length };
-    }
-
-    return { synced: 0 };
-  } catch (error) {
-    console.error("❌ Failed to pull inventory:", error);
-    return { synced: 0 };
-  }
-}
-
-async function pullCategories(dispatch: AppDispatch) {
-  try {
-    const state = store.getState();
-    const token = state.auth?.user?.token;
-
-    if (!token) {
-      console.warn("⚠️ No auth token found, skipping category pull");
-      return { synced: 0 };
-    }
-
-    const { data, error } = await store.dispatch(
-      remoteApi.endpoints.getRemoteCategories.initiate(undefined, {
-        forceRefetch: true,
-      }),
-    );
-
-    if (error) {
-      console.error("❌ Category pull failed:", error);
-      return { synced: 0 };
-    }
-
-    const categoriesData = data?.categories || data?.data || data || [];
-
-    if (categoriesData.length > 0) {
-      await upsertCategories(categoriesData);
-      return { synced: categoriesData.length };
-    }
-
-    return { synced: 0 };
-  } catch (error) {
-    console.error("❌ Failed to pull categories:", error);
-    return { synced: 0 };
-  }
-}
-
-async function pullCustomers(dispatch: AppDispatch) {
-  try {
-    const state = store.getState();
-    const token = state.auth?.user?.token;
-
-    if (!token) {
-      console.warn("⚠️ No auth token found, skipping customer pull");
-      return { synced: 0 };
-    }
-
-    const { data, error } = await store.dispatch(
-      remoteApi.endpoints.getRemoteCustomers.initiate(undefined, {
-        forceRefetch: true,
-      }),
-    );
-
-    if (error) {
-      console.error("❌ Customer pull failed:", error);
-      return { synced: 0 };
-    }
-
-    const customersData = data?.customers || data?.data || data || [];
-
-    if (customersData.length > 0) {
-      await upsertCustomers(customersData);
-      return { synced: customersData.length };
-    }
-
-    return { synced: 0 };
-  } catch (error) {
-    console.error("❌ Failed to pull customers:", error);
-    return { synced: 0 };
-  }
-}
-
-async function pullStores(dispatch: AppDispatch) {
-  try {
-    const state = store.getState();
-    const token = state.auth?.user?.token;
-
     if (!token) {
       console.warn("⚠️ No auth token found, skipping store pull");
       return { synced: 0 };
     }
-
     const { data, error } = await store.dispatch(
       remoteApi.endpoints.getRemoteStores.initiate(undefined, {
         forceRefetch: true,
       }),
     );
-
     if (error) {
       console.error("❌ Store pull failed:", error);
       return { synced: 0 };
     }
-
     const storesData = data?.stores || data?.data || data || [];
-
     if (storesData.length > 0) {
-      await upsertStores(storesData);
+      await upsertStores(storesData, tenantId);
       return { synced: storesData.length };
     }
-
     return { synced: 0 };
   } catch (error) {
     console.error("❌ Failed to pull stores:", error);
@@ -555,34 +397,239 @@ async function pullStores(dispatch: AppDispatch) {
   }
 }
 
-async function pullSessions(dispatch: AppDispatch) {
+async function pullCategories(dispatch: AppDispatch, tenantId: string) {
   try {
     const state = store.getState();
     const token = state.auth?.user?.token;
+    if (!token) {
+      console.warn("⚠️ No auth token found, skipping category pull");
+      return { synced: 0 };
+    }
+    const { data, error } = await store.dispatch(
+      remoteApi.endpoints.getRemoteCategories.initiate(undefined, {
+        forceRefetch: true,
+      }),
+    );
+    if (error) {
+      console.error("❌ Category pull failed:", error);
+      return { synced: 0 };
+    }
+    const categoriesData = data?.categories || data?.data || data || [];
+    if (categoriesData.length > 0) {
+      await upsertCategories(categoriesData, tenantId);
+      return { synced: categoriesData.length };
+    }
+    return { synced: 0 };
+  } catch (error) {
+    console.error("❌ Failed to pull categories:", error);
+    return { synced: 0 };
+  }
+}
 
+async function pullCustomers(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const state = store.getState();
+    const token = state.auth?.user?.token;
+    if (!token) {
+      console.warn("⚠️ No auth token found, skipping customer pull");
+      return { synced: 0 };
+    }
+    const { data, error } = await store.dispatch(
+      remoteApi.endpoints.getRemoteCustomers.initiate(undefined, {
+        forceRefetch: true,
+      }),
+    );
+    if (error) {
+      console.error("❌ Customer pull failed:", error);
+      return { synced: 0 };
+    }
+    const customersData = data?.customers || data?.data || data || [];
+    if (customersData.length > 0) {
+      await upsertCustomers(customersData, tenantId);
+      return { synced: customersData.length };
+    }
+    return { synced: 0 };
+  } catch (error) {
+    console.error("❌ Failed to pull customers:", error);
+    return { synced: 0 };
+  }
+}
+
+// ✅ NEW: Pull Staff
+async function pullStaff(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const state = store.getState();
+    const token = state.auth?.user?.token;
+    if (!token) {
+      console.warn("⚠️ No auth token found, skipping staff pull");
+      return { synced: 0 };
+    }
+    if (!remoteApi.endpoints.getRemoteStaff) {
+      console.warn("⚠️ getRemoteStaff endpoint not available");
+      return { synced: 0 };
+    }
+    const { data, error } = await store.dispatch(
+      remoteApi.endpoints.getRemoteStaff.initiate(undefined, {
+        forceRefetch: true,
+      }),
+    );
+    if (error) {
+      if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
+        return { synced: 0 };
+      console.error("❌ Staff pull failed:", error);
+      return { synced: 0 };
+    }
+    const staffData = data?.staff || data?.data || data || [];
+    if (staffData.length > 0) {
+      await upsertStaff(staffData, tenantId);
+      return { synced: staffData.length };
+    }
+    return { synced: 0 };
+  } catch (error) {
+    console.error("❌ Failed to pull staff:", error);
+    return { synced: 0 };
+  }
+}
+
+// ✅ NEW: Pull Suppliers
+async function pullSuppliers(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const state = store.getState();
+    const token = state.auth?.user?.token;
+    if (!token) {
+      console.warn("⚠️ No auth token found, skipping supplier pull");
+      return { synced: 0 };
+    }
+    if (!remoteApi.endpoints.getRemoteSuppliers) {
+      console.warn("⚠️ getRemoteSuppliers endpoint not available");
+      return { synced: 0 };
+    }
+    const { data, error } = await store.dispatch(
+      remoteApi.endpoints.getRemoteSuppliers.initiate(undefined, {
+        forceRefetch: true,
+      }),
+    );
+    if (error) {
+      if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
+        return { synced: 0 };
+      console.error("❌ Supplier pull failed:", error);
+      return { synced: 0 };
+    }
+    const suppliersData = data?.suppliers || data?.data || data || [];
+    if (suppliersData.length > 0) {
+      await upsertSuppliers(suppliersData, tenantId);
+      return { synced: suppliersData.length };
+    }
+    return { synced: 0 };
+  } catch (error) {
+    console.error("❌ Failed to pull suppliers:", error);
+    return { synced: 0 };
+  }
+}
+
+async function pullProducts(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const state = store.getState();
+    const token = state.auth?.user?.token;
+    if (!token) {
+      console.warn("⚠️ No auth token found, skipping product pull");
+      return { synced: 0 };
+    }
+    const { data, error } = await store.dispatch(
+      remoteApi.endpoints.getRemoteProducts.initiate(undefined, {
+        forceRefetch: true,
+      }),
+    );
+    if (error) {
+      console.error("❌ Product pull failed:", error);
+      return { synced: 0 };
+    }
+    const productsData = data?.products || data?.data || data || [];
+    if (productsData.length > 0) {
+      // Upsert products first
+      await upsertProducts(productsData, tenantId);
+
+      // Extract and upsert variants from product data
+      const allVariants = productsData.flatMap((p: any) => p.variants || []);
+      if (allVariants.length > 0) {
+        const variantsWithTenant = allVariants.map((v: any) => ({
+          ...v,
+          productId: v.productId || v.product_id,
+          tenantId: v.tenantId || tenantId,
+        }));
+        await upsertProductVariants(variantsWithTenant, tenantId);
+        console.log(`✅ Synced ${allVariants.length} variants from products`);
+      }
+
+      return { synced: productsData.length };
+    }
+    return { synced: 0 };
+  } catch (error) {
+    console.error("❌ Failed to pull products:", error);
+    return { synced: 0 };
+  }
+}
+
+// We no longer need a separate pullProductVariants – it's now inside pullProducts.
+// But keep it if you want to keep the code; we can remove the call from syncNow.
+
+async function pullInventory(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const state = store.getState();
+    const token = state.auth?.user?.token;
+    if (!token) {
+      console.warn("⚠️ No auth token found, skipping inventory pull");
+      return { synced: 0 };
+    }
+    if (!remoteApi.endpoints.getRemoteInventory) {
+      console.warn("⚠️ getRemoteInventory endpoint not available");
+      return { synced: 0 };
+    }
+    const { data, error } = await store.dispatch(
+      remoteApi.endpoints.getRemoteInventory.initiate(undefined, {
+        forceRefetch: true,
+      }),
+    );
+    if (error) {
+      if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
+        return { synced: 0 };
+      console.error("❌ Inventory pull failed:", error);
+      return { synced: 0 };
+    }
+    const inventoryItems = data?.inventory || data?.data || data || [];
+    if (inventoryItems.length > 0) {
+      await upsertInventory(inventoryItems, tenantId);
+      return { synced: inventoryItems.length };
+    }
+    return { synced: 0 };
+  } catch (error) {
+    console.error("❌ Failed to pull inventory:", error);
+    return { synced: 0 };
+  }
+}
+
+async function pullSessions(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const state = store.getState();
+    const token = state.auth?.user?.token;
     if (!token) {
       console.warn("⚠️ No auth token found, skipping session pull");
       return { synced: 0 };
     }
-
     const { data, error } = await store.dispatch(
       remoteApi.endpoints.getRemoteSessions.initiate(undefined, {
         forceRefetch: true,
       }),
     );
-
     if (error) {
       console.error("❌ Session pull failed:", error);
       return { synced: 0 };
     }
-
     const sessionsData = data?.sessions || data?.data || data || [];
-
     if (sessionsData.length > 0) {
-      await upsertSessions(sessionsData);
+      await upsertSessions(sessionsData, tenantId);
       return { synced: sessionsData.length };
     }
-
     return { synced: 0 };
   } catch (error) {
     console.error("❌ Failed to pull sessions:", error);
@@ -590,43 +637,34 @@ async function pullSessions(dispatch: AppDispatch) {
   }
 }
 
-async function pullPriceHistory(dispatch: AppDispatch) {
+async function pullPriceHistory(dispatch: AppDispatch, tenantId: string) {
   try {
     const state = store.getState();
     const token = state.auth?.user?.token;
-
     if (!token) {
       console.warn("⚠️ No auth token found, skipping price history pull");
       return { synced: 0 };
     }
-
     if (!remoteApi.endpoints.getRemotePriceHistory) {
       console.warn("⚠️ getRemotePriceHistory endpoint not available");
       return { synced: 0 };
     }
-
     const { data, error } = await store.dispatch(
       remoteApi.endpoints.getRemotePriceHistory.initiate(undefined, {
         forceRefetch: true,
       }),
     );
-
     if (error) {
-      if (error?.status === 404) {
-        console.log("ℹ️ Price history endpoint not available yet");
+      if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
         return { synced: 0 };
-      }
       console.error("❌ Price history pull failed:", error);
       return { synced: 0 };
     }
-
     const priceHistoryData = data?.priceHistory || data?.data || data || [];
-
     if (priceHistoryData.length > 0) {
-      await upsertPriceHistory(priceHistoryData);
+      await upsertPriceHistory(priceHistoryData, tenantId);
       return { synced: priceHistoryData.length };
     }
-
     return { synced: 0 };
   } catch (error) {
     console.error("❌ Failed to pull price history:", error);
@@ -635,12 +673,11 @@ async function pullPriceHistory(dispatch: AppDispatch) {
 }
 
 // ============================================
-// 4. PUSH FUNCTIONS
+// PUSH FUNCTIONS
 // ============================================
 
 async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
   const items = await getDueOutboxItems(maxItems);
-
   if (items.length === 0) {
     return { synced: 0, failed: 0 };
   }
@@ -648,7 +685,6 @@ async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
   let synced = 0;
   let failed = 0;
 
-  // Group items by entity for better processing
   const groupedItems = items.reduce(
     (acc, item) => {
       if (!acc[item.entity]) acc[item.entity] = [];
@@ -658,7 +694,6 @@ async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
     {} as Record<string, typeof items>,
   );
 
-  // Process each entity type
   for (const [entity, entityItems] of Object.entries(groupedItems)) {
     for (const item of entityItems) {
       try {
@@ -690,24 +725,64 @@ async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
   return { synced, failed };
 }
 
+// Helper to strip null/undefined values (prevents server validation errors)
+function stripNulls(obj: any): any {
+  if (obj === null || obj === undefined) return undefined;
+  if (Array.isArray(obj)) return obj.map(stripNulls);
+  if (typeof obj === "object") {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => [k, typeof v === "object" ? stripNulls(v) : v]),
+    );
+  }
+  return obj;
+}
+
+// ============================================
+// PROCESS OUTBOX ITEM (FIXED)
+// ============================================
+
 async function processOutboxItem(
   item: any,
 ): Promise<{ success: boolean; error?: string }> {
   const db = getOfflineDb();
 
+  // Clean payload – strip null/undefined
+  const payload = stripNulls(item.payload) ?? {};
+
   switch (item.entity) {
-    case "orders": {
+    // ---- Brands ----
+    case "brands": {
       try {
-        const { data, error } = await store.dispatch(
-          remoteApi.endpoints.createRemoteOrder.initiate(item.payload),
-        );
-        if (error) throw new Error(JSON.stringify(error));
-
-        await db
-          .update(orders)
-          .set({ remoteId: data.id, syncStatus: "synced" })
-          .where(eq(orders.id, item.entityId));
-
+        if (item.operation === "create") {
+          const { data, error } = await store.dispatch(
+            remoteApi.endpoints.createRemoteBrand.initiate(payload),
+          );
+          if (error) throw new Error(JSON.stringify(error));
+          await db
+            .update(brands)
+            .set({ remoteId: data.id, syncStatus: "synced" })
+            .where(eq(brands.id, item.entityId));
+        } else if (item.operation === "update") {
+          const { error } = await store.dispatch(
+            remoteApi.endpoints.updateRemoteBrand.initiate({
+              id: item.entityId,
+              ...payload,
+            }),
+          );
+          if (error) throw new Error(JSON.stringify(error));
+          await db
+            .update(brands)
+            .set({ syncStatus: "synced" })
+            .where(eq(brands.id, item.entityId));
+        } else if (item.operation === "delete") {
+          const { error } = await store.dispatch(
+            remoteApi.endpoints.deleteRemoteBrand.initiate(item.entityId),
+          );
+          if (error) throw new Error(JSON.stringify(error));
+          await db.delete(brands).where(eq(brands.id, item.entityId));
+        }
         await markOutboxSynced(item.id);
         return { success: true };
       } catch (error) {
@@ -715,18 +790,145 @@ async function processOutboxItem(
       }
     }
 
+    // // original
+    // // ---- Orders ----
+    // case "orders": {
+    //   try {
+    //     // Only handle create
+    //     if (item.operation === "create") {
+    //       const { data, error } = await store.dispatch(
+    //         remoteApi.endpoints.createRemoteOrder.initiate(payload),
+    //       );
+    //       if (error) throw new Error(JSON.stringify(error));
+    //       await db
+    //         .update(orders)
+    //         .set({ remoteId: data.id, syncStatus: "synced" })
+    //         .where(eq(orders.id, item.entityId));
+    //     } else if (item.operation === "updateStatus") {
+    //       // For status updates
+    //       const { error } = await store.dispatch(
+    //         remoteApi.endpoints.updateRemoteOrderStatus.initiate({
+    //           id: item.entityId,
+    //           ...payload,
+    //         }),
+    //       );
+    //       if (error) throw new Error(JSON.stringify(error));
+    //       await db
+    //         .update(orders)
+    //         .set({ syncStatus: "synced" })
+    //         .where(eq(orders.id, item.entityId));
+    //     } else if (item.operation === "delete") {
+    //       const { error } = await store.dispatch(
+    //         remoteApi.endpoints.deleteRemoteOrder.initiate(item.entityId),
+    //       );
+    //       if (error) throw new Error(JSON.stringify(error));
+    //       await db.delete(orders).where(eq(orders.id, item.entityId));
+    //     }
+    //     await markOutboxSynced(item.id);
+    //     return { success: true };
+    //   } catch (error) {
+    //     return { success: false, error: (error as Error).message };
+    //   }
+    // }
+
+    case "orders": {
+      try {
+        // Only handle create
+        if (item.operation === "create") {
+          // ✅ Check if session is still open locally
+          const [session] = await db
+            .select()
+            .from(sessions)
+            .where(eq(sessions.id, payload.sessionId))
+            .limit(1);
+
+          if (!session || session.status !== "OPEN") {
+            const error = `Session ${payload.sessionId} is closed. Please reopen a session and retry.`;
+            console.warn(`⚠️ ${error}`);
+            await markOrderSyncFailed(item.entityId, error);
+            await markOutboxDead(item.id); // Stop retrying
+            return { success: false, error };
+          }
+
+          // Session open – proceed
+          const { data, error } = await store.dispatch(
+            remoteApi.endpoints.createRemoteOrder.initiate(payload),
+          );
+          if (error) {
+            const errorMessage =
+              error?.data?.message ||
+              error?.data ||
+              error?.error ||
+              JSON.stringify(error);
+            throw new Error(errorMessage);
+          }
+
+          const remoteId = data?.id || data?.order?.id || data?.data?.id;
+          if (!remoteId) {
+            throw new Error("Order created but no ID returned");
+          }
+
+          await db
+            .update(orders)
+            .set({ remoteId, syncStatus: "synced" })
+            .where(eq(orders.id, item.entityId));
+
+          await markOutboxSynced(item.id);
+          return { success: true };
+        } else if (item.operation === "updateStatus") {
+          const { error } = await store.dispatch(
+            remoteApi.endpoints.updateRemoteOrderStatus.initiate({
+              id: item.entityId,
+              ...payload,
+            }),
+          );
+          if (error) throw new Error(JSON.stringify(error));
+          await db
+            .update(orders)
+            .set({ syncStatus: "synced" })
+            .where(eq(orders.id, item.entityId));
+          await markOutboxSynced(item.id);
+          return { success: true };
+        } else if (item.operation === "delete") {
+          const { error } = await store.dispatch(
+            remoteApi.endpoints.deleteRemoteOrder.initiate(item.entityId),
+          );
+          if (error) throw new Error(JSON.stringify(error));
+          await db.delete(orders).where(eq(orders.id, item.entityId));
+          await markOutboxSynced(item.id);
+          return { success: true };
+        }
+        await markOutboxSynced(item.id);
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: (error as Error).message };
+      }
+    }
+
+    // ---- Sessions ----
     case "sessions": {
       try {
-        const { data, error } = await store.dispatch(
-          remoteApi.endpoints.createRemoteSession.initiate(item.payload),
-        );
+        let result;
+        if (item.operation === "open") {
+          result = await store.dispatch(
+            remoteApi.endpoints.openRemoteSession.initiate(payload),
+          );
+        } else if (item.operation === "close") {
+          result = await store.dispatch(
+            remoteApi.endpoints.closeRemoteSession.initiate({
+              id: item.entityId,
+              ...payload,
+            }),
+          );
+        } else {
+          throw new Error(`Unknown session operation: ${item.operation}`);
+        }
+        const { data, error } = result;
         if (error) throw new Error(JSON.stringify(error));
-
         await db
           .update(sessions)
           .set({ remoteId: data.id, syncStatus: "synced" })
           .where(eq(sessions.id, item.entityId));
-
         await markOutboxSynced(item.id);
         return { success: true };
       } catch (error) {
@@ -734,25 +936,23 @@ async function processOutboxItem(
       }
     }
 
+    // ---- Products ----
     case "products": {
       try {
         if (item.operation === "create") {
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.createRemoteProduct.initiate(item.payload),
+            remoteApi.endpoints.createRemoteProduct.initiate(payload),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db
             .update(products)
-            .set({
-              remoteId: data.id,
-              syncStatus: "synced",
-            } as any)
+            .set({ remoteId: data.id, syncStatus: "synced" })
             .where(eq(products.id, item.entityId));
         } else if (item.operation === "update") {
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteProduct.initiate({
               id: item.entityId,
-              ...item.payload,
+              ...payload,
             }),
           );
           if (error) throw new Error(JSON.stringify(error));
@@ -774,27 +974,23 @@ async function processOutboxItem(
       }
     }
 
+    // ---- Product Variants ----
     case "product_variants": {
       try {
         if (item.operation === "create") {
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.createRemoteProductVariant.initiate(
-              item.payload,
-            ),
+            remoteApi.endpoints.createRemoteProductVariant.initiate(payload),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db
             .update(productVariants)
-            .set({
-              remoteId: data.id,
-              syncStatus: "synced",
-            } as any)
+            .set({ remoteId: data.id, syncStatus: "synced" })
             .where(eq(productVariants.id, item.entityId));
         } else if (item.operation === "update") {
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteProductVariant.initiate({
               id: item.entityId,
-              ...item.payload,
+              ...payload,
             }),
           );
           if (error) throw new Error(JSON.stringify(error));
@@ -820,22 +1016,25 @@ async function processOutboxItem(
       }
     }
 
+    // ---- Inventory (now sends update) ----
     case "inventory": {
       try {
-        if (item.operation === "create" || item.operation === "update") {
+        // This handles stock adjustments via the PUT endpoint
+        if (item.operation === "update") {
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.upsertRemoteInventory.initiate(item.payload),
+            remoteApi.endpoints.updateRemoteInventory.initiate({
+              id: item.entityId,
+              ...payload,
+            }),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db
             .update(inventory)
-            .set({
-              remoteId: data.id,
-              syncStatus: "synced",
-              quantity: data.quantity,
-              version: data.version,
-            } as any)
+            .set({ remoteId: data.id, syncStatus: "synced" })
             .where(eq(inventory.id, item.entityId));
+        } else {
+          // If not an update, treat as synced to clear it
+          await markOutboxSynced(item.id);
         }
         await markOutboxSynced(item.id);
         return { success: true };
@@ -844,20 +1043,106 @@ async function processOutboxItem(
       }
     }
 
+    // // ---- Inventory Movements ----
+    // case "inventory_movements": {
+    //   try {
+    //     // Only create is supported by the endpoint
+    //     if (item.operation === "create") {
+    //       const { data, error } = await store.dispatch(
+    //         remoteApi.endpoints.createRemoteInventoryMovement.initiate(payload),
+    //       );
+    //       if (error) throw new Error(JSON.stringify(error));
+    //       await db
+    //         .update(inventoryMovements)
+    //         .set({ remoteId: data.id, syncStatus: "synced" })
+    //         .where(eq(inventoryMovements.id, item.entityId));
+    //     } else {
+    //       // For update/delete, we just mark as synced (or you can implement if needed)
+    //       await markOutboxSynced(item.id);
+    //     }
+    //     await markOutboxSynced(item.id);
+    //     return { success: true };
+    //   } catch (error) {
+    //     return { success: false, error: (error as Error).message };
+    //   }
+    // }
+
     case "inventory_movements": {
       try {
-        const { data, error } = await store.dispatch(
-          remoteApi.endpoints.createRemoteInventoryMovement.initiate(
-            item.payload,
-          ),
-        );
-        if (error) throw new Error(JSON.stringify(error));
+        // Only create is supported
+        if (item.operation === "create") {
+          // ✅ Ensure the referenced order is synced before sending movement
+          const [order] = await db
+            .select()
+            .from(orders)
+            .where(eq(orders.id, payload.referenceId))
+            .limit(1);
 
-        await db
-          .update(inventoryMovements)
-          .set({ remoteId: data.id, syncStatus: "synced" })
-          .where(eq(inventoryMovements.id, item.entityId));
+          if (!order || order.syncStatus !== "synced") {
+            const error = `Order ${payload.referenceId} not synced yet. Skipping movement.`;
+            console.warn(`⚠️ ${error}`);
+            await markOutboxSynced(item.id); // Just clear it
+            return { success: true };
+          }
 
+          // ✅ Map type to server enum
+          let mappedType = payload.type;
+          // Use the same mapping helper from repository (we'll import it or duplicate)
+          // We'll duplicate the logic here to keep syncManager self-contained.
+          const referenceType = payload.referenceType;
+          if (referenceType === "STOCK_ADJUSTMENT") {
+            mappedType = "ADJUSTMENT";
+          } else if (referenceType === "ORDER") {
+            if (payload.type === "OUT") mappedType = "SALE";
+            else if (payload.type === "IN") mappedType = "RETURN_IN";
+          } else if (
+            referenceType === "PURCHASE" ||
+            referenceType === "PURCHASE_ORDER"
+          ) {
+            mappedType = "PURCHASE";
+          } else if (
+            referenceType === "TRANSFER" ||
+            referenceType === "STOCK_TRANSFER"
+          ) {
+            if (payload.type === "IN") mappedType = "TRANSFER_IN";
+            else if (payload.type === "OUT") mappedType = "TRANSFER_OUT";
+          } else if (
+            referenceType === "INVENTORY_COUNT" ||
+            referenceType === "COUNT"
+          ) {
+            mappedType = "COUNTING";
+          } else if (referenceType === "OPENING_STOCK") {
+            mappedType = "OPENING_STOCK";
+          } else {
+            if (payload.type === "IN") mappedType = "PURCHASE";
+            else if (payload.type === "OUT") mappedType = "SALE";
+          }
+
+          const cleanPayload = {
+            ...payload,
+            type: mappedType,
+          };
+
+          const { data, error } = await store.dispatch(
+            remoteApi.endpoints.createRemoteInventoryMovement.initiate(
+              cleanPayload,
+            ),
+          );
+          if (error) {
+            const errorMessage =
+              error?.data?.message ||
+              error?.data ||
+              error?.error ||
+              JSON.stringify(error);
+            throw new Error(errorMessage);
+          }
+          await db
+            .update(inventoryMovements)
+            .set({ remoteId: data.id, syncStatus: "synced" })
+            .where(eq(inventoryMovements.id, item.entityId));
+        } else {
+          await markOutboxSynced(item.id);
+        }
         await markOutboxSynced(item.id);
         return { success: true };
       } catch (error) {
@@ -865,18 +1150,21 @@ async function processOutboxItem(
       }
     }
 
+    // ---- Inventory Counts ----
     case "inventory_counts": {
       try {
-        const { data, error } = await store.dispatch(
-          remoteApi.endpoints.createRemoteInventoryCount.initiate(item.payload),
-        );
-        if (error) throw new Error(JSON.stringify(error));
-
-        await db
-          .update(inventoryCounts)
-          .set({ remoteId: data.id, syncStatus: "synced" })
-          .where(eq(inventoryCounts.id, item.entityId));
-
+        if (item.operation === "create") {
+          const { data, error } = await store.dispatch(
+            remoteApi.endpoints.createRemoteInventoryCount.initiate(payload),
+          );
+          if (error) throw new Error(JSON.stringify(error));
+          await db
+            .update(inventoryCounts)
+            .set({ remoteId: data.id, syncStatus: "synced" })
+            .where(eq(inventoryCounts.id, item.entityId));
+        } else {
+          await markOutboxSynced(item.id);
+        }
         await markOutboxSynced(item.id);
         return { success: true };
       } catch (error) {
@@ -884,18 +1172,21 @@ async function processOutboxItem(
       }
     }
 
+    // ---- Price History ----
     case "price_history": {
       try {
-        const { data, error } = await store.dispatch(
-          remoteApi.endpoints.createRemotePriceHistory.initiate(item.payload),
-        );
-        if (error) throw new Error(JSON.stringify(error));
-
-        await db
-          .update(priceHistory)
-          .set({ remoteId: data.id, syncStatus: "synced" })
-          .where(eq(priceHistory.id, item.entityId));
-
+        if (item.operation === "create") {
+          const { data, error } = await store.dispatch(
+            remoteApi.endpoints.createRemotePriceHistory.initiate(payload),
+          );
+          if (error) throw new Error(JSON.stringify(error));
+          await db
+            .update(priceHistory)
+            .set({ remoteId: data.id, syncStatus: "synced" })
+            .where(eq(priceHistory.id, item.entityId));
+        } else {
+          await markOutboxSynced(item.id);
+        }
         await markOutboxSynced(item.id);
         return { success: true };
       } catch (error) {
@@ -903,10 +1194,55 @@ async function processOutboxItem(
       }
     }
 
+    // ---- Generic fallback ----
     default: {
-      // Generic handling
       try {
-        await markEntitySynced(item.entity, item.entityId, {});
+        // Try to use the generic endpoint if available
+        if (item.endpoint && item.method) {
+          const state = store.getState() as any;
+          const token = state.auth?.user?.token;
+
+          if (!token) {
+            throw new Error("No authentication token available for sync");
+          }
+
+          // Build URL (avoid double /api)
+          const baseUrl = POS_API_URL.endsWith("/api")
+            ? POS_API_URL.slice(0, -4)
+            : POS_API_URL;
+          const url = item.endpoint.startsWith("http")
+            ? item.endpoint
+            : `${baseUrl}${item.endpoint.startsWith("/") ? "" : "/"}${item.endpoint}`;
+
+          const response = await fetch(url, {
+            method: item.method,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body:
+              item.payload && item.method !== "GET"
+                ? JSON.stringify(payload)
+                : undefined,
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`API Error ${response.status}: ${errorText}`);
+          }
+
+          const data = await response.json().catch(() => ({}));
+          if (data && data.id) {
+            await markEntitySynced(item.entity, item.entityId, {
+              remoteId: data.id,
+            });
+          } else {
+            await markEntitySynced(item.entity, item.entityId, {});
+          }
+        } else {
+          await markEntitySynced(item.entity, item.entityId, {});
+        }
+
         await markOutboxSynced(item.id);
         return { success: true };
       } catch (error) {
@@ -917,7 +1253,7 @@ async function processOutboxItem(
 }
 
 // ============================================
-// 5. HELPER FUNCTIONS
+// HELPERS
 // ============================================
 
 async function getFailedCount(): Promise<number> {
@@ -930,7 +1266,7 @@ async function getFailedCount(): Promise<number> {
 }
 
 // ============================================
-// 6. RETRY FAILED ITEMS
+// RETRY
 // ============================================
 
 export async function retryFailedItems(
@@ -977,7 +1313,7 @@ export async function retryFailedItems(
 }
 
 // ============================================
-// 7. CLEANUP
+// CLEANUP
 // ============================================
 
 export function cleanupOfflineSystem() {
@@ -991,12 +1327,17 @@ export function cleanupOfflineSystem() {
     syncInterval = undefined;
   }
 
+  if (debounceTimeout) {
+    clearTimeout(debounceTimeout);
+    debounceTimeout = undefined;
+  }
+
   syncInFlight = false;
   console.log("🧹 Offline system cleaned up");
 }
 
 // ============================================
-// 8. REACT HOOK FOR SYNC (useSync)
+// HOOK (useSync)
 // ============================================
 
 export function useSync() {
@@ -1015,9 +1356,8 @@ export function useSync() {
   const [isLoading, setIsLoading] = useState(false);
   const [detailedStatus, setDetailedStatus] = useState<any>(null);
 
-  const getState = useCallback(() => {
-    return { auth: { user: { token: "" } } } as RootState;
-  }, []);
+  // Use the real store's getState
+  const getState = useCallback(() => store.getState(), []);
 
   const sync = useCallback(
     async (options?: { force?: boolean; maxItems?: number }) => {
@@ -1073,7 +1413,6 @@ export function useSync() {
   }, [refresh]);
 
   return {
-    // State
     isOnline,
     isSyncing,
     isLoading,
@@ -1085,8 +1424,6 @@ export function useSync() {
     lastSyncAt,
     syncStats,
     detailedStatus,
-
-    // Actions
     sync,
     retry,
     refresh,
@@ -1105,13 +1442,11 @@ export type SyncResult = {
   error?: string;
 };
 
-// // ============================================
 // // FILE: services/offline/syncManager.ts
-// // ============================================
 
 // import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 // import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
-// import { remoteApi } from "@/services/api/remoteApi";
+// import { POS_API_URL, remoteApi } from "@/services/api/remoteApi";
 // import { localApi } from "@/services/features/offline/localApi";
 // import {
 //   incrementFailedCount,
@@ -1131,8 +1466,7 @@ export type SyncResult = {
 // import { store } from "@/services/store/store";
 // import { eq, inArray, sql } from "drizzle-orm";
 // import { useCallback, useEffect, useState } from "react";
-// import { getOfflineDb } from "./db";
-// import { migrateOfflineDatabase } from "./migrations";
+// import { getOfflineDb, runMigrations } from "./db";
 // import { isOnline, subscribeToOnlineStatus } from "./network";
 // import {
 //   getDueOutboxItems,
@@ -1143,6 +1477,7 @@ export type SyncResult = {
 //   markOutboxFailed,
 //   markOutboxSynced,
 //   retryOutboxItem,
+//   upsertBrands,
 //   upsertCategories,
 //   upsertCustomers,
 //   upsertInventory,
@@ -1153,6 +1488,7 @@ export type SyncResult = {
 //   upsertStores,
 // } from "./repository";
 // import {
+//   brands,
 //   inventory,
 //   inventoryCounts,
 //   inventoryMovements,
@@ -1164,40 +1500,32 @@ export type SyncResult = {
 //   syncOutbox,
 // } from "./schema";
 
-// // ============================================
 // // GLOBAL STATE
-// // ============================================
 
 // let syncInFlight = false;
 // let unsubscribeNetwork: (() => void) | undefined;
 // let syncInterval: NodeJS.Timeout | undefined;
 // let syncStartTime: number = 0;
 
-// // ============================================
 // // 1. INITIALIZATION
-// // ============================================
 
 // export async function initializeOfflineSystem(
 //   dispatch: AppDispatch,
 //   getState: () => RootState,
 // ) {
 //   try {
-//     // 1. Migrate database
-//     await migrateOfflineDatabase();
+//     await runMigrations();
 //     dispatch(setInitialized(true));
 
-//     // 2. Get initial queue count
 //     const count = await getQueuedCount();
 //     dispatch(setQueuedCount(count));
 
 //     const failedCount = await getFailedCount();
 //     dispatch(setFailedCount(failedCount));
 
-//     // 3. Check online status
 //     const online = await isOnline();
 //     dispatch(setOnline(online));
 
-//     // 4. Subscribe to network changes
 //     unsubscribeNetwork?.();
 //     unsubscribeNetwork = subscribeToOnlineStatus((nextOnline) => {
 //       dispatch(setOnline(nextOnline));
@@ -1206,21 +1534,17 @@ export type SyncResult = {
 //       }
 //     });
 
-//     // 5. Initial sync if online
 //     if (online) {
 //       await syncNow(dispatch, getState);
 //     }
 
-//     // 6. Set up periodic sync (every 5 minutes)
-//     // Ensure syncInterval is typed as a number or null
 //     let syncInterval: number | null = null;
 
 //     if (syncInterval) {
 //       clearInterval(syncInterval);
 //     }
 
-//     // Prefix with window.
-//     syncInterval = window.setInterval(
+//     syncInterval = setInterval(
 //       () => {
 //         void syncNow(dispatch, getState);
 //       },
@@ -1235,7 +1559,7 @@ export type SyncResult = {
 // }
 
 // // ============================================
-// // 2. SYNC NOW (Main Sync Function)
+// // 2. SYNC NOW
 // // ============================================
 
 // export async function syncNow(
@@ -1249,20 +1573,17 @@ export type SyncResult = {
 // ) {
 //   const { force = false, maxItems = 50, silent = false } = options;
 
-//   // Prevent concurrent syncs
 //   if (syncInFlight && !force) {
 //     if (!silent) console.log("⏳ Sync already in progress, skipping...");
 //     return { skipped: true, message: "Sync already in progress" };
 //   }
 
-//   // Check online status
 //   const online = await isOnline();
 //   if (!online) {
 //     if (!silent) console.log("📶 Offline mode, skipping sync");
 //     return { skipped: true, message: "Offline mode" };
 //   }
 
-//   // Start sync
 //   syncInFlight = true;
 //   syncStartTime = Date.now();
 
@@ -1277,83 +1598,78 @@ export type SyncResult = {
 //     if (!silent) console.log("🔄 Starting sync...");
 //     dispatch(setSyncProgress(5));
 
-//     // ============================================
-//     // STEP 1: PULL Products
-//     // ============================================
-//     if (!silent) console.log("📥 Pulling products...");
-//     const productResult = await pullProducts(dispatch);
-//     syncedItems += productResult.synced;
+//     const state = store.getState();
+//     const tenantId = state.auth?.user?.tenantId;
+//     if (!tenantId) {
+//       throw new Error("No tenantId found in Redux state. Cannot sync.");
+//     }
+
+//     // --- PULL Stores ---
+//     if (!silent) console.log("📥 Pulling stores...");
+//     const storeResult = await pullStores(dispatch, tenantId);
+//     syncedItems += storeResult.synced;
+//     dispatch(setSyncProgress(10));
+//     if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
+
+//     // --- PULL Brands ---
+//     if (!silent) console.log("📥 Pulling brands...");
+//     const brandResult = await pullBrands(dispatch, tenantId);
+//     syncedItems += brandResult.synced;
 //     dispatch(setSyncProgress(15));
+//     if (!silent) console.log(`✅ Synced ${brandResult.synced} brands`);
+
+//     // --- PULL Categories ---
+//     if (!silent) console.log("📥 Pulling categories...");
+//     const categoryResult = await pullCategories(dispatch, tenantId);
+//     syncedItems += categoryResult.synced;
+//     dispatch(setSyncProgress(20));
+//     if (!silent) console.log(`✅ Synced ${categoryResult.synced} categories`);
+
+//     // --- PULL Customers ---
+//     if (!silent) console.log("📥 Pulling customers...");
+//     const customerResult = await pullCustomers(dispatch, tenantId);
+//     syncedItems += customerResult.synced;
+//     dispatch(setSyncProgress(25));
+//     if (!silent) console.log(`✅ Synced ${customerResult.synced} customers`);
+
+//     // --- PULL Products ---
+//     if (!silent) console.log("📥 Pulling products...");
+//     const productResult = await pullProducts(dispatch, tenantId);
+//     syncedItems += productResult.synced;
+//     dispatch(setSyncProgress(35));
 //     if (!silent) console.log(`✅ Synced ${productResult.synced} products`);
 
-//     // ============================================
-//     // STEP 2: PULL Product Variants
-//     // ============================================
+//     // --- PULL Variants ---
 //     if (!silent) console.log("📥 Pulling product variants...");
-//     const variantResult = await pullProductVariants(dispatch);
+//     const variantResult = await pullProductVariants(dispatch, tenantId);
 //     syncedItems += variantResult.synced;
-//     dispatch(setSyncProgress(25));
+//     dispatch(setSyncProgress(45));
 //     if (!silent) console.log(`✅ Synced ${variantResult.synced} variants`);
 
-//     // ============================================
-//     // STEP 3: PULL Inventory
-//     // ============================================
+//     // --- PULL Inventory ---
 //     if (!silent) console.log("📥 Pulling inventory...");
-//     const inventoryResult = await pullInventory(dispatch);
+//     const inventoryResult = await pullInventory(dispatch, tenantId);
 //     syncedItems += inventoryResult.synced;
-//     dispatch(setSyncProgress(35));
+//     dispatch(setSyncProgress(55));
 //     if (!silent)
 //       console.log(`✅ Synced ${inventoryResult.synced} inventory items`);
 
-//     // ============================================
-//     // STEP 4: PULL Categories
-//     // ============================================
-//     if (!silent) console.log("📥 Pulling categories...");
-//     const categoryResult = await pullCategories(dispatch);
-//     syncedItems += categoryResult.synced;
-//     dispatch(setSyncProgress(40));
-//     if (!silent) console.log(`✅ Synced ${categoryResult.synced} categories`);
-
-//     // ============================================
-//     // STEP 5: PULL Customers
-//     // ============================================
-//     if (!silent) console.log("📥 Pulling customers...");
-//     const customerResult = await pullCustomers(dispatch);
-//     syncedItems += customerResult.synced;
-//     dispatch(setSyncProgress(50));
-//     if (!silent) console.log(`✅ Synced ${customerResult.synced} customers`);
-
-//     // ============================================
-//     // STEP 6: PULL Stores
-//     // ============================================
-//     if (!silent) console.log("📥 Pulling stores...");
-//     const storeResult = await pullStores(dispatch);
-//     syncedItems += storeResult.synced;
-//     dispatch(setSyncProgress(55));
-//     if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
-
-//     // ============================================
-//     // STEP 7: PULL Sessions
-//     // ============================================
+//     // --- PULL Sessions ---
 //     if (!silent) console.log("📥 Pulling sessions...");
-//     const sessionResult = await pullSessions(dispatch);
+//     const sessionResult = await pullSessions(dispatch, tenantId);
 //     syncedItems += sessionResult.synced;
-//     dispatch(setSyncProgress(60));
+//     dispatch(setSyncProgress(65));
 //     if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
 
-//     // ============================================
-//     // STEP 8: PULL Price History
-//     // ============================================
+//     // --- PULL Price History ---
 //     if (!silent) console.log("📥 Pulling price history...");
-//     const priceHistoryResult = await pullPriceHistory(dispatch);
+//     const priceHistoryResult = await pullPriceHistory(dispatch, tenantId);
 //     syncedItems += priceHistoryResult.synced;
-//     dispatch(setSyncProgress(65));
+//     dispatch(setSyncProgress(70));
 //     if (!silent)
 //       console.log(`✅ Synced ${priceHistoryResult.synced} price history items`);
 
-//     // ============================================
-//     // STEP 9: PUSH Outbox Items
-//     // ============================================
+//     // --- PUSH Outbox ---
 //     if (!silent) console.log("📤 Pushing outbox items...");
 //     const pushResult = await pushOutboxItems(dispatch, maxItems);
 //     syncedItems += pushResult.synced;
@@ -1364,18 +1680,12 @@ export type SyncResult = {
 //         `✅ Pushed ${pushResult.synced} items, ${pushResult.failed} failed`,
 //       );
 
-//     // ============================================
-//     // STEP 10: Update Queue Counts
-//     // ============================================
 //     const remainingCount = await getQueuedCount();
 //     dispatch(setQueuedCount(remainingCount));
 
 //     const totalFailed = await getFailedCount();
 //     dispatch(setFailedCount(totalFailed));
 
-//     // ============================================
-//     // STEP 11: Invalidate RTK Query Cache
-//     // ============================================
 //     store.dispatch(
 //       localApi.util.invalidateTags([
 //         "LocalProducts",
@@ -1384,6 +1694,7 @@ export type SyncResult = {
 //         "LocalCategories",
 //         "LocalCustomers",
 //         "LocalStores",
+//         "LocalBrands",
 //         "LocalSessions",
 //         "LocalOrders",
 //         "LocalInventoryMovements",
@@ -1392,9 +1703,6 @@ export type SyncResult = {
 //       ]),
 //     );
 
-//     // ============================================
-//     // STEP 12: Update Stats & Complete
-//     // ============================================
 //     const duration = Date.now() - syncStartTime;
 //     dispatch(setSyncDuration(duration));
 //     dispatch(incrementSyncedCount(syncedItems));
@@ -1411,6 +1719,11 @@ export type SyncResult = {
 //       dispatch(setSyncComplete());
 //       if (!silent) console.log("✅ Sync completed successfully");
 //     }
+
+//     // // Inside syncNow, after each step
+//     // console.log(`✅ Synced ${productResult.synced} products`);
+//     // console.log(`✅ Synced ${variantResult.synced} variants`);
+//     // console.log(`✅ Synced ${inventoryResult.synced} inventory items`);
 
 //     dispatch(setSyncProgress(100));
 
@@ -1434,14 +1747,149 @@ export type SyncResult = {
 // }
 
 // // ============================================
-// // 3. PULL FUNCTIONS
+// // PULL FUNCTIONS
 // // ============================================
 
-// async function pullProducts(dispatch: AppDispatch) {
+// async function pullBrands(dispatch: AppDispatch, tenantId: string) {
 //   try {
 //     const state = store.getState();
 //     const token = state.auth?.user?.token;
+//     if (!token) {
+//       console.warn("⚠️ No auth token found, skipping brand pull");
+//       return { synced: 0 };
+//     }
 
+//     if (!remoteApi.endpoints.getRemoteBrands) {
+//       console.warn("⚠️ getRemoteBrands endpoint not available");
+//       return { synced: 0 };
+//     }
+
+//     const { data, error } = await store.dispatch(
+//       remoteApi.endpoints.getRemoteBrands.initiate(undefined, {
+//         forceRefetch: true,
+//       }),
+//     );
+
+//     if (error) {
+//       if (error.originalStatus === 404 || error.status === "PARSING_ERROR") {
+//         return { synced: 0 };
+//       }
+//       console.error("❌ Brand pull failed:", error);
+//       return { synced: 0 };
+//     }
+
+//     const brandsData = data?.brands || data?.data || data || [];
+//     if (brandsData.length > 0) {
+//       await upsertBrands(brandsData, tenantId);
+//       return { synced: brandsData.length };
+//     }
+//     return { synced: 0 };
+//   } catch (error) {
+//     console.error("❌ Failed to pull brands:", error);
+//     return { synced: 0 };
+//   }
+// }
+
+// async function pullStores(dispatch: AppDispatch, tenantId: string) {
+//   try {
+//     const state = store.getState();
+//     const token = state.auth?.user?.token;
+//     if (!token) {
+//       console.warn("⚠️ No auth token found, skipping store pull");
+//       return { synced: 0 };
+//     }
+
+//     const { data, error } = await store.dispatch(
+//       remoteApi.endpoints.getRemoteStores.initiate(undefined, {
+//         forceRefetch: true,
+//       }),
+//     );
+
+//     if (error) {
+//       console.error("❌ Store pull failed:", error);
+//       return { synced: 0 };
+//     }
+
+//     const storesData = data?.stores || data?.data || data || [];
+//     if (storesData.length > 0) {
+//       await upsertStores(storesData, tenantId);
+//       return { synced: storesData.length };
+//     }
+//     return { synced: 0 };
+//   } catch (error) {
+//     console.error("❌ Failed to pull stores:", error);
+//     return { synced: 0 };
+//   }
+// }
+
+// async function pullCategories(dispatch: AppDispatch, tenantId: string) {
+//   try {
+//     const state = store.getState();
+//     const token = state.auth?.user?.token;
+//     if (!token) {
+//       console.warn("⚠️ No auth token found, skipping category pull");
+//       return { synced: 0 };
+//     }
+
+//     const { data, error } = await store.dispatch(
+//       remoteApi.endpoints.getRemoteCategories.initiate(undefined, {
+//         forceRefetch: true,
+//       }),
+//     );
+
+//     if (error) {
+//       console.error("❌ Category pull failed:", error);
+//       return { synced: 0 };
+//     }
+
+//     const categoriesData = data?.categories || data?.data || data || [];
+//     if (categoriesData.length > 0) {
+//       await upsertCategories(categoriesData, tenantId);
+//       return { synced: categoriesData.length };
+//     }
+//     return { synced: 0 };
+//   } catch (error) {
+//     console.error("❌ Failed to pull categories:", error);
+//     return { synced: 0 };
+//   }
+// }
+
+// async function pullCustomers(dispatch: AppDispatch, tenantId: string) {
+//   try {
+//     const state = store.getState();
+//     const token = state.auth?.user?.token;
+//     if (!token) {
+//       console.warn("⚠️ No auth token found, skipping customer pull");
+//       return { synced: 0 };
+//     }
+
+//     const { data, error } = await store.dispatch(
+//       remoteApi.endpoints.getRemoteCustomers.initiate(undefined, {
+//         forceRefetch: true,
+//       }),
+//     );
+
+//     if (error) {
+//       console.error("❌ Customer pull failed:", error);
+//       return { synced: 0 };
+//     }
+
+//     const customersData = data?.customers || data?.data || data || [];
+//     if (customersData.length > 0) {
+//       await upsertCustomers(customersData, tenantId);
+//       return { synced: customersData.length };
+//     }
+//     return { synced: 0 };
+//   } catch (error) {
+//     console.error("❌ Failed to pull customers:", error);
+//     return { synced: 0 };
+//   }
+// }
+
+// async function pullProducts(dispatch: AppDispatch, tenantId: string) {
+//   try {
+//     const state = store.getState();
+//     const token = state.auth?.user?.token;
 //     if (!token) {
 //       console.warn("⚠️ No auth token found, skipping product pull");
 //       return { synced: 0 };
@@ -1461,10 +1909,9 @@ export type SyncResult = {
 //     const productsData = data?.products || data?.data || data || [];
 
 //     if (productsData.length > 0) {
-//       await upsertProducts(productsData);
+//       await upsertProducts(productsData, tenantId);
 //       return { synced: productsData.length };
 //     }
-
 //     return { synced: 0 };
 //   } catch (error) {
 //     console.error("❌ Failed to pull products:", error);
@@ -1472,17 +1919,15 @@ export type SyncResult = {
 //   }
 // }
 
-// async function pullProductVariants(dispatch: AppDispatch) {
+// async function pullProductVariants(dispatch: AppDispatch, tenantId: string) {
 //   try {
 //     const state = store.getState();
 //     const token = state.auth?.user?.token;
-
 //     if (!token) {
 //       console.warn("⚠️ No auth token found, skipping variant pull");
 //       return { synced: 0 };
 //     }
 
-//     // ✅ Check if endpoint exists before calling
 //     if (!remoteApi.endpoints.getRemoteProductVariants) {
 //       console.warn("⚠️ getRemoteProductVariants endpoint not available");
 //       return { synced: 0 };
@@ -1494,15 +1939,8 @@ export type SyncResult = {
 //       }),
 //     );
 
-//     // if (error) {
-//     //   console.error("❌ Variant pull failed:", error);
-//     //   return { synced: 0 };
-//     // }
-
 //     if (error) {
-//       // ✅ Handle 404 gracefully
-//       if (error?.status === 404) {
-//         console.log("ℹ️ Variant endpoint not available yet");
+//       if (error.originalStatus === 404 || error.status === "PARSING_ERROR") {
 //         return { synced: 0 };
 //       }
 //       console.error("❌ Variant pull failed:", error);
@@ -1510,12 +1948,10 @@ export type SyncResult = {
 //     }
 
 //     const variants = data?.variants || data?.data || data || [];
-
 //     if (variants.length > 0) {
-//       await upsertProductVariants(variants);
+//       await upsertProductVariants(variants, tenantId);
 //       return { synced: variants.length };
 //     }
-
 //     return { synced: 0 };
 //   } catch (error) {
 //     console.error("❌ Failed to pull variants:", error);
@@ -1523,11 +1959,10 @@ export type SyncResult = {
 //   }
 // }
 
-// async function pullInventory(dispatch: AppDispatch) {
+// async function pullInventory(dispatch: AppDispatch, tenantId: string) {
 //   try {
 //     const state = store.getState();
 //     const token = state.auth?.user?.token;
-
 //     if (!token) {
 //       console.warn("⚠️ No auth token found, skipping inventory pull");
 //       return { synced: 0 };
@@ -1545,9 +1980,7 @@ export type SyncResult = {
 //     );
 
 //     if (error) {
-//       // ✅ Handle 404 gracefully
-//       if (error?.status === 404) {
-//         console.log("ℹ️ Inventory endpoint not available yet");
+//       if (error.originalStatus === 404 || error.status === "PARSING_ERROR") {
 //         return { synced: 0 };
 //       }
 //       console.error("❌ Inventory pull failed:", error);
@@ -1555,12 +1988,10 @@ export type SyncResult = {
 //     }
 
 //     const inventoryItems = data?.inventory || data?.data || data || [];
-
 //     if (inventoryItems.length > 0) {
-//       await upsertInventory(inventoryItems);
+//       await upsertInventory(inventoryItems, tenantId);
 //       return { synced: inventoryItems.length };
 //     }
-
 //     return { synced: 0 };
 //   } catch (error) {
 //     console.error("❌ Failed to pull inventory:", error);
@@ -1568,116 +1999,10 @@ export type SyncResult = {
 //   }
 // }
 
-// async function pullCategories(dispatch: AppDispatch) {
+// async function pullSessions(dispatch: AppDispatch, tenantId: string) {
 //   try {
 //     const state = store.getState();
 //     const token = state.auth?.user?.token;
-
-//     if (!token) {
-//       console.warn("⚠️ No auth token found, skipping category pull");
-//       return { synced: 0 };
-//     }
-
-//     const { data, error } = await store.dispatch(
-//       remoteApi.endpoints.getRemoteCategories.initiate(undefined, {
-//         forceRefetch: true,
-//       }),
-//     );
-
-//     if (error) {
-//       console.error("❌ Category pull failed:", error);
-//       return { synced: 0 };
-//     }
-
-//     const categoriesData = data?.categories || data?.data || data || [];
-
-//     if (categoriesData.length > 0) {
-//       await upsertCategories(categoriesData);
-//       return { synced: categoriesData.length };
-//     }
-
-//     return { synced: 0 };
-//   } catch (error) {
-//     console.error("❌ Failed to pull categories:", error);
-//     return { synced: 0 };
-//   }
-// }
-
-// async function pullCustomers(dispatch: AppDispatch) {
-//   try {
-//     const state = store.getState();
-//     const token = state.auth?.user?.token;
-
-//     if (!token) {
-//       console.warn("⚠️ No auth token found, skipping customer pull");
-//       return { synced: 0 };
-//     }
-
-//     const { data, error } = await store.dispatch(
-//       remoteApi.endpoints.getRemoteCustomers.initiate(undefined, {
-//         forceRefetch: true,
-//       }),
-//     );
-
-//     if (error) {
-//       console.error("❌ Customer pull failed:", error);
-//       return { synced: 0 };
-//     }
-
-//     const customersData = data?.customers || data?.data || data || [];
-
-//     if (customersData.length > 0) {
-//       await upsertCustomers(customersData);
-//       return { synced: customersData.length };
-//     }
-
-//     return { synced: 0 };
-//   } catch (error) {
-//     console.error("❌ Failed to pull customers:", error);
-//     return { synced: 0 };
-//   }
-// }
-
-// async function pullStores(dispatch: AppDispatch) {
-//   try {
-//     const state = store.getState();
-//     const token = state.auth?.user?.token;
-
-//     if (!token) {
-//       console.warn("⚠️ No auth token found, skipping store pull");
-//       return { synced: 0 };
-//     }
-
-//     const { data, error } = await store.dispatch(
-//       remoteApi.endpoints.getRemoteStores.initiate(undefined, {
-//         forceRefetch: true,
-//       }),
-//     );
-
-//     if (error) {
-//       console.error("❌ Store pull failed:", error);
-//       return { synced: 0 };
-//     }
-
-//     const storesData = data?.stores || data?.data || data || [];
-
-//     if (storesData.length > 0) {
-//       await upsertStores(storesData);
-//       return { synced: storesData.length };
-//     }
-
-//     return { synced: 0 };
-//   } catch (error) {
-//     console.error("❌ Failed to pull stores:", error);
-//     return { synced: 0 };
-//   }
-// }
-
-// async function pullSessions(dispatch: AppDispatch) {
-//   try {
-//     const state = store.getState();
-//     const token = state.auth?.user?.token;
-
 //     if (!token) {
 //       console.warn("⚠️ No auth token found, skipping session pull");
 //       return { synced: 0 };
@@ -1695,12 +2020,10 @@ export type SyncResult = {
 //     }
 
 //     const sessionsData = data?.sessions || data?.data || data || [];
-
 //     if (sessionsData.length > 0) {
-//       await upsertSessions(sessionsData);
+//       await upsertSessions(sessionsData, tenantId);
 //       return { synced: sessionsData.length };
 //     }
-
 //     return { synced: 0 };
 //   } catch (error) {
 //     console.error("❌ Failed to pull sessions:", error);
@@ -1708,11 +2031,10 @@ export type SyncResult = {
 //   }
 // }
 
-// async function pullPriceHistory(dispatch: AppDispatch) {
+// async function pullPriceHistory(dispatch: AppDispatch, tenantId: string) {
 //   try {
 //     const state = store.getState();
 //     const token = state.auth?.user?.token;
-
 //     if (!token) {
 //       console.warn("⚠️ No auth token found, skipping price history pull");
 //       return { synced: 0 };
@@ -1730,9 +2052,7 @@ export type SyncResult = {
 //     );
 
 //     if (error) {
-//       // ✅ Handle 404 gracefully
-//       if (error?.status === 404) {
-//         console.log("ℹ️ Price history endpoint not available yet");
+//       if (error.originalStatus === 404 || error.status === "PARSING_ERROR") {
 //         return { synced: 0 };
 //       }
 //       console.error("❌ Price history pull failed:", error);
@@ -1740,12 +2060,10 @@ export type SyncResult = {
 //     }
 
 //     const priceHistoryData = data?.priceHistory || data?.data || data || [];
-
 //     if (priceHistoryData.length > 0) {
-//       await upsertPriceHistory(priceHistoryData);
+//       await upsertPriceHistory(priceHistoryData, tenantId);
 //       return { synced: priceHistoryData.length };
 //     }
-
 //     return { synced: 0 };
 //   } catch (error) {
 //     console.error("❌ Failed to pull price history:", error);
@@ -1753,13 +2071,10 @@ export type SyncResult = {
 //   }
 // }
 
-// // ============================================
-// // 4. PUSH FUNCTIONS
-// // ============================================
+// // PUSH FUNCTIONS
 
 // async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
 //   const items = await getDueOutboxItems(maxItems);
-
 //   if (items.length === 0) {
 //     return { synced: 0, failed: 0 };
 //   }
@@ -1767,7 +2082,6 @@ export type SyncResult = {
 //   let synced = 0;
 //   let failed = 0;
 
-//   // Group items by entity for better processing
 //   const groupedItems = items.reduce(
 //     (acc, item) => {
 //       if (!acc[item.entity]) acc[item.entity] = [];
@@ -1777,7 +2091,6 @@ export type SyncResult = {
 //     {} as Record<string, typeof items>,
 //   );
 
-//   // Process each entity type
 //   for (const [entity, entityItems] of Object.entries(groupedItems)) {
 //     for (const item of entityItems) {
 //       try {
@@ -1809,24 +2122,80 @@ export type SyncResult = {
 //   return { synced, failed };
 // }
 
+// // Strip null/undefined values from payload objects to prevent
+// // server validation errors (e.g. variantId: null → 422)
+// function stripNulls(obj: any): any {
+//   if (obj === null || obj === undefined) return undefined;
+//   if (Array.isArray(obj)) return obj.map(stripNulls);
+//   if (typeof obj === "object") {
+//     return Object.fromEntries(
+//       Object.entries(obj)
+//         .filter(([_, v]) => v !== null && v !== undefined)
+//         .map(([k, v]) => [k, typeof v === "object" ? stripNulls(v) : v]),
+//     );
+//   }
+//   return obj;
+// }
+
 // async function processOutboxItem(
 //   item: any,
 // ): Promise<{ success: boolean; error?: string }> {
 //   const db = getOfflineDb();
 
+//   // Clean payload: strip null/undefined values that cause server 422 errors
+//   const payload = stripNulls(item.payload) ?? {};
+
 //   switch (item.entity) {
+//     case "brands": {
+//       try {
+//         if (item.operation === "create") {
+//           const { data, error } = await store.dispatch(
+//             remoteApi.endpoints.createRemoteBrand.initiate(payload),
+//           );
+//           if (error) throw new Error(JSON.stringify(error));
+//           await db
+//             .update(brands)
+//             .set({
+//               remoteId: (data as { id: string }).id,
+//               syncStatus: "synced",
+//             })
+//             .where(eq(brands.id, item.entityId));
+//         } else if (item.operation === "update") {
+//           const { error } = await store.dispatch(
+//             remoteApi.endpoints.updateRemoteBrand.initiate({
+//               id: item.entityId,
+//               ...payload,
+//             }),
+//           );
+//           if (error) throw new Error(JSON.stringify(error));
+//           await db
+//             .update(brands)
+//             .set({ syncStatus: "synced" })
+//             .where(eq(brands.id, item.entityId));
+//         } else if (item.operation === "delete") {
+//           const { error } = await store.dispatch(
+//             remoteApi.endpoints.deleteRemoteBrand.initiate(item.entityId),
+//           );
+//           if (error) throw new Error(JSON.stringify(error));
+//           await db.delete(brands).where(eq(brands.id, item.entityId));
+//         }
+//         await markOutboxSynced(item.id);
+//         return { success: true };
+//       } catch (error) {
+//         return { success: false, error: (error as Error).message };
+//       }
+//     }
+
 //     case "orders": {
 //       try {
 //         const { data, error } = await store.dispatch(
-//           remoteApi.endpoints.createRemoteOrder.initiate(item.payload),
+//           remoteApi.endpoints.createRemoteOrder.initiate(payload),
 //         );
 //         if (error) throw new Error(JSON.stringify(error));
-
 //         await db
 //           .update(orders)
 //           .set({ remoteId: data.id, syncStatus: "synced" })
 //           .where(eq(orders.id, item.entityId));
-
 //         await markOutboxSynced(item.id);
 //         return { success: true };
 //       } catch (error) {
@@ -1837,15 +2206,13 @@ export type SyncResult = {
 //     case "sessions": {
 //       try {
 //         const { data, error } = await store.dispatch(
-//           remoteApi.endpoints.createRemoteSession.initiate(item.payload),
+//           remoteApi.endpoints.openRemoteSession.initiate(payload),
 //         );
 //         if (error) throw new Error(JSON.stringify(error));
-
 //         await db
 //           .update(sessions)
 //           .set({ remoteId: data.id, syncStatus: "synced" })
 //           .where(eq(sessions.id, item.entityId));
-
 //         await markOutboxSynced(item.id);
 //         return { success: true };
 //       } catch (error) {
@@ -1857,21 +2224,18 @@ export type SyncResult = {
 //       try {
 //         if (item.operation === "create") {
 //           const { data, error } = await store.dispatch(
-//             remoteApi.endpoints.createRemoteProduct.initiate(item.payload),
+//             remoteApi.endpoints.createRemoteProduct.initiate(payload),
 //           );
 //           if (error) throw new Error(JSON.stringify(error));
 //           await db
 //             .update(products)
-//             .set({
-//               remoteId: data.id,
-//               syncStatus: "synced",
-//             } as any)
+//             .set({ remoteId: data.id, syncStatus: "synced" })
 //             .where(eq(products.id, item.entityId));
 //         } else if (item.operation === "update") {
 //           const { error } = await store.dispatch(
 //             remoteApi.endpoints.updateRemoteProduct.initiate({
 //               id: item.entityId,
-//               ...item.payload,
+//               ...payload,
 //             }),
 //           );
 //           if (error) throw new Error(JSON.stringify(error));
@@ -1897,23 +2261,18 @@ export type SyncResult = {
 //       try {
 //         if (item.operation === "create") {
 //           const { data, error } = await store.dispatch(
-//             remoteApi.endpoints.createRemoteProductVariant.initiate(
-//               item.payload,
-//             ),
+//             remoteApi.endpoints.createRemoteProductVariant.initiate(payload),
 //           );
 //           if (error) throw new Error(JSON.stringify(error));
 //           await db
 //             .update(productVariants)
-//             .set({
-//               remoteId: data.id,
-//               syncStatus: "synced",
-//             } as any)
+//             .set({ remoteId: data.id, syncStatus: "synced" })
 //             .where(eq(productVariants.id, item.entityId));
 //         } else if (item.operation === "update") {
 //           const { error } = await store.dispatch(
 //             remoteApi.endpoints.updateRemoteProductVariant.initiate({
 //               id: item.entityId,
-//               ...item.payload,
+//               ...payload,
 //             }),
 //           );
 //           if (error) throw new Error(JSON.stringify(error));
@@ -1940,43 +2299,22 @@ export type SyncResult = {
 //     }
 
 //     case "inventory": {
-//       try {
-//         if (item.operation === "create" || item.operation === "update") {
-//           const { data, error } = await store.dispatch(
-//             remoteApi.endpoints.upsertRemoteInventory.initiate(item.payload),
-//           );
-//           if (error) throw new Error(JSON.stringify(error));
-//           await db
-//             .update(inventory)
-//             .set({
-//               remoteId: data.id,
-//               syncStatus: "synced",
-//               quantity: data.quantity,
-//               version: data.version,
-//             } as any)
-//             .where(eq(inventory.id, item.entityId));
-//         }
-//         await markOutboxSynced(item.id);
-//         return { success: true };
-//       } catch (error) {
-//         return { success: false, error: (error as Error).message };
-//       }
+//       // Legacy or invalid outbox item, inventory updates should go through inventory_movements.
+//       // Mark as synced to clear it from the queue and stop blocking sync.
+//       await markOutboxSynced(item.id);
+//       return { success: true };
 //     }
 
 //     case "inventory_movements": {
 //       try {
 //         const { data, error } = await store.dispatch(
-//           remoteApi.endpoints.createRemoteInventoryMovement.initiate(
-//             item.payload,
-//           ),
+//           remoteApi.endpoints.createRemoteInventoryMovement.initiate(payload),
 //         );
 //         if (error) throw new Error(JSON.stringify(error));
-
 //         await db
 //           .update(inventoryMovements)
 //           .set({ remoteId: data.id, syncStatus: "synced" })
 //           .where(eq(inventoryMovements.id, item.entityId));
-
 //         await markOutboxSynced(item.id);
 //         return { success: true };
 //       } catch (error) {
@@ -1987,15 +2325,13 @@ export type SyncResult = {
 //     case "inventory_counts": {
 //       try {
 //         const { data, error } = await store.dispatch(
-//           remoteApi.endpoints.createRemoteInventoryCount.initiate(item.payload),
+//           remoteApi.endpoints.createRemoteInventoryCount.initiate(payload),
 //         );
 //         if (error) throw new Error(JSON.stringify(error));
-
 //         await db
 //           .update(inventoryCounts)
 //           .set({ remoteId: data.id, syncStatus: "synced" })
 //           .where(eq(inventoryCounts.id, item.entityId));
-
 //         await markOutboxSynced(item.id);
 //         return { success: true };
 //       } catch (error) {
@@ -2006,15 +2342,13 @@ export type SyncResult = {
 //     case "price_history": {
 //       try {
 //         const { data, error } = await store.dispatch(
-//           remoteApi.endpoints.createRemotePriceHistory.initiate(item.payload),
+//           remoteApi.endpoints.createRemotePriceHistory.initiate(payload),
 //         );
 //         if (error) throw new Error(JSON.stringify(error));
-
 //         await db
 //           .update(priceHistory)
 //           .set({ remoteId: data.id, syncStatus: "synced" })
 //           .where(eq(priceHistory.id, item.entityId));
-
 //         await markOutboxSynced(item.id);
 //         return { success: true };
 //       } catch (error) {
@@ -2023,9 +2357,54 @@ export type SyncResult = {
 //     }
 
 //     default: {
-//       // Generic handling
 //       try {
-//         await markEntitySynced(item.entity, item.entityId, {});
+//         if (item.endpoint && item.method) {
+//           const state = store.getState() as any;
+//           const token = state.auth?.user?.token;
+
+//           if (!token) {
+//             throw new Error("No authentication token available for sync");
+//           }
+
+//           // Ensure the URL is correctly formed by preventing double "/api"
+//           const baseUrl = POS_API_URL.endsWith("/api")
+//             ? POS_API_URL.slice(0, -4)
+//             : POS_API_URL;
+//           const url = item.endpoint.startsWith("http")
+//             ? item.endpoint
+//             : `${baseUrl}${item.endpoint.startsWith("/") ? "" : "/"}${item.endpoint}`;
+
+//           const response = await fetch(url, {
+//             method: item.method,
+//             headers: {
+//               "Content-Type": "application/json",
+//               Authorization: `Bearer ${token}`,
+//             },
+//             body:
+//               item.payload && item.method !== "GET"
+//                 ? JSON.stringify(payload)
+//                 : undefined,
+//           });
+
+//           if (!response.ok) {
+//             const errorText = await response.text();
+//             throw new Error(`API Error ${response.status}: ${errorText}`);
+//           }
+
+//           const data = await response.json().catch(() => ({}));
+
+//           // Optionally update the generic record's remoteId if returned by the server
+//           if (data && data.id) {
+//             await markEntitySynced(item.entity, item.entityId, {
+//               remoteId: data.id,
+//             });
+//           } else {
+//             await markEntitySynced(item.entity, item.entityId, {});
+//           }
+//         } else {
+//           await markEntitySynced(item.entity, item.entityId, {});
+//         }
+
 //         await markOutboxSynced(item.id);
 //         return { success: true };
 //       } catch (error) {
@@ -2035,9 +2414,7 @@ export type SyncResult = {
 //   }
 // }
 
-// // ============================================
-// // 5. HELPER FUNCTIONS
-// // ============================================
+// // HELPERS
 
 // async function getFailedCount(): Promise<number> {
 //   const db = getOfflineDb();
@@ -2048,9 +2425,7 @@ export type SyncResult = {
 //   return Number(result[0]?.count ?? 0);
 // }
 
-// // ============================================
-// // 6. RETRY FAILED ITEMS
-// // ============================================
+// // RETRY
 
 // export async function retryFailedItems(
 //   dispatch: AppDispatch,
@@ -2095,9 +2470,7 @@ export type SyncResult = {
 //   }
 // }
 
-// // ============================================
-// // 7. CLEANUP
-// // ============================================
+// // CLEANUP
 
 // export function cleanupOfflineSystem() {
 //   if (unsubscribeNetwork) {
@@ -2108,13 +2481,13 @@ export type SyncResult = {
 //   if (syncInterval) {
 //     clearInterval(syncInterval);
 //     syncInterval = undefined;
+//   }
+
+//   syncInFlight = false;
 //   console.log("🧹 Offline system cleaned up");
 // }
-// // ============================================
 
-// // import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
-// // import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
-// // import { useCallback, useEffect, useState } from "react";
+// // HOOK
 
 // export function useSync() {
 //   const dispatch = useAppDispatch();
@@ -2190,7 +2563,6 @@ export type SyncResult = {
 //   }, [refresh]);
 
 //   return {
-//     // State
 //     isOnline,
 //     isSyncing,
 //     isLoading,
@@ -2202,8 +2574,6 @@ export type SyncResult = {
 //     lastSyncAt,
 //     syncStats,
 //     detailedStatus,
-
-//     // Actions
 //     sync,
 //     retry,
 //     refresh,
@@ -2221,839 +2591,3 @@ export type SyncResult = {
 //   retried?: number;
 //   error?: string;
 // };
-
-// // // services/offline/syncManager.ts
-// // import { store } from "@/services/store/store";
-// // import { remoteApi } from "@/services/api/remoteApi";
-// // // import { localDbApi } from "./localDbApi";
-// // import { localApi } from "@/services/features/offline/localApi";
-// // import { getOfflineDb } from "./db";
-// // import {
-// //   products,
-// //   categories,
-// //   customers,
-// //   stores,
-// //   sessions,
-// //   orders,
-// //   orderItems,
-// //   inventoryMovements,
-// //   syncOutbox,
-// // } from "./schema";
-// // import { eq, and, lte, inArray, sql } from "drizzle-orm";
-// // import { isOnline, subscribeToOnlineStatus } from "./network";
-// // import {
-// //   getDueOutboxItems,
-// //   getQueuedCount,
-// //   getFailedOutboxItems,
-// //   markOrderSynced,
-// //   markEntitySynced,
-// //   markOutboxSynced,
-// //   markOutboxFailed,
-// //   markOutboxDead,
-// //   retryOutboxItem,
-// //   upsertProducts,
-// //   upsertCategories,
-// //   upsertCustomers,
-// //   upsertStores,
-// //   upsertSessions,
-// //   upsertOrders,
-// // } from "./repository";
-// // import {
-// //   setInitialized,
-// //   setOnline,
-// //   setQueuedCount,
-// //   setFailedCount,
-// //   setSyncComplete,
-// //   setSyncError,
-// //   setSyncing,
-// //   setSyncProgress,
-// //   setSyncDuration,
-// //   incrementSyncedCount,
-// //   incrementFailedCount,
-// //   resetSync,
-// // } from "@/services/features/offline/offlineSlice";
-// // import { migrateOfflineDatabase } from "./migrations";
-// // import type { AppDispatch, RootState } from "@/services/store/store";
-
-// // // ============================================
-// // // GLOBAL STATE
-// // // ============================================
-
-// // let syncInFlight = false;
-// // let unsubscribeNetwork: (() => void) | undefined;
-// // let syncInterval: NodeJS.Timeout | undefined;
-// // let syncStartTime: number = 0;
-
-// // // ============================================
-// // // 1. INITIALIZATION
-// // // ============================================
-
-// // export async function initializeOfflineSystem(
-// //   dispatch: AppDispatch,
-// //   getState: () => RootState,
-// // ) {
-// //   try {
-// //     // 1. Migrate database
-// //     await migrateOfflineDatabase();
-// //     dispatch(setInitialized(true));
-
-// //     // 2. Get initial queue count
-// //     const count = await getQueuedCount();
-// //     dispatch(setQueuedCount(count));
-
-// //     const failedCount = await getFailedCount();
-// //     dispatch(setFailedCount(failedCount));
-
-// //     // 3. Check online status
-// //     const online = await isOnline();
-// //     dispatch(setOnline(online));
-
-// //     // 4. Subscribe to network changes
-// //     unsubscribeNetwork?.();
-// //     unsubscribeNetwork = subscribeToOnlineStatus((nextOnline) => {
-// //       dispatch(setOnline(nextOnline));
-// //       if (nextOnline) {
-// //         void syncNow(dispatch, getState);
-// //       }
-// //     });
-
-// //     // 5. Initial sync if online
-// //     if (online) {
-// //       await syncNow(dispatch, getState);
-// //     }
-
-// //     // 6. Set up periodic sync (every 5 minutes)
-// //     // Ensure syncInterval is typed as a number or null
-// //     let syncInterval: number | null = null;
-
-// //     if (syncInterval) {
-// //       clearInterval(syncInterval);
-// //     }
-
-// //     // Prefix with window.
-// //     syncInterval = window.setInterval(
-// //       () => {
-// //         void syncNow(dispatch, getState);
-// //       },
-// //       5 * 60 * 1000,
-// //     );
-// //     // if (syncInterval) {
-// //     //   clearInterval(syncInterval as any);
-// //     // }
-// //     // syncInterval = setInterval(
-// //     //   () => {
-// //     //     void syncNow(dispatch, getState);
-// //     //   },
-// //     //   5 * 60 * 1000,
-// //     // );
-
-// //     console.log("✅ Offline system initialized");
-// //   } catch (error) {
-// //     console.error("❌ Failed to initialize offline system:", error);
-// //     dispatch(setSyncError("Failed to initialize offline system"));
-// //   }
-// // }
-
-// // // ============================================
-// // // 2. SYNC NOW (Main Sync Function)
-// // // ============================================
-
-// // export async function syncNow(
-// //   dispatch: AppDispatch,
-// //   getState: () => RootState,
-// //   options: {
-// //     force?: boolean;
-// //     maxItems?: number;
-// //     silent?: boolean;
-// //   } = {},
-// // ) {
-// //   const { force = false, maxItems = 50, silent = false } = options;
-
-// //   // Prevent concurrent syncs
-// //   if (syncInFlight && !force) {
-// //     if (!silent) console.log("⏳ Sync already in progress, skipping...");
-// //     return { skipped: true, message: "Sync already in progress" };
-// //   }
-
-// //   // Check online status
-// //   const online = await isOnline();
-// //   if (!online) {
-// //     if (!silent) console.log("📶 Offline mode, skipping sync");
-// //     return { skipped: true, message: "Offline mode" };
-// //   }
-
-// //   // Start sync
-// //   syncInFlight = true;
-// //   syncStartTime = Date.now();
-
-// //   dispatch(setSyncing(true));
-// //   dispatch(setSyncError(null as any));
-// //   dispatch(setSyncProgress(0));
-
-// //   let syncedItems = 0;
-// //   let failedItems = 0;
-
-// //   try {
-// //     if (!silent) console.log("🔄 Starting sync...");
-// //     dispatch(setSyncProgress(5));
-
-// //     // ============================================
-// //     // STEP 1: PULL Products
-// //     // ============================================
-// //     if (!silent) console.log("📥 Pulling products...");
-// //     const productResult = await pullProducts(dispatch);
-// //     syncedItems += productResult.synced;
-// //     dispatch(setSyncProgress(20));
-// //     if (!silent) console.log(`✅ Synced ${productResult.synced} products`);
-
-// //     // ============================================
-// //     // STEP 2: PULL Categories
-// //     // ============================================
-// //     if (!silent) console.log("📥 Pulling categories...");
-// //     const categoryResult = await pullCategories(dispatch);
-// //     syncedItems += categoryResult.synced;
-// //     dispatch(setSyncProgress(30));
-// //     if (!silent) console.log(`✅ Synced ${categoryResult.synced} categories`);
-
-// //     // ============================================
-// //     // STEP 3: PULL Customers
-// //     // ============================================
-// //     if (!silent) console.log("📥 Pulling customers...");
-// //     const customerResult = await pullCustomers(dispatch);
-// //     syncedItems += customerResult.synced;
-// //     dispatch(setSyncProgress(40));
-// //     if (!silent) console.log(`✅ Synced ${customerResult.synced} customers`);
-
-// //     // ============================================
-// //     // STEP 4: PULL Stores
-// //     // ============================================
-// //     if (!silent) console.log("📥 Pulling stores...");
-// //     const storeResult = await pullStores(dispatch);
-// //     syncedItems += storeResult.synced;
-// //     dispatch(setSyncProgress(50));
-// //     if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
-
-// //     // ============================================
-// //     // STEP 5: PULL Sessions
-// //     // ============================================
-// //     if (!silent) console.log("📥 Pulling sessions...");
-// //     const sessionResult = await pullSessions(dispatch);
-// //     syncedItems += sessionResult.synced;
-// //     dispatch(setSyncProgress(60));
-// //     if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
-
-// //     // ============================================
-// //     // STEP 6: PUSH Outbox Items
-// //     // ============================================
-// //     if (!silent) console.log("📤 Pushing outbox items...");
-// //     const pushResult = await pushOutboxItems(dispatch, maxItems);
-// //     syncedItems += pushResult.synced;
-// //     failedItems += pushResult.failed;
-// //     dispatch(setSyncProgress(80));
-// //     if (!silent)
-// //       console.log(
-// //         `✅ Pushed ${pushResult.synced} items, ${pushResult.failed} failed`,
-// //       );
-
-// //     // ============================================
-// //     // STEP 7: Update Queue Counts
-// //     // ============================================
-// //     const remainingCount = await getQueuedCount();
-// //     dispatch(setQueuedCount(remainingCount));
-
-// //     const totalFailed = await getFailedCount();
-// //     dispatch(setFailedCount(totalFailed));
-
-// //     // ============================================
-// //     // STEP 8: Invalidate RTK Query Cache
-// //     // ============================================
-// //     store.dispatch(
-// //       localApi.util.invalidateTags([
-// //         "LocalProducts",
-// //         "LocalCategories",
-// //         "LocalCustomers",
-// //         "LocalStores",
-// //         "LocalSessions",
-// //         "LocalOrders",
-// //         "LocalInventory",
-// //         "LocalSyncOutbox",
-// //       ]),
-// //     );
-
-// //     // ============================================
-// //     // STEP 9: Update Stats & Complete
-// //     // ============================================
-// //     const duration = Date.now() - syncStartTime;
-// //     dispatch(setSyncDuration(duration));
-// //     dispatch(incrementSyncedCount(syncedItems));
-
-// //     if (failedItems > 0) {
-// //       dispatch(incrementFailedCount(failedItems));
-// //       dispatch(
-// //         setSyncError(
-// //           `Sync completed with ${failedItems} failed items. Please check and retry.`,
-// //         ),
-// //       );
-// //       if (!silent) console.warn(`⚠️ ${failedItems} items failed to sync`);
-// //     } else {
-// //       dispatch(setSyncComplete());
-// //       if (!silent) console.log("✅ Sync completed successfully");
-// //     }
-
-// //     dispatch(setSyncProgress(100));
-
-// //     return {
-// //       success: true,
-// //       synced: syncedItems,
-// //       failed: failedItems,
-// //       remaining: remainingCount,
-// //       duration,
-// //     };
-// //   } catch (error) {
-// //     const message =
-// //       error instanceof Error ? error.message : "Offline sync failed";
-// //     dispatch(setSyncError(message));
-// //     console.error("❌ Sync error:", error);
-// //     return { success: false, error: message };
-// //   } finally {
-// //     syncInFlight = false;
-// //     dispatch(setSyncing(false));
-// //   }
-// // }
-
-// // // ============================================
-// // // 3. PULL FUNCTIONS
-// // // ============================================
-
-// // async function pullProducts(dispatch: AppDispatch) {
-// //   try {
-// //     const state = store.getState();
-// //     const token = state.auth?.user?.token;
-
-// //     // ✅ Check if we have a token
-// //     if (!token) {
-// //       console.warn("⚠️ No auth token found, skipping product pull");
-// //       return { synced: 0 };
-// //     }
-
-// //     const { data, error } = await store.dispatch(
-// //       remoteApi.endpoints.getRemoteProducts.initiate(undefined, {
-// //         forceRefetch: true,
-// //       }),
-// //     );
-
-// //     if (error) {
-// //       console.error("❌ Product pull failed:", error);
-// //       return { synced: 0 };
-// //     }
-
-// //     // ✅ Handle different response formats
-// //     const products = data?.products || data?.data || data || [];
-
-// //     if (products.length > 0) {
-// //       await upsertProducts(products);
-// //       return { synced: products.length };
-// //     }
-
-// //     return { synced: 0 };
-// //   } catch (error) {
-// //     console.error("❌ Failed to pull products:", error);
-// //     return { synced: 0 };
-// //   }
-// // }
-
-// // async function pullCategories(dispatch: AppDispatch) {
-// //   try {
-// //     const state = store.getState();
-// //     const token = state.auth?.user?.token;
-
-// //     // ✅ Check if we have a token
-// //     if (!token) {
-// //       console.warn("⚠️ No auth token found, skipping category pull");
-// //       return { synced: 0 };
-// //     }
-// //     const { data, error } = await store.dispatch(
-// //       remoteApi.endpoints.getRemoteCategories.initiate(undefined, {
-// //         forceRefetch: true,
-// //       }),
-// //     );
-
-// //     if (error) {
-// //       console.error("❌ Category pull failed:", error);
-// //       return { synced: 0 };
-// //     }
-
-// //     const categories = data?.categories || data?.data || data || [];
-
-// //     if (categories.length > 0) {
-// //       await upsertCategories(categories);
-// //       return { synced: categories.length };
-// //     }
-
-// //     return { synced: 0 };
-// //   } catch (error) {
-// //     console.error("❌ Failed to pull categories:", error);
-// //     return { synced: 0 };
-// //   }
-// // }
-
-// // async function pullCustomers(dispatch: AppDispatch) {
-// //   try {
-// //     const state = store.getState();
-// //     const token = state.auth?.user?.token;
-
-// //     // ✅ Check if we have a token
-// //     if (!token) {
-// //       console.warn("⚠️ No auth token found, skipping customer pull");
-// //       return { synced: 0 };
-// //     }
-// //     const { data, error } = await store.dispatch(
-// //       remoteApi.endpoints.getRemoteCustomers.initiate(undefined, {
-// //         forceRefetch: true,
-// //       }),
-// //     );
-
-// //     if (error) {
-// //       console.error("❌ Customer pull failed:", error);
-// //       return { synced: 0 };
-// //     }
-
-// //     const customers = data?.customers || data?.data || data || [];
-
-// //     if (customers.length > 0) {
-// //       await upsertCustomers(customers);
-// //       return { synced: customers.length };
-// //     }
-
-// //     return { synced: 0 };
-// //   } catch (error) {
-// //     console.error("❌ Failed to pull customers:", error);
-// //     return { synced: 0 };
-// //   }
-// // }
-
-// // async function pullStores(dispatch: AppDispatch) {
-// //   try {
-// //     const { data, error } = await store.dispatch(
-// //       remoteApi.endpoints.getRemoteStores.initiate(undefined, {
-// //         forceRefetch: true,
-// //       }),
-// //     );
-
-// //     if (error) {
-// //       console.error("❌ Store pull failed:", error);
-// //       return { synced: 0 };
-// //     }
-
-// //     const stores = data?.stores || data?.data || data || [];
-
-// //     if (stores.length > 0) {
-// //       await upsertStores(stores);
-// //       return { synced: stores.length };
-// //     }
-
-// //     return { synced: 0 };
-// //   } catch (error) {
-// //     console.error("❌ Failed to pull stores:", error);
-// //     return { synced: 0 };
-// //   }
-// // }
-
-// // async function pullSessions(dispatch: AppDispatch) {
-// //   try {
-// //     const { data, error } = await store.dispatch(
-// //       remoteApi.endpoints.getRemoteSessions.initiate(undefined, {
-// //         forceRefetch: true,
-// //       }),
-// //     );
-
-// //     if (error) {
-// //       console.error("❌ Session pull failed:", error);
-// //       return { synced: 0 };
-// //     }
-
-// //     const sessions = data?.sessions || data?.data || data || [];
-
-// //     if (sessions.length > 0) {
-// //       await upsertSessions(sessions);
-// //       return { synced: sessions.length };
-// //     }
-
-// //     return { synced: 0 };
-// //   } catch (error) {
-// //     console.error("❌ Failed to pull sessions:", error);
-// //     return { synced: 0 };
-// //   }
-// // }
-
-// // // ============================================
-// // // 4. PUSH FUNCTIONS
-// // // ============================================
-
-// // async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
-// //   const items = await getDueOutboxItems(maxItems);
-
-// //   if (items.length === 0) {
-// //     return { synced: 0, failed: 0 };
-// //   }
-
-// //   let synced = 0;
-// //   let failed = 0;
-
-// //   // Group items by entity for better processing
-// //   const groupedItems = items.reduce(
-// //     (acc, item) => {
-// //       if (!acc[item.entity]) acc[item.entity] = [];
-// //       acc[item.entity].push(item);
-// //       return acc;
-// //     },
-// //     {} as Record<string, typeof items>,
-// //   );
-
-// //   // Process each entity type
-// //   for (const [entity, entityItems] of Object.entries(groupedItems)) {
-// //     for (const item of entityItems) {
-// //       try {
-// //         const result = await processOutboxItem(item);
-// //         if (result.success) {
-// //           synced++;
-// //           dispatch(setSyncProgress(60 + (synced / items.length) * 20));
-// //         } else {
-// //           failed++;
-// //           await markOutboxFailed(
-// //             item.id,
-// //             item.attempts + 1,
-// //             result.error || "Unknown error",
-// //           );
-// //         }
-// //       } catch (error) {
-// //         failed++;
-// //         const message =
-// //           error instanceof Error ? error.message : "Unknown error";
-// //         await markOutboxFailed(item.id, item.attempts + 1, message);
-// //         console.error(
-// //           `❌ Failed to process ${item.entity} ${item.entityId}:`,
-// //           message,
-// //         );
-// //       }
-// //     }
-// //   }
-
-// //   return { synced, failed };
-// // }
-
-// // async function processOutboxItem(
-// //   item: any,
-// // ): Promise<{ success: boolean; error?: string }> {
-// //   const db = getOfflineDb();
-
-// //   switch (item.entity) {
-// //     case "orders": {
-// //       try {
-// //         const { data, error } = await store.dispatch(
-// //           remoteApi.endpoints.createRemoteOrder.initiate(item.payload),
-// //         );
-// //         if (error) throw new Error(JSON.stringify(error));
-
-// //         await db
-// //           .update(orders)
-// //           .set({ remoteId: data.id, syncStatus: "synced" })
-// //           .where(eq(orders.id, item.entityId));
-
-// //         await markOutboxSynced(item.id);
-// //         return { success: true };
-// //       } catch (error) {
-// //         return { success: false, error: (error as Error).message };
-// //       }
-// //     }
-
-// //     case "sessions": {
-// //       try {
-// //         const { data, error } = await store.dispatch(
-// //           remoteApi.endpoints.createRemoteSession.initiate(item.payload),
-// //           // remoteApi.endpoints.getRemoteSessions.initiate(item.payload),
-// //         );
-// //         if (error) throw new Error(JSON.stringify(error));
-
-// //         await db
-// //           .update(sessions)
-// //           .set({ remoteId: data.id, syncStatus: "synced" })
-// //           .where(eq(sessions.id, item.entityId));
-
-// //         await markOutboxSynced(item.id);
-// //         return { success: true };
-// //       } catch (error) {
-// //         return { success: false, error: (error as Error).message };
-// //       }
-// //     }
-
-// //     case "products": {
-// //       try {
-// //         if (item.operation === "create") {
-// //           const { data, error } = await store.dispatch(
-// //             remoteApi.endpoints.createRemoteProduct.initiate(item.payload),
-// //           );
-// //           if (error) throw new Error(JSON.stringify(error));
-// //           await db
-// //             .update(products)
-// //             .set({
-// //               remoteId: data.id,
-// //               // tenantId: data.tenantId,
-// //               syncStatus: "synced",
-// //             } as any)
-// //             .where(eq(products.id, item.entityId));
-// //         } else if (item.operation === "update") {
-// //           const { error } = await store.dispatch(
-// //             remoteApi.endpoints.updateRemoteProduct.initiate({
-// //               id: item.entityId,
-// //               ...item.payload,
-// //             }),
-// //           );
-// //           if (error) throw new Error(JSON.stringify(error));
-// //           await db
-// //             .update(products)
-// //             .set({ syncStatus: "synced" })
-// //             .where(eq(products.id, item.entityId));
-// //         } else if (item.operation === "delete") {
-// //           const { error } = await store.dispatch(
-// //             remoteApi.endpoints.deleteRemoteProduct.initiate(item.entityId),
-// //           );
-// //           if (error) throw new Error(JSON.stringify(error));
-// //           await db.delete(products).where(eq(products.id, item.entityId));
-// //         }
-// //         await markOutboxSynced(item.id);
-// //         return { success: true };
-// //       } catch (error) {
-// //         return { success: false, error: (error as Error).message };
-// //       }
-// //     }
-
-// //     case "inventory_movements": {
-// //       try {
-// //         const { data, error } = await store.dispatch(
-// //           remoteApi.endpoints.createInventoryMovement.initiate(item.payload),
-// //         );
-// //         if (error) throw new Error(JSON.stringify(error));
-
-// //         await db
-// //           .update(inventoryMovements)
-// //           .set({ remoteId: data.id, syncStatus: "synced" })
-// //           .where(eq(inventoryMovements.id, item.entityId));
-
-// //         await markOutboxSynced(item.id);
-// //         return { success: true };
-// //       } catch (error) {
-// //         return { success: false, error: (error as Error).message };
-// //       }
-// //     }
-
-// //     default: {
-// //       // Generic handling
-// //       try {
-// //         await markEntitySynced(item.entity, item.entityId, {});
-// //         await markOutboxSynced(item.id);
-// //         return { success: true };
-// //       } catch (error) {
-// //         return { success: false, error: (error as Error).message };
-// //       }
-// //     }
-// //   }
-// // }
-
-// // // ============================================
-// // // 5. HELPER FUNCTIONS
-// // // ============================================
-
-// // async function getFailedCount(): Promise<number> {
-// //   const db = getOfflineDb();
-// //   const result = await db
-// //     .select({ count: sql<number>`count(*)` })
-// //     .from(syncOutbox)
-// //     .where(inArray(syncOutbox.status, ["failed", "dead"]));
-// //   return Number(result[0]?.count ?? 0);
-// // }
-
-// // // ============================================
-// // // 6. RETRY FAILED ITEMS
-// // // ============================================
-
-// // export async function retryFailedItems(
-// //   dispatch: AppDispatch,
-// //   getState: () => RootState,
-// //   itemIds?: string[],
-// // ) {
-// //   const online = await isOnline();
-// //   if (!online) {
-// //     dispatch(setSyncError("Cannot retry: Offline mode"));
-// //     return { error: "Offline mode" };
-// //   }
-
-// //   try {
-// //     let itemsToRetry: string[] = [];
-
-// //     if (itemIds && itemIds.length > 0) {
-// //       for (const id of itemIds) {
-// //         await retryOutboxItem(id);
-// //         itemsToRetry.push(id);
-// //       }
-// //     } else {
-// //       const failedItems = await getFailedOutboxItems(100);
-// //       for (const item of failedItems) {
-// //         await retryOutboxItem(item.id);
-// //         itemsToRetry.push(item.id);
-// //       }
-// //     }
-
-// //     dispatch(resetSync());
-// //     const result = await syncNow(dispatch, getState, { force: true });
-
-// //     return {
-// //       success: true,
-// //       retried: itemsToRetry.length,
-// //       ...result,
-// //     };
-// //   } catch (error) {
-// //     const message =
-// //       error instanceof Error ? error.message : "Failed to retry items";
-// //     dispatch(setSyncError(message));
-// //     return { error: message };
-// //   }
-// // }
-
-// // // ============================================
-// // // 7. CLEANUP
-// // // ============================================
-
-// // export function cleanupOfflineSystem() {
-// //   if (unsubscribeNetwork) {
-// //     unsubscribeNetwork();
-// //     unsubscribeNetwork = undefined;
-// //   }
-
-// //   if (syncInterval) {
-// //     clearInterval(syncInterval);
-// //     syncInterval = undefined;
-// //   }
-
-// //   syncInFlight = false;
-// //   console.log("🧹 Offline system cleaned up");
-// // }
-
-// // // ============================================
-// // // 8. REACT HOOK FOR SYNC (useSync)
-// // // ============================================
-
-// // import { useEffect, useState, useCallback } from "react";
-// // import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
-// // import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
-// // // import { getSyncStatus } from "@/services/features/offline/repository";
-
-// // // import { getSyncStatus } from "@/services/features/offline/repository";
-// // import { getSyncStats, getSyncStatus } from "./repository";
-// // //
-
-// // export function useSync() {
-// //   const dispatch = useAppDispatch();
-
-// //   const isOnline = useAppSelector((state) => state.offline.isOnline);
-// //   const isSyncing = useAppSelector((state) => state.offline.isSyncing);
-// //   const syncStatus = useAppSelector((state) => state.offline.syncStatus);
-// //   const syncError = useAppSelector((state) => state.offline.syncError);
-// //   const queueCount = useAppSelector((state) => state.offline.queuedCount);
-// //   const failedCount = useAppSelector((state) => state.offline.failedCount);
-// //   const syncProgress = useAppSelector((state) => state.offline.syncProgress);
-// //   const lastSyncAt = useAppSelector((state) => state.offline.lastSyncAt);
-// //   const syncStats = useAppSelector((state) => state.offline.syncStats);
-
-// //   const [isLoading, setIsLoading] = useState(false);
-// //   const [detailedStatus, setDetailedStatus] = useState<any>(null);
-
-// //   const getState = useCallback(() => {
-// //     return { auth: { user: { token: "" } } } as RootState;
-// //   }, []);
-
-// //   const sync = useCallback(
-// //     async (options?: { force?: boolean; maxItems?: number }) => {
-// //       setIsLoading(true);
-// //       try {
-// //         const result = await syncNow(dispatch, getState, options);
-// //         return result;
-// //       } catch (error) {
-// //         console.error("Sync failed:", error);
-// //         throw error;
-// //       } finally {
-// //         setIsLoading(false);
-// //       }
-// //     },
-// //     [dispatch, getState],
-// //   );
-
-// //   const retry = useCallback(
-// //     async (itemIds?: string[]) => {
-// //       setIsLoading(true);
-// //       try {
-// //         const result = await retryFailedItems(dispatch, getState, itemIds);
-// //         return result;
-// //       } catch (error) {
-// //         console.error("Retry failed:", error);
-// //         throw error;
-// //       } finally {
-// //         setIsLoading(false);
-// //       }
-// //     },
-// //     [dispatch, getState],
-// //   );
-
-// //   const refresh = useCallback(async () => {
-// //     try {
-// //       const count = await getQueuedCount();
-// //       dispatch(setQueuedCount(count));
-// //       const failed = await getFailedCount();
-// //       dispatch(setFailedCount(failed));
-// //       const status = await getSyncStatus();
-// //       setDetailedStatus(status);
-// //       return { queueCount: count, failedCount: failed, status };
-// //     } catch (error) {
-// //       console.error("Refresh failed:", error);
-// //       throw error;
-// //     }
-// //   }, [dispatch]);
-
-// //   useEffect(() => {
-// //     refresh();
-// //     const interval = setInterval(refresh, 30000);
-// //     return () => clearInterval(interval);
-// //   }, [refresh]);
-
-// //   return {
-// //     // State
-// //     isOnline,
-// //     isSyncing,
-// //     isLoading,
-// //     syncStatus,
-// //     syncError,
-// //     queueCount,
-// //     failedCount,
-// //     syncProgress,
-// //     lastSyncAt,
-// //     syncStats,
-// //     detailedStatus,
-
-// //     // Actions
-// //     sync,
-// //     retry,
-// //     refresh,
-// //   };
-// // }
-
-// // export type SyncResult = {
-// //   success?: boolean;
-// //   skipped?: boolean;
-// //   message?: string;
-// //   synced?: number;
-// //   failed?: number;
-// //   remaining?: number;
-// //   duration?: number;
-// //   retried?: number;
-// //   error?: string;
-// // };

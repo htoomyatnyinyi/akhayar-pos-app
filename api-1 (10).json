@@ -127,7 +127,8 @@
                 "type": "object",
                 "required": [
                   "email",
-                  "password"
+                  "password",
+                  "tenantCode"
                 ],
                 "properties": {
                   "email": {
@@ -139,7 +140,8 @@
                   "tenantCode": {
                     "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "multipart/form-data": {
@@ -147,7 +149,8 @@
                 "type": "object",
                 "required": [
                   "email",
-                  "password"
+                  "password",
+                  "tenantCode"
                 ],
                 "properties": {
                   "email": {
@@ -159,7 +162,8 @@
                   "tenantCode": {
                     "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "text/plain": {
@@ -167,7 +171,8 @@
                 "type": "object",
                 "required": [
                   "email",
-                  "password"
+                  "password",
+                  "tenantCode"
                 ],
                 "properties": {
                   "email": {
@@ -179,7 +184,8 @@
                   "tenantCode": {
                     "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             }
           }
@@ -495,6 +501,166 @@
         }
       }
     },
+    "/api/sync/orders": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false
+          }
+        ],
+        "operationId": "getApiSyncOrders",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/sync/products": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false
+          }
+        ],
+        "operationId": "getApiSyncProducts",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/sync/customers": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false
+          }
+        ],
+        "operationId": "getApiSyncCustomers",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/sync/inventory": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false
+          }
+        ],
+        "operationId": "getApiSyncInventory",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/dashboard/stats": {
+      "get": {
+        "operationId": "getApiDashboardStats",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/dashboard/revenue": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "days",
+            "required": false
+          }
+        ],
+        "operationId": "getApiDashboardRevenue",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/dashboard/top-products": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "operationId": "getApiDashboardTop-products",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/dashboard/platform/stats": {
+      "get": {
+        "operationId": "getApiDashboardPlatformStats",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/dashboard/platform/revenue": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "days",
+            "required": false
+          }
+        ],
+        "operationId": "getApiDashboardPlatformRevenue",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/dashboard/platform/top-products": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "operationId": "getApiDashboardPlatformTop-products",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
     "/api/platform/api-keys/": {
       "get": {
         "operationId": "getApiPlatformApi-keys",
@@ -772,9 +938,6 @@
                   "phone": {
                     "type": "string"
                   },
-                  "userId": {
-                    "type": "string"
-                  },
                   "isActive": {
                     "type": "boolean"
                   }
@@ -794,9 +957,6 @@
                   "phone": {
                     "type": "string"
                   },
-                  "userId": {
-                    "type": "string"
-                  },
                   "isActive": {
                     "type": "boolean"
                   }
@@ -814,9 +974,6 @@
                     "type": "string"
                   },
                   "phone": {
-                    "type": "string"
-                  },
-                  "userId": {
                     "type": "string"
                   },
                   "isActive": {
@@ -843,6 +1000,77 @@
           }
         ],
         "operationId": "deleteApiPlatformTenantsById",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/platform/tenants/{id}/subscription": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "postApiPlatformTenantsByIdSubscription",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "planId"
+                ],
+                "properties": {
+                  "planId": {
+                    "type": "string"
+                  },
+                  "billingCycle": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "planId"
+                ],
+                "properties": {
+                  "planId": {
+                    "type": "string"
+                  },
+                  "billingCycle": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "text/plain": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "planId"
+                ],
+                "properties": {
+                  "planId": {
+                    "type": "string"
+                  },
+                  "billingCycle": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {}
         }
@@ -1177,7 +1405,7 @@
         }
       }
     },
-    "/api/tenant/tenants/": {
+    "/api/platform/accounts/": {
       "get": {
         "parameters": [
           {
@@ -1185,26 +1413,18 @@
               "type": "string"
             },
             "in": "query",
-            "name": "page",
-            "required": false
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "query",
-            "name": "limit",
+            "name": "tenantId",
             "required": false
           }
         ],
-        "operationId": "getApiTenantTenants",
+        "operationId": "getApiPlatformAccounts",
         "responses": {
           "200": {}
         }
       },
       "post": {
         "parameters": [],
-        "operationId": "postApiTenantTenants",
+        "operationId": "postApiPlatformAccounts",
         "requestBody": {
           "required": true,
           "content": {
@@ -1212,24 +1432,35 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "name"
+                  "tenantId",
+                  "code",
+                  "name",
+                  "type"
                 ],
                 "properties": {
+                  "tenantId": {
+                    "type": "string"
+                  },
+                  "parentId": {
+                    "type": "string"
+                  },
                   "code": {
                     "type": "string"
                   },
                   "name": {
-                    "minLength": 2,
                     "type": "string"
                   },
-                  "email": {
+                  "type": {
                     "type": "string"
                   },
-                  "phone": {
+                  "subType": {
                     "type": "string"
                   },
-                  "userId": {
+                  "description": {
                     "type": "string"
+                  },
+                  "isSystem": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -1238,24 +1469,35 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "name"
+                  "tenantId",
+                  "code",
+                  "name",
+                  "type"
                 ],
                 "properties": {
+                  "tenantId": {
+                    "type": "string"
+                  },
+                  "parentId": {
+                    "type": "string"
+                  },
                   "code": {
                     "type": "string"
                   },
                   "name": {
-                    "minLength": 2,
                     "type": "string"
                   },
-                  "email": {
+                  "type": {
                     "type": "string"
                   },
-                  "phone": {
+                  "subType": {
                     "type": "string"
                   },
-                  "userId": {
+                  "description": {
                     "type": "string"
+                  },
+                  "isSystem": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -1264,24 +1506,35 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "name"
+                  "tenantId",
+                  "code",
+                  "name",
+                  "type"
                 ],
                 "properties": {
+                  "tenantId": {
+                    "type": "string"
+                  },
+                  "parentId": {
+                    "type": "string"
+                  },
                   "code": {
                     "type": "string"
                   },
                   "name": {
-                    "minLength": 2,
                     "type": "string"
                   },
-                  "email": {
+                  "type": {
                     "type": "string"
                   },
-                  "phone": {
+                  "subType": {
                     "type": "string"
                   },
-                  "userId": {
+                  "description": {
                     "type": "string"
+                  },
+                  "isSystem": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -1293,7 +1546,7 @@
         }
       }
     },
-    "/api/tenant/tenants/{id}": {
+    "/api/platform/accounts/{id}": {
       "get": {
         "parameters": [
           {
@@ -1305,7 +1558,7 @@
             "required": true
           }
         ],
-        "operationId": "getApiTenantTenantsById",
+        "operationId": "getApiPlatformAccountsById",
         "responses": {
           "200": {}
         }
@@ -1321,7 +1574,7 @@
             "required": true
           }
         ],
-        "operationId": "putApiTenantTenantsById",
+        "operationId": "putApiPlatformAccountsById",
         "requestBody": {
           "required": true,
           "content": {
@@ -1332,13 +1585,13 @@
                   "name": {
                     "type": "string"
                   },
-                  "email": {
+                  "parentId": {
                     "type": "string"
                   },
-                  "phone": {
+                  "subType": {
                     "type": "string"
                   },
-                  "userId": {
+                  "description": {
                     "type": "string"
                   },
                   "isActive": {
@@ -1354,13 +1607,13 @@
                   "name": {
                     "type": "string"
                   },
-                  "email": {
+                  "parentId": {
                     "type": "string"
                   },
-                  "phone": {
+                  "subType": {
                     "type": "string"
                   },
-                  "userId": {
+                  "description": {
                     "type": "string"
                   },
                   "isActive": {
@@ -1376,13 +1629,13 @@
                   "name": {
                     "type": "string"
                   },
-                  "email": {
+                  "parentId": {
                     "type": "string"
                   },
-                  "phone": {
+                  "subType": {
                     "type": "string"
                   },
-                  "userId": {
+                  "description": {
                     "type": "string"
                   },
                   "isActive": {
@@ -1408,7 +1661,427 @@
             "required": true
           }
         ],
-        "operationId": "deleteApiTenantTenantsById",
+        "operationId": "deleteApiPlatformAccountsById",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/platform/journal-entries/": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "page",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "tenantId",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "fromDate",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "toDate",
+            "required": false
+          }
+        ],
+        "operationId": "getApiPlatformJournal-entries",
+        "responses": {
+          "200": {}
+        }
+      },
+      "post": {
+        "parameters": [],
+        "operationId": "postApiPlatformJournal-entries",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantId",
+                  "lines"
+                ],
+                "properties": {
+                  "tenantId": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "reference": {
+                    "type": "string"
+                  },
+                  "entryType": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "orderId": {
+                    "type": "string"
+                  },
+                  "paymentId": {
+                    "type": "string"
+                  },
+                  "currencyCode": {
+                    "type": "string"
+                  },
+                  "exchangeRate": {
+                    "type": "number"
+                  },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "accountId",
+                        "amount",
+                        "side"
+                      ],
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "number"
+                        },
+                        "side": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantId",
+                  "lines"
+                ],
+                "properties": {
+                  "tenantId": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "reference": {
+                    "type": "string"
+                  },
+                  "entryType": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "orderId": {
+                    "type": "string"
+                  },
+                  "paymentId": {
+                    "type": "string"
+                  },
+                  "currencyCode": {
+                    "type": "string"
+                  },
+                  "exchangeRate": {
+                    "type": "number"
+                  },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "accountId",
+                        "amount",
+                        "side"
+                      ],
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "number"
+                        },
+                        "side": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "text/plain": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantId",
+                  "lines"
+                ],
+                "properties": {
+                  "tenantId": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "reference": {
+                    "type": "string"
+                  },
+                  "entryType": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "orderId": {
+                    "type": "string"
+                  },
+                  "paymentId": {
+                    "type": "string"
+                  },
+                  "currencyCode": {
+                    "type": "string"
+                  },
+                  "exchangeRate": {
+                    "type": "number"
+                  },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "accountId",
+                        "amount",
+                        "side"
+                      ],
+                      "properties": {
+                        "accountId": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "number"
+                        },
+                        "side": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/platform/journal-entries/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "getApiPlatformJournal-entriesById",
+        "responses": {
+          "200": {}
+        }
+      },
+      "delete": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "deleteApiPlatformJournal-entriesById",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/platform/journal-entries/{id}/post": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "postApiPlatformJournal-entriesByIdPost",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/platform/reports/trial-balance": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "tenantId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "asOfDate",
+            "required": false
+          }
+        ],
+        "operationId": "getApiPlatformReportsTrial-balance",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/profile/": {
+      "get": {
+        "operationId": "getApiTenantProfile",
+        "responses": {
+          "200": {}
+        }
+      },
+      "put": {
+        "parameters": [],
+        "operationId": "putApiTenantProfile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "text/plain": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "email": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {}
         }
@@ -1473,10 +2146,7 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "sku",
-                  "name",
-                  "costPrice",
-                  "sellingPrice"
+                  "name"
                 ],
                 "properties": {
                   "sku": {
@@ -1491,7 +2161,7 @@
                   "description": {
                     "type": "string"
                   },
-                  "brand": {
+                  "brandId": {
                     "type": "string"
                   },
                   "costPrice": {
@@ -1514,6 +2184,27 @@
                   },
                   "expiryDate": {
                     "type": "string"
+                  },
+                  "bestBeforeDate": {
+                    "type": "string"
+                  },
+                  "promoPrice": {
+                    "type": "number"
+                  },
+                  "promoStartAt": {
+                    "type": "string"
+                  },
+                  "promoEndAt": {
+                    "type": "string"
+                  },
+                  "isTaxable": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  },
+                  "isReturnable": {
+                    "type": "boolean"
                   },
                   "supplierId": {
                     "type": "string"
@@ -1538,10 +2229,7 @@
                     "items": {
                       "type": "object",
                       "required": [
-                        "name",
-                        "price",
-                        "costPrice",
-                        "sku"
+                        "name"
                       ],
                       "properties": {
                         "name": {
@@ -1574,17 +2262,15 @@
                       }
                     }
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "multipart/form-data": {
               "schema": {
                 "type": "object",
                 "required": [
-                  "sku",
-                  "name",
-                  "costPrice",
-                  "sellingPrice"
+                  "name"
                 ],
                 "properties": {
                   "sku": {
@@ -1599,7 +2285,7 @@
                   "description": {
                     "type": "string"
                   },
-                  "brand": {
+                  "brandId": {
                     "type": "string"
                   },
                   "costPrice": {
@@ -1622,6 +2308,27 @@
                   },
                   "expiryDate": {
                     "type": "string"
+                  },
+                  "bestBeforeDate": {
+                    "type": "string"
+                  },
+                  "promoPrice": {
+                    "type": "number"
+                  },
+                  "promoStartAt": {
+                    "type": "string"
+                  },
+                  "promoEndAt": {
+                    "type": "string"
+                  },
+                  "isTaxable": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  },
+                  "isReturnable": {
+                    "type": "boolean"
                   },
                   "supplierId": {
                     "type": "string"
@@ -1646,10 +2353,7 @@
                     "items": {
                       "type": "object",
                       "required": [
-                        "name",
-                        "price",
-                        "costPrice",
-                        "sku"
+                        "name"
                       ],
                       "properties": {
                         "name": {
@@ -1682,17 +2386,15 @@
                       }
                     }
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "text/plain": {
               "schema": {
                 "type": "object",
                 "required": [
-                  "sku",
-                  "name",
-                  "costPrice",
-                  "sellingPrice"
+                  "name"
                 ],
                 "properties": {
                   "sku": {
@@ -1707,7 +2409,7 @@
                   "description": {
                     "type": "string"
                   },
-                  "brand": {
+                  "brandId": {
                     "type": "string"
                   },
                   "costPrice": {
@@ -1730,6 +2432,27 @@
                   },
                   "expiryDate": {
                     "type": "string"
+                  },
+                  "bestBeforeDate": {
+                    "type": "string"
+                  },
+                  "promoPrice": {
+                    "type": "number"
+                  },
+                  "promoStartAt": {
+                    "type": "string"
+                  },
+                  "promoEndAt": {
+                    "type": "string"
+                  },
+                  "isTaxable": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  },
+                  "isReturnable": {
+                    "type": "boolean"
                   },
                   "supplierId": {
                     "type": "string"
@@ -1754,10 +2477,7 @@
                     "items": {
                       "type": "object",
                       "required": [
-                        "name",
-                        "price",
-                        "costPrice",
-                        "sku"
+                        "name"
                       ],
                       "properties": {
                         "name": {
@@ -1790,7 +2510,8 @@
                       }
                     }
                   }
-                }
+                },
+                "additionalProperties": false
               }
             }
           }
@@ -1866,7 +2587,7 @@
                   "description": {
                     "type": "string"
                   },
-                  "brand": {
+                  "brandId": {
                     "type": "string"
                   },
                   "costPrice": {
@@ -1890,13 +2611,32 @@
                   "expiryDate": {
                     "type": "string"
                   },
+                  "bestBeforeDate": {
+                    "type": "string"
+                  },
+                  "promoPrice": {
+                    "type": "number"
+                  },
+                  "promoStartAt": {
+                    "type": "string"
+                  },
+                  "promoEndAt": {
+                    "type": "string"
+                  },
+                  "isTaxable": {
+                    "type": "boolean"
+                  },
+                  "isReturnable": {
+                    "type": "boolean"
+                  },
                   "supplierId": {
                     "type": "string"
                   },
                   "isActive": {
                     "type": "boolean"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "multipart/form-data": {
@@ -1915,7 +2655,7 @@
                   "description": {
                     "type": "string"
                   },
-                  "brand": {
+                  "brandId": {
                     "type": "string"
                   },
                   "costPrice": {
@@ -1939,13 +2679,32 @@
                   "expiryDate": {
                     "type": "string"
                   },
+                  "bestBeforeDate": {
+                    "type": "string"
+                  },
+                  "promoPrice": {
+                    "type": "number"
+                  },
+                  "promoStartAt": {
+                    "type": "string"
+                  },
+                  "promoEndAt": {
+                    "type": "string"
+                  },
+                  "isTaxable": {
+                    "type": "boolean"
+                  },
+                  "isReturnable": {
+                    "type": "boolean"
+                  },
                   "supplierId": {
                     "type": "string"
                   },
                   "isActive": {
                     "type": "boolean"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "text/plain": {
@@ -1964,7 +2723,7 @@
                   "description": {
                     "type": "string"
                   },
-                  "brand": {
+                  "brandId": {
                     "type": "string"
                   },
                   "costPrice": {
@@ -1988,13 +2747,32 @@
                   "expiryDate": {
                     "type": "string"
                   },
+                  "bestBeforeDate": {
+                    "type": "string"
+                  },
+                  "promoPrice": {
+                    "type": "number"
+                  },
+                  "promoStartAt": {
+                    "type": "string"
+                  },
+                  "promoEndAt": {
+                    "type": "string"
+                  },
+                  "isTaxable": {
+                    "type": "boolean"
+                  },
+                  "isReturnable": {
+                    "type": "boolean"
+                  },
                   "supplierId": {
                     "type": "string"
                   },
                   "isActive": {
                     "type": "boolean"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             }
           }
@@ -2162,7 +2940,8 @@
                       }
                     }
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "multipart/form-data": {
@@ -2252,7 +3031,8 @@
                       }
                     }
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "text/plain": {
@@ -2342,7 +3122,8 @@
                       }
                     }
                   }
-                }
+                },
+                "additionalProperties": false
               }
             }
           }
@@ -2381,6 +3162,24 @@
           }
         ],
         "operationId": "deleteApiTenantOrdersById",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/orders/{id}/complete": {
+      "patch": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "patchApiTenantOrdersByIdComplete",
         "responses": {
           "200": {}
         }
@@ -2694,6 +3493,244 @@
         }
       }
     },
+    "/api/tenant/stores/{id}/products": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "page",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "categoryId",
+            "required": false
+          }
+        ],
+        "operationId": "getApiTenantStoresByIdProducts",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/stores/{id}/products/{productId}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "productId",
+            "required": true
+          }
+        ],
+        "operationId": "getApiTenantStoresByIdProductsByProductId",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/stores/{id}/categories": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "getApiTenantStoresByIdCategories",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/stores/{id}/orders": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "page",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "search",
+            "required": false
+          }
+        ],
+        "operationId": "getApiTenantStoresByIdOrders",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/stores/{id}/customers": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "page",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "search",
+            "required": false
+          }
+        ],
+        "operationId": "getApiTenantStoresByIdCustomers",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/stores/{id}/brands": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "getApiTenantStoresByIdBrands",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/stores/{id}/suppliers": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "page",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "search",
+            "required": false
+          }
+        ],
+        "operationId": "getApiTenantStoresByIdSuppliers",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
     "/api/tenant/categories/": {
       "get": {
         "parameters": [
@@ -2997,6 +4034,206 @@
           }
         ],
         "operationId": "deleteApiTenantCategoriesById",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/brands/": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "page",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "search",
+            "required": false
+          }
+        ],
+        "operationId": "getApiTenantBrands",
+        "responses": {
+          "200": {}
+        }
+      },
+      "post": {
+        "parameters": [],
+        "operationId": "postApiTenantBrands",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "error": "Brand name is required",
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "error": "Brand name is required",
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "text/plain": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "error": "Brand name is required",
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/brands/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "getApiTenantBrandsById",
+        "responses": {
+          "200": {}
+        }
+      },
+      "put": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "putApiTenantBrandsById",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "text/plain": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {}
+        }
+      },
+      "delete": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "deleteApiTenantBrandsById",
         "responses": {
           "200": {}
         }
@@ -3455,9 +4692,6 @@
                   "dateOfBirth": {
                     "type": "string"
                   },
-                  "debtAmount": {
-                    "type": "number"
-                  },
                   "gender": {
                     "type": "string"
                   },
@@ -3493,9 +4727,6 @@
                   "dateOfBirth": {
                     "type": "string"
                   },
-                  "debtAmount": {
-                    "type": "number"
-                  },
                   "gender": {
                     "type": "string"
                   },
@@ -3530,9 +4761,6 @@
                   },
                   "dateOfBirth": {
                     "type": "string"
-                  },
-                  "debtAmount": {
-                    "type": "number"
                   },
                   "gender": {
                     "type": "string"
@@ -3604,26 +4832,8 @@
                   "dateOfBirth": {
                     "type": "string"
                   },
-                  "debtAmount": {
-                    "type": "number"
-                  },
                   "gender": {
                     "type": "string"
-                  },
-                  "loyaltyPoints": {
-                    "anyOf": [
-                      {
-                        "format": "integer",
-                        "default": 0,
-                        "type": "string"
-                      },
-                      {
-                        "type": "integer"
-                      }
-                    ]
-                  },
-                  "totalSpent": {
-                    "type": "number"
                   },
                   "tier": {
                     "type": "string"
@@ -3656,26 +4866,8 @@
                   "dateOfBirth": {
                     "type": "string"
                   },
-                  "debtAmount": {
-                    "type": "number"
-                  },
                   "gender": {
                     "type": "string"
-                  },
-                  "loyaltyPoints": {
-                    "anyOf": [
-                      {
-                        "format": "integer",
-                        "default": 0,
-                        "type": "string"
-                      },
-                      {
-                        "type": "integer"
-                      }
-                    ]
-                  },
-                  "totalSpent": {
-                    "type": "number"
                   },
                   "tier": {
                     "type": "string"
@@ -3708,26 +4900,8 @@
                   "dateOfBirth": {
                     "type": "string"
                   },
-                  "debtAmount": {
-                    "type": "number"
-                  },
                   "gender": {
                     "type": "string"
-                  },
-                  "loyaltyPoints": {
-                    "anyOf": [
-                      {
-                        "format": "integer",
-                        "default": 0,
-                        "type": "string"
-                      },
-                      {
-                        "type": "integer"
-                      }
-                    ]
-                  },
-                  "totalSpent": {
-                    "type": "number"
                   },
                   "tier": {
                     "type": "string"
@@ -3855,7 +5029,8 @@
                   "notes": {
                     "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "multipart/form-data": {
@@ -3877,7 +5052,8 @@
                   "notes": {
                     "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             },
             "text/plain": {
@@ -3899,7 +5075,8 @@
                   "notes": {
                     "type": "string"
                   }
-                }
+                },
+                "additionalProperties": false
               }
             }
           }
@@ -4872,44 +6049,7 @@
                     "type": "number"
                   },
                   "method": {
-                    "anyOf": [
-                      {
-                        "const": "CASH",
-                        "type": "string"
-                      },
-                      {
-                        "const": "KBZ_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CB_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WAVE_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "BANK_TRANSFER",
-                        "type": "string"
-                      },
-                      {
-                        "const": "MIXED_PAYMENT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "GIFT_CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WALLET",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "referenceNumber": {
                     "type": "string"
@@ -4936,44 +6076,7 @@
                     "type": "number"
                   },
                   "method": {
-                    "anyOf": [
-                      {
-                        "const": "CASH",
-                        "type": "string"
-                      },
-                      {
-                        "const": "KBZ_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CB_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WAVE_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "BANK_TRANSFER",
-                        "type": "string"
-                      },
-                      {
-                        "const": "MIXED_PAYMENT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "GIFT_CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WALLET",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "referenceNumber": {
                     "type": "string"
@@ -5000,44 +6103,7 @@
                     "type": "number"
                   },
                   "method": {
-                    "anyOf": [
-                      {
-                        "const": "CASH",
-                        "type": "string"
-                      },
-                      {
-                        "const": "KBZ_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CB_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WAVE_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "BANK_TRANSFER",
-                        "type": "string"
-                      },
-                      {
-                        "const": "MIXED_PAYMENT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "GIFT_CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WALLET",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "referenceNumber": {
                     "type": "string"
@@ -5057,7 +6123,6 @@
     },
     "/api/tenant/payments/{id}": {
       "get": {
-        "operationId": "getApiTenantPaymentsById",
         "parameters": [
           {
             "schema": {
@@ -5068,6 +6133,7 @@
             "required": true
           }
         ],
+        "operationId": "getApiTenantPaymentsById",
         "responses": {
           "200": {}
         }
@@ -5095,44 +6161,7 @@
                     "type": "number"
                   },
                   "method": {
-                    "anyOf": [
-                      {
-                        "const": "CASH",
-                        "type": "string"
-                      },
-                      {
-                        "const": "KBZ_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CB_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WAVE_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "BANK_TRANSFER",
-                        "type": "string"
-                      },
-                      {
-                        "const": "MIXED_PAYMENT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "GIFT_CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WALLET",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "referenceNumber": {
                     "type": "string"
@@ -5151,44 +6180,7 @@
                     "type": "number"
                   },
                   "method": {
-                    "anyOf": [
-                      {
-                        "const": "CASH",
-                        "type": "string"
-                      },
-                      {
-                        "const": "KBZ_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CB_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WAVE_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "BANK_TRANSFER",
-                        "type": "string"
-                      },
-                      {
-                        "const": "MIXED_PAYMENT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "GIFT_CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WALLET",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "referenceNumber": {
                     "type": "string"
@@ -5207,44 +6199,7 @@
                     "type": "number"
                   },
                   "method": {
-                    "anyOf": [
-                      {
-                        "const": "CASH",
-                        "type": "string"
-                      },
-                      {
-                        "const": "KBZ_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CB_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WAVE_PAY",
-                        "type": "string"
-                      },
-                      {
-                        "const": "CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "BANK_TRANSFER",
-                        "type": "string"
-                      },
-                      {
-                        "const": "MIXED_PAYMENT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "GIFT_CARD",
-                        "type": "string"
-                      },
-                      {
-                        "const": "WALLET",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "referenceNumber": {
                     "type": "string"
@@ -5262,7 +6217,6 @@
         }
       },
       "delete": {
-        "operationId": "deleteApiTenantPaymentsById",
         "parameters": [
           {
             "schema": {
@@ -5273,6 +6227,7 @@
             "required": true
           }
         ],
+        "operationId": "deleteApiTenantPaymentsById",
         "responses": {
           "200": {}
         }
@@ -6409,6 +7364,18 @@
                   "minPurchase": {
                     "type": "number"
                   },
+                  "minQuantity": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
                   "startDate": {
                     "type": "string"
                   },
@@ -6438,6 +7405,24 @@
                         "type": "integer"
                       }
                     ]
+                  },
+                  "applicableTo": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "stackable": {
+                    "type": "boolean"
                   },
                   "isActive": {
                     "type": "boolean"
@@ -6490,6 +7475,18 @@
                   "minPurchase": {
                     "type": "number"
                   },
+                  "minQuantity": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
                   "startDate": {
                     "type": "string"
                   },
@@ -6519,6 +7516,24 @@
                         "type": "integer"
                       }
                     ]
+                  },
+                  "applicableTo": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "stackable": {
+                    "type": "boolean"
                   },
                   "isActive": {
                     "type": "boolean"
@@ -6571,6 +7586,18 @@
                   "minPurchase": {
                     "type": "number"
                   },
+                  "minQuantity": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
                   "startDate": {
                     "type": "string"
                   },
@@ -6600,6 +7627,24 @@
                         "type": "integer"
                       }
                     ]
+                  },
+                  "applicableTo": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "stackable": {
+                    "type": "boolean"
                   },
                   "isActive": {
                     "type": "boolean"
@@ -6681,6 +7726,18 @@
                   "minPurchase": {
                     "type": "number"
                   },
+                  "minQuantity": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
                   "startDate": {
                     "type": "string"
                   },
@@ -6710,6 +7767,24 @@
                         "type": "integer"
                       }
                     ]
+                  },
+                  "applicableTo": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "stackable": {
+                    "type": "boolean"
                   },
                   "isActive": {
                     "type": "boolean"
@@ -6740,6 +7815,18 @@
                   "minPurchase": {
                     "type": "number"
                   },
+                  "minQuantity": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
                   "startDate": {
                     "type": "string"
                   },
@@ -6769,6 +7856,24 @@
                         "type": "integer"
                       }
                     ]
+                  },
+                  "applicableTo": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "stackable": {
+                    "type": "boolean"
                   },
                   "isActive": {
                     "type": "boolean"
@@ -6799,6 +7904,18 @@
                   "minPurchase": {
                     "type": "number"
                   },
+                  "minQuantity": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
                   "startDate": {
                     "type": "string"
                   },
@@ -6828,6 +7945,24 @@
                         "type": "integer"
                       }
                     ]
+                  },
+                  "applicableTo": {
+                    "type": "string"
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "format": "integer",
+                        "default": 0,
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "stackable": {
+                    "type": "boolean"
                   },
                   "isActive": {
                     "type": "boolean"
@@ -7004,6 +8139,48 @@
     },
     "/api/tenant/notifications/": {
       "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "page",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "isRead",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "type",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false
+          }
+        ],
         "operationId": "getApiTenantNotifications",
         "responses": {
           "200": {}
@@ -7026,40 +8203,20 @@
                 ],
                 "properties": {
                   "userId": {
+                    "minLength": 1,
                     "type": "string"
                   },
                   "type": {
-                    "anyOf": [
-                      {
-                        "const": "LOW_STOCK",
-                        "type": "string"
-                      },
-                      {
-                        "const": "EXPIRING_PRODUCT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "ORDER_STATUS",
-                        "type": "string"
-                      },
-                      {
-                        "const": "PROMOTION",
-                        "type": "string"
-                      },
-                      {
-                        "const": "SYSTEM",
-                        "type": "string"
-                      },
-                      {
-                        "const": "INVENTORY_COUNT",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "title": {
+                    "minLength": 1,
+                    "maxLength": 200,
                     "type": "string"
                   },
                   "message": {
+                    "minLength": 1,
+                    "maxLength": 2000,
                     "type": "string"
                   },
                   "metadata": {}
@@ -7077,40 +8234,20 @@
                 ],
                 "properties": {
                   "userId": {
+                    "minLength": 1,
                     "type": "string"
                   },
                   "type": {
-                    "anyOf": [
-                      {
-                        "const": "LOW_STOCK",
-                        "type": "string"
-                      },
-                      {
-                        "const": "EXPIRING_PRODUCT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "ORDER_STATUS",
-                        "type": "string"
-                      },
-                      {
-                        "const": "PROMOTION",
-                        "type": "string"
-                      },
-                      {
-                        "const": "SYSTEM",
-                        "type": "string"
-                      },
-                      {
-                        "const": "INVENTORY_COUNT",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "title": {
+                    "minLength": 1,
+                    "maxLength": 200,
                     "type": "string"
                   },
                   "message": {
+                    "minLength": 1,
+                    "maxLength": 2000,
                     "type": "string"
                   },
                   "metadata": {}
@@ -7128,40 +8265,20 @@
                 ],
                 "properties": {
                   "userId": {
+                    "minLength": 1,
                     "type": "string"
                   },
                   "type": {
-                    "anyOf": [
-                      {
-                        "const": "LOW_STOCK",
-                        "type": "string"
-                      },
-                      {
-                        "const": "EXPIRING_PRODUCT",
-                        "type": "string"
-                      },
-                      {
-                        "const": "ORDER_STATUS",
-                        "type": "string"
-                      },
-                      {
-                        "const": "PROMOTION",
-                        "type": "string"
-                      },
-                      {
-                        "const": "SYSTEM",
-                        "type": "string"
-                      },
-                      {
-                        "const": "INVENTORY_COUNT",
-                        "type": "string"
-                      }
-                    ]
+                    "type": "string"
                   },
                   "title": {
+                    "minLength": 1,
+                    "maxLength": 200,
                     "type": "string"
                   },
                   "message": {
+                    "minLength": 1,
+                    "maxLength": 2000,
                     "type": "string"
                   },
                   "metadata": {}
@@ -7170,6 +8287,48 @@
             }
           }
         },
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/notifications/unread-count": {
+      "get": {
+        "operationId": "getApiTenantNotificationsUnread-count",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/tenant/notifications/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "getApiTenantNotificationsById",
+        "responses": {
+          "200": {}
+        }
+      },
+      "delete": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "deleteApiTenantNotificationsById",
         "responses": {
           "200": {}
         }
@@ -7185,35 +8344,17 @@
     },
     "/api/tenant/notifications/{id}/read": {
       "patch": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
         "operationId": "patchApiTenantNotificationsByIdRead",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {}
-        }
-      }
-    },
-    "/api/tenant/notifications/{id}": {
-      "delete": {
-        "operationId": "deleteApiTenantNotificationsById",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
         "responses": {
           "200": {}
         }
@@ -7502,152 +8643,6 @@
         }
       }
     },
-    "/api/tenant/expenses/categories/": {
-      "get": {
-        "operationId": "getApiTenantExpensesCategories",
-        "responses": {
-          "200": {}
-        }
-      },
-      "post": {
-        "parameters": [],
-        "operationId": "postApiTenantExpensesCategories",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
-              }
-            },
-            "text/plain": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "name"
-                ],
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {}
-        }
-      }
-    },
-    "/api/tenant/expenses/categories/{id}": {
-      "put": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "operationId": "putApiTenantExpensesCategoriesById",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
-              }
-            },
-            "text/plain": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {}
-        }
-      },
-      "delete": {
-        "operationId": "deleteApiTenantExpensesCategoriesById",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {}
-        }
-      }
-    },
     "/api/tenant/expenses/": {
       "get": {
         "operationId": "getApiTenantExpenses",
@@ -7756,6 +8751,22 @@
       }
     },
     "/api/tenant/expenses/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "operationId": "getApiTenantExpensesById",
+        "responses": {
+          "200": {}
+        }
+      },
       "put": {
         "parameters": [
           {
@@ -7775,14 +8786,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "storeId": {
-                    "type": "string"
-                  },
                   "categoryId": {
                     "type": "string"
                   },
                   "amount": {
                     "type": "number"
+                  },
+                  "storeId": {
+                    "type": "string"
                   },
                   "description": {
                     "type": "string"
@@ -7800,14 +8811,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "storeId": {
-                    "type": "string"
-                  },
                   "categoryId": {
                     "type": "string"
                   },
                   "amount": {
                     "type": "number"
+                  },
+                  "storeId": {
+                    "type": "string"
                   },
                   "description": {
                     "type": "string"
@@ -7825,14 +8836,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "storeId": {
-                    "type": "string"
-                  },
                   "categoryId": {
                     "type": "string"
                   },
                   "amount": {
                     "type": "number"
+                  },
+                  "storeId": {
+                    "type": "string"
                   },
                   "description": {
                     "type": "string"
@@ -7853,7 +8864,6 @@
         }
       },
       "delete": {
-        "operationId": "deleteApiTenantExpensesById",
         "parameters": [
           {
             "schema": {
@@ -7864,6 +8874,7 @@
             "required": true
           }
         ],
+        "operationId": "deleteApiTenantExpensesById",
         "responses": {
           "200": {}
         }

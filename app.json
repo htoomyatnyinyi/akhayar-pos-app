@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mini_POS",
-    "slug": "mini-pos",
+    "name": "oasis_POS",
+    "slug": "oasis-pos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -28,7 +28,7 @@
         "android.permission.RECORD_AUDIO"
       ],
       "predictiveBackGestureEnabled": false,
-      "package": "com.htoomyatnyinyi24.minipos"
+      "package": "com.htoomyatnyinyi24.oasispos"
     },
     "web": {
       "output": "static",

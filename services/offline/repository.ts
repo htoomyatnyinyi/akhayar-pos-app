@@ -15,7 +15,6 @@ import type {
   CreateMovementPayload,
   InventoryItem,
 } from "@/services/features/inventory/inventoryTypes";
-// import type { CreateOrderPayload } from "@/services/features/order/orderApi";
 import type {
   CreateOrderPayload,
   Order,
@@ -35,6 +34,7 @@ import { getOfflineDb, getSqliteDatabase } from "./db";
 import { createLocalId } from "./ids";
 import { isOnline } from "./network";
 import {
+  brands,
   categories,
   customers,
   genericRecords,
@@ -47,8 +47,11 @@ import {
   productVariants,
   products,
   sessions,
+  staff,
   stores,
+  suppliers,
   syncOutbox,
+  type LocalBrand,
   type LocalCategory,
   type LocalCustomer,
   type LocalInventory,
@@ -58,6 +61,57 @@ import {
   type LocalSession,
   type LocalStore,
 } from "./schema";
+
+// ============================================
+// HELPER: Disable foreign keys temporarily
+// ============================================
+async function withForeignKeysOff<T>(
+  db: ReturnType<typeof getOfflineDb>,
+  callback: () => Promise<T>,
+): Promise<T> {
+  await db.run(sql`PRAGMA foreign_keys = OFF`);
+  try {
+    return await callback();
+  } finally {
+    await db.run(sql`PRAGMA foreign_keys = ON`);
+  }
+}
+
+// ============================================
+// MOVEMENT TYPE MAPPING (to backend enum)
+// ============================================
+function mapMovementType(type: string, referenceType?: string): string {
+  // Stock adjustments → ADJUSTMENT
+  if (referenceType === "STOCK_ADJUSTMENT") {
+    return "ADJUSTMENT";
+  }
+  // Orders: OUT → SALE, IN → RETURN_IN
+  if (referenceType === "ORDER") {
+    if (type === "OUT") return "SALE";
+    if (type === "IN") return "RETURN_IN";
+  }
+  // Purchase orders → PURCHASE
+  if (referenceType === "PURCHASE" || referenceType === "PURCHASE_ORDER") {
+    return "PURCHASE";
+  }
+  // Stock transfers
+  if (referenceType === "TRANSFER" || referenceType === "STOCK_TRANSFER") {
+    if (type === "IN") return "TRANSFER_IN";
+    if (type === "OUT") return "TRANSFER_OUT";
+  }
+  // Inventory counts → COUNTING
+  if (referenceType === "INVENTORY_COUNT" || referenceType === "COUNT") {
+    return "COUNTING";
+  }
+  // Opening stock
+  if (referenceType === "OPENING_STOCK") {
+    return "OPENING_STOCK";
+  }
+  // Fallback
+  if (type === "IN") return "PURCHASE";
+  if (type === "OUT") return "SALE";
+  return type;
+}
 
 // ============================================
 // NORMALIZATION FUNCTIONS
@@ -70,10 +124,21 @@ export function normalizeProduct(
     id: product.id,
     remoteId: product.remoteId || null,
     tenantId: product.tenantId,
-    name: product.name,
+    name: product.name || "Unnamed Product",
     description: product.description,
-    brand: product.brand,
-    sku: product.sku,
+    brandId:
+      product.brandId && product.brandId.trim() !== "" ? product.brandId : null,
+    storeId:
+      product.storeId && product.storeId.trim() !== "" ? product.storeId : null,
+    categoryId:
+      product.categoryId && product.categoryId.trim() !== ""
+        ? product.categoryId
+        : null,
+    supplierId:
+      product.supplierId && product.supplierId.trim() !== ""
+        ? product.supplierId
+        : null,
+    sku: product.sku || `SKU-${product.id?.slice(-8) || Date.now()}`,
     barcode: product.barcode,
     costPrice: Number(product.costPrice ?? 0),
     sellingPrice: Number(product.sellingPrice ?? 0),
@@ -87,8 +152,6 @@ export function normalizeProduct(
     expiryDate: product.expiryDate,
     manufacturingDate: product.manufacturingDate,
     bestBeforeDate: product.bestBeforeDate,
-    categoryId: product.categoryId,
-    supplierId: product.supplierId,
     deletedAt: product.deletedAt,
     version: Number(product.version ?? 0),
     syncStatus: "synced",
@@ -105,10 +168,10 @@ export function normalizeProductVariant(
   return {
     id: variant.id,
     remoteId: variant.remoteId,
-    name: variant.name,
+    name: variant.name || "Unnamed Variant",
     productId: variant.productId,
     tenantId: variant.tenantId,
-    sku: variant.sku,
+    sku: variant.sku || `VAR-${Date.now()}`,
     barcode: variant.barcode,
     price: Number(variant.price ?? 0),
     costPrice: Number(variant.costPrice ?? 0),
@@ -130,8 +193,10 @@ export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
     remoteId: inv.remoteId,
     tenantId: inv.tenantId,
     storeId: inv.storeId,
-    productId: inv.productId,
-    variantId: inv.variantId,
+    productId:
+      inv.productId && inv.productId.trim() !== "" ? inv.productId : null,
+    variantId:
+      inv.variantId && inv.variantId.trim() !== "" ? inv.variantId : null,
     quantity: Number(inv.quantity ?? 0),
     reservedQty: Number(inv.reservedQty ?? 0),
     reorderPoint: Number(inv.reorderPoint ?? 10),
@@ -150,143 +215,199 @@ export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
 // UPSERT FUNCTIONS (Pull from Server)
 // ============================================
 
-export async function upsertProducts(remoteProducts: Product[]) {
-  if (!remoteProducts.length) return;
+export async function upsertBrands(
+  remoteBrands: any[],
+  defaultTenantId: string,
+) {
+  if (!remoteBrands.length) return;
+  const now = new Date().toISOString();
 
-  const db = getOfflineDb();
+  const brandsToInsert = remoteBrands.map((brand) => ({
+    id: brand.id,
+    remoteId: brand.remoteId,
+    tenantId: brand.tenantId || defaultTenantId,
+    name: brand.name,
+    description: brand.description,
+    isActive: brand.isActive ?? true,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: brand.createdAt ?? now,
+    updatedAt: brand.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
 
-  // Check what columns exist
-  const tableInfo = await db.all<{ name: string }>(
-    "PRAGMA table_info(products)",
-  );
-  const existingColumns = tableInfo.map((col) => col.name);
-
-  // Filter the data to only include existing columns
-  const filteredProducts = remoteProducts.map((product) => {
-    const normalized = normalizeProduct(product);
-    const filtered: any = {};
-    for (const key of existingColumns) {
-      if (key in normalized) {
-        filtered[key] = normalized[key as keyof typeof normalized];
-      }
-    }
-    return filtered;
-  });
-
-  await db
-    .insert(products)
-    .values(remoteProducts.map((product) => normalizeProduct(product)))
+  await getOfflineDb()
+    .insert(brands)
+    .values(brandsToInsert)
     .onConflictDoUpdate({
-      target: products.id,
+      target: brands.id,
       set: {
-        sku: sql`excluded.sku`,
-        barcode: sql`excluded.barcode`,
         name: sql`excluded.name`,
         description: sql`excluded.description`,
-        brand: sql`excluded.brand`,
-        costPrice: sql`excluded.cost_price`,
-        sellingPrice: sql`excluded.selling_price`,
-        wholesalePrice: sql`excluded.wholesale_price`,
-        promoPrice: sql`excluded.promo_price`,
-        promoStartAt: sql`excluded.promo_start_at`,
-        promoEndAt: sql`excluded.promo_end_at`,
-        isTaxable: sql`excluded.is_taxable`,
         isActive: sql`excluded.is_active`,
-        isReturnable: sql`excluded.is_returnable`,
-        expiryDate: sql`excluded.expiry_date`,
-        manufacturingDate: sql`excluded.manufacturing_date`,
-        bestBeforeDate: sql`excluded.best_before_date`,
-        categoryId: sql`excluded.category_id`,
-        supplierId: sql`excluded.supplier_id`,
-        deletedAt: sql`excluded.deleted_at`,
-        version: sql`excluded.version`,
         syncStatus: "synced",
         syncError: null,
         updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: sql`excluded.last_synced_at`,
+        lastSyncedAt: now,
       },
     });
 }
 
-export async function upsertProductVariants(remoteVariants: any[]) {
+export async function upsertProducts(
+  remoteProducts: Product[],
+  defaultTenantId: string,
+) {
+  if (!remoteProducts.length) return;
+  const db = getOfflineDb();
+
+  const productsToInsert = remoteProducts.map((product) => {
+    const normalized = normalizeProduct(product);
+    if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
+    return normalized;
+  });
+
+  await withForeignKeysOff(db, async () => {
+    await db
+      .insert(products)
+      .values(productsToInsert)
+      .onConflictDoUpdate({
+        target: products.id,
+        set: {
+          sku: sql`excluded.sku`,
+          barcode: sql`excluded.barcode`,
+          name: sql`excluded.name`,
+          description: sql`excluded.description`,
+          brandId: sql`excluded.brand_id`,
+          storeId: sql`excluded.store_id`,
+          costPrice: sql`excluded.cost_price`,
+          sellingPrice: sql`excluded.selling_price`,
+          wholesalePrice: sql`excluded.wholesale_price`,
+          promoPrice: sql`excluded.promo_price`,
+          promoStartAt: sql`excluded.promo_start_at`,
+          promoEndAt: sql`excluded.promo_end_at`,
+          isTaxable: sql`excluded.is_taxable`,
+          isActive: sql`excluded.is_active`,
+          isReturnable: sql`excluded.is_returnable`,
+          expiryDate: sql`excluded.expiry_date`,
+          manufacturingDate: sql`excluded.manufacturing_date`,
+          bestBeforeDate: sql`excluded.best_before_date`,
+          categoryId: sql`excluded.category_id`,
+          supplierId: sql`excluded.supplier_id`,
+          deletedAt: sql`excluded.deleted_at`,
+          version: sql`excluded.version`,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: sql`excluded.updated_at`,
+          lastSyncedAt: sql`excluded.last_synced_at`,
+        },
+      });
+  });
+}
+
+export async function upsertProductVariants(
+  remoteVariants: any[],
+  defaultTenantId: string,
+) {
   if (!remoteVariants.length) return;
-
   const db = getOfflineDb();
-  await db
-    .insert(productVariants)
-    .values(remoteVariants.map((variant) => normalizeProductVariant(variant)))
-    .onConflictDoUpdate({
-      target: productVariants.id,
-      set: {
-        sku: sql`excluded.sku`,
-        barcode: sql`excluded.barcode`,
-        name: sql`excluded.name`,
-        price: sql`excluded.price`,
-        costPrice: sql`excluded.cost_price`,
-        color: sql`excluded.color`,
-        size: sql`excluded.size`,
-        weight: sql`excluded.weight`,
-        isActive: sql`excluded.is_active`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: sql`excluded.last_synced_at`,
-      },
-    });
+
+  const variantsToInsert = remoteVariants.map((variant) => {
+    const normalized = normalizeProductVariant(variant);
+    if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
+    return normalized;
+  });
+
+  await withForeignKeysOff(db, async () => {
+    await db
+      .insert(productVariants)
+      .values(variantsToInsert)
+      .onConflictDoUpdate({
+        target: productVariants.id,
+        set: {
+          sku: sql`excluded.sku`,
+          barcode: sql`excluded.barcode`,
+          name: sql`excluded.name`,
+          price: sql`excluded.price`,
+          costPrice: sql`excluded.cost_price`,
+          color: sql`excluded.color`,
+          size: sql`excluded.size`,
+          weight: sql`excluded.weight`,
+          isActive: sql`excluded.is_active`,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: sql`excluded.updated_at`,
+          lastSyncedAt: sql`excluded.last_synced_at`,
+        },
+      });
+  });
 }
 
-export async function upsertInventory(remoteInventory: any[]) {
+export async function upsertInventory(
+  remoteInventory: any[],
+  defaultTenantId: string,
+) {
   if (!remoteInventory.length) return;
-
   const db = getOfflineDb();
-  await db
-    .insert(inventory)
-    .values(remoteInventory.map((inv) => normalizeInventory(inv)))
-    .onConflictDoUpdate({
-      target: inventory.id,
-      set: {
-        tenantId: sql`excluded.tenant_id`,
-        storeId: sql`excluded.store_id`,
-        productId: sql`excluded.product_id`,
-        variantId: sql`excluded.variant_id`,
-        quantity: sql`excluded.quantity`,
-        reservedQty: sql`excluded.reserved_qty`,
-        reorderPoint: sql`excluded.reorder_point`,
-        reorderQty: sql`excluded.reorder_qty`,
-        shelfLocation: sql`excluded.shelf_location`,
-        version: sql`excluded.version`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: sql`excluded.last_synced_at`,
-      },
-    });
+
+  const inventoryToInsert = remoteInventory.map((inv) => {
+    const normalized = normalizeInventory(inv);
+    if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
+    return normalized;
+  });
+
+  await withForeignKeysOff(db, async () => {
+    await db
+      .insert(inventory)
+      .values(inventoryToInsert)
+      .onConflictDoUpdate({
+        target: inventory.id,
+        set: {
+          tenantId: sql`excluded.tenant_id`,
+          storeId: sql`excluded.store_id`,
+          productId: sql`excluded.product_id`,
+          variantId: sql`excluded.variant_id`,
+          quantity: sql`excluded.quantity`,
+          reservedQty: sql`excluded.reserved_qty`,
+          reorderPoint: sql`excluded.reorder_point`,
+          reorderQty: sql`excluded.reorder_qty`,
+          shelfLocation: sql`excluded.shelf_location`,
+          version: sql`excluded.version`,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: sql`excluded.updated_at`,
+          lastSyncedAt: sql`excluded.last_synced_at`,
+        },
+      });
+  });
 }
 
-export async function upsertCategories(remoteCategories: Category[]) {
+export async function upsertCategories(
+  remoteCategories: Category[],
+  defaultTenantId: string,
+) {
   if (!remoteCategories.length) return;
   const now = new Date().toISOString();
 
+  const categoriesToInsert = remoteCategories.map((category) => ({
+    id: category.id,
+    remoteId: category.remoteId,
+    tenantId: category.tenantId || defaultTenantId,
+    name: category.name || "Unnamed Category",
+    slug: category.slug,
+    description: category.description,
+    parentId: category.parentId,
+    isActive: category.isActive ?? true,
+    sortOrder: category.sortOrder ?? 0,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: category.createdAt ?? now,
+    updatedAt: category.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
   await getOfflineDb()
     .insert(categories)
-    .values(
-      remoteCategories.map((category) => ({
-        id: category.id,
-        remoteId: category.remoteId,
-        tenantId: category.tenantId,
-        name: category.name,
-        slug: category.slug,
-        description: category.description,
-        parentId: category.parentId,
-        isActive: category.isActive ?? true,
-        sortOrder: category.sortOrder ?? 0,
-        syncStatus: "synced",
-        syncError: null,
-        createdAt: category.createdAt ?? now,
-        updatedAt: category.updatedAt ?? now,
-        lastSyncedAt: now,
-      })),
-    )
+    .values(categoriesToInsert)
     .onConflictDoUpdate({
       target: categories.id,
       set: {
@@ -304,38 +425,41 @@ export async function upsertCategories(remoteCategories: Category[]) {
     });
 }
 
-export async function upsertCustomers(remoteCustomers: Customer[]) {
+export async function upsertCustomers(
+  remoteCustomers: Customer[],
+  defaultTenantId: string,
+) {
   if (!remoteCustomers.length) return;
   const now = new Date().toISOString();
 
+  const customersToInsert = remoteCustomers.map((customer) => ({
+    id: customer.id,
+    remoteId: customer.remoteId,
+    tenantId: customer.tenantId || defaultTenantId,
+    code: customer.code || `CUS-${Date.now()}`,
+    name: customer.name || "Unnamed Customer",
+    phone: customer.phone,
+    email: customer.email,
+    address: customer.address,
+    dateOfBirth: customer.dateOfBirth,
+    gender: customer.gender,
+    debtAmount: customer.debtAmount ?? 0,
+    loyaltyPoints: customer.loyaltyPoints ?? 0,
+    totalSpent: customer.totalSpent ?? 0,
+    totalOrders: customer.totalOrders ?? 0,
+    tier: customer.tier ?? "BRONZE",
+    tierValidUntil: customer.tierValidUntil,
+    isActive: customer.isActive ?? true,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: customer.createdAt ?? now,
+    updatedAt: customer.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
   await getOfflineDb()
     .insert(customers)
-    .values(
-      remoteCustomers.map((customer) => ({
-        id: customer.id,
-        remoteId: customer.remoteId,
-        tenantId: customer.tenantId,
-        code: customer.code,
-        name: customer.name,
-        phone: customer.phone,
-        email: customer.email,
-        address: customer.address,
-        dateOfBirth: customer.dateOfBirth,
-        gender: customer.gender,
-        debtAmount: customer.debtAmount ?? 0,
-        loyaltyPoints: customer.loyaltyPoints ?? 0,
-        totalSpent: customer.totalSpent ?? 0,
-        totalOrders: customer.totalOrders ?? 0,
-        tier: customer.tier ?? "BRONZE",
-        tierValidUntil: customer.tierValidUntil,
-        isActive: customer.isActive ?? true,
-        syncStatus: "synced",
-        syncError: null,
-        createdAt: customer.createdAt ?? now,
-        updatedAt: customer.updatedAt ?? now,
-        lastSyncedAt: now,
-      })),
-    )
+    .values(customersToInsert)
     .onConflictDoUpdate({
       target: customers.id,
       set: {
@@ -361,31 +485,149 @@ export async function upsertCustomers(remoteCustomers: Customer[]) {
     });
 }
 
-export async function upsertStores(remoteStores: Store[]) {
+export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
+  if (!remoteStaff.length) return;
+  const now = new Date().toISOString();
+
+  const seen = new Set<string>();
+  const uniqueStaff = remoteStaff.filter((s) => {
+    const key = `${s.tenantId || defaultTenantId}:${(s.username || "").toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const staffToInsert = uniqueStaff.map((s) => ({
+    id: s.id,
+    remoteId: s.remoteId,
+    tenantId: s.tenantId || defaultTenantId,
+    storeId: s.storeId,
+    username: s.username,
+    email: s.email?.trim() || null,
+    name: s.name,
+    role: s.role,
+    permissions: s.permissions || [],
+    isActive: s.isActive ?? true,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: s.createdAt ?? now,
+    updatedAt: s.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
+  await getOfflineDb()
+    .insert(staff)
+    .values(staffToInsert)
+    .onConflictDoUpdate({
+      target: [staff.tenantId, staff.username],
+      set: {
+        username: sql`excluded.username`,
+        email: sql`excluded.email`,
+        name: sql`excluded.name`,
+        role: sql`excluded.role`,
+        permissions: sql`excluded.permissions`,
+        storeId: sql`excluded.store_id`,
+        isActive: sql`excluded.is_active`,
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: sql`excluded.updated_at`,
+        lastSyncedAt: now,
+      },
+    });
+}
+
+export async function upsertSuppliers(
+  remoteSuppliers: any[],
+  defaultTenantId: string,
+) {
+  if (!remoteSuppliers.length) return;
+  const now = new Date().toISOString();
+
+  const seen = new Set<string>();
+  const uniqueSuppliers = remoteSuppliers.filter((s) => {
+    const key = `${s.tenantId || defaultTenantId}:${(s.email || "").toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const suppliersToInsert = uniqueSuppliers.map((supplier) => ({
+    id: supplier.id,
+    remoteId: supplier.remoteId,
+    tenantId: supplier.tenantId || defaultTenantId,
+    storeId: supplier.storeId,
+    code: supplier.code,
+    name: supplier.name,
+    contactName: supplier.contactName,
+    phone: supplier.phone,
+    email: supplier.email?.trim() || null,
+    address: supplier.address,
+    taxNumber: supplier.taxNumber,
+    paymentTerms: supplier.paymentTerms,
+    creditLimit: supplier.creditLimit,
+    currentBalance: supplier.currentBalance ?? 0,
+    isActive: supplier.isActive ?? true,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: supplier.createdAt ?? now,
+    updatedAt: supplier.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
+  await getOfflineDb()
+    .insert(suppliers)
+    .values(suppliersToInsert)
+    .onConflictDoUpdate({
+      target: [suppliers.tenantId, suppliers.email],
+      set: {
+        code: sql`excluded.code`,
+        name: sql`excluded.name`,
+        contactName: sql`excluded.contact_name`,
+        phone: sql`excluded.phone`,
+        email: sql`excluded.email`,
+        address: sql`excluded.address`,
+        taxNumber: sql`excluded.tax_number`,
+        paymentTerms: sql`excluded.payment_terms`,
+        creditLimit: sql`excluded.credit_limit`,
+        currentBalance: sql`excluded.current_balance`,
+        storeId: sql`excluded.store_id`,
+        isActive: sql`excluded.is_active`,
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: sql`excluded.updated_at`,
+        lastSyncedAt: now,
+      },
+    });
+}
+
+export async function upsertStores(
+  remoteStores: Store[],
+  defaultTenantId: string,
+) {
   if (!remoteStores.length) return;
   const now = new Date().toISOString();
 
+  const storesToInsert = remoteStores.map((store) => ({
+    id: store.id,
+    remoteId: store.remoteId,
+    tenantId: store.tenantId || defaultTenantId,
+    code: store.code || `STORE-${Date.now()}`,
+    name: store.name || "Unnamed Store",
+    address: store.address,
+    phone: store.phone,
+    email: store.email,
+    taxNumber: store.taxNumber,
+    isActive: store.isActive ?? true,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: store.createdAt ?? now,
+    updatedAt: store.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
   await getOfflineDb()
     .insert(stores)
-    .values(
-      remoteStores.map((store) => ({
-        id: store.id,
-        remoteId: store.remoteId,
-        tenantId: store.tenantId,
-        code: store.code,
-        name: store.name,
-        address: store.address,
-        phone: store.phone,
-        email: store.email,
-        taxNumber: store.taxNumber,
-        isActive: store.isActive ?? true,
-        syncStatus: "synced",
-        syncError: null,
-        createdAt: store.createdAt ?? now,
-        updatedAt: store.updatedAt ?? now,
-        lastSyncedAt: now,
-      })),
-    )
+    .values(storesToInsert)
     .onConflictDoUpdate({
       target: stores.id,
       set: {
@@ -404,38 +646,41 @@ export async function upsertStores(remoteStores: Store[]) {
     });
 }
 
-export async function upsertSessions(remoteSessions: Session[]) {
+export async function upsertSessions(
+  remoteSessions: Session[],
+  defaultTenantId: string,
+) {
   if (!remoteSessions.length) return;
   const now = new Date().toISOString();
 
+  const sessionsToInsert = remoteSessions.map((session) => ({
+    id: session.id,
+    remoteId: session.remoteId,
+    tenantId: session.tenantId || defaultTenantId,
+    storeId: session.storeId,
+    registerId: session.registerId,
+    userId: session.userId,
+    status: session.status || "OPEN",
+    openedAt: session.openedAt || now,
+    closedAt: session.closedAt,
+    openingBalance: session.openingBalance ?? 0,
+    closingBalance: session.closingBalance,
+    expectedBalance: session.expectedBalance,
+    discrepancy: session.discrepancy,
+    cashSales: session.cashSales ?? 0,
+    cardSales: session.cardSales ?? 0,
+    digitalSales: session.digitalSales ?? 0,
+    notes: session.notes,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: session.openedAt ?? now,
+    updatedAt: session.closedAt ?? session.openedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
   await getOfflineDb()
     .insert(sessions)
-    .values(
-      remoteSessions.map((session) => ({
-        id: session.id,
-        remoteId: session.remoteId,
-        tenantId: session.tenantId,
-        storeId: session.storeId,
-        registerId: session.registerId,
-        userId: session.userId,
-        status: session.status,
-        openedAt: session.openedAt,
-        closedAt: session.closedAt,
-        openingBalance: session.openingBalance ?? 0,
-        closingBalance: session.closingBalance,
-        expectedBalance: session.expectedBalance,
-        discrepancy: session.discrepancy,
-        cashSales: session.cashSales ?? 0,
-        cardSales: session.cardSales ?? 0,
-        digitalSales: session.digitalSales ?? 0,
-        notes: session.notes,
-        syncStatus: "synced",
-        syncError: null,
-        createdAt: session.openedAt ?? now,
-        updatedAt: session.closedAt ?? session.openedAt ?? now,
-        lastSyncedAt: now,
-      })),
-    )
+    .values(sessionsToInsert)
     .onConflictDoUpdate({
       target: sessions.id,
       set: {
@@ -458,6 +703,7 @@ export async function upsertSessions(remoteSessions: Session[]) {
 
 export async function upsertOrders(
   remoteOrders: (Order & Record<string, any>)[],
+  defaultTenantId: string,
 ) {
   if (!remoteOrders.length) return;
   const now = new Date().toISOString();
@@ -465,18 +711,20 @@ export async function upsertOrders(
   const db = getOfflineDb();
   await db.transaction(async (tx) => {
     for (const order of remoteOrders) {
+      const tenantId = order.tenantId || defaultTenantId;
+
       await tx
         .insert(orders)
         .values({
           id: order.id,
           remoteId: order.remoteId,
-          tenantId: order.tenantId,
+          tenantId,
           storeId: order.storeId,
           registerId: order.registerId,
           userId: order.userId ?? "",
           customerId: order.customerId,
           sessionId: order.sessionId,
-          orderNumber: order.orderNumber,
+          orderNumber: order.orderNumber || `ORD-${Date.now()}`,
           status: order.status ?? "COMPLETED",
           paymentStatus: order.paymentStatus ?? "PAID",
           paymentMethod: order.paymentMethod ?? "CASH",
@@ -496,7 +744,7 @@ export async function upsertOrders(
         .onConflictDoUpdate({
           target: orders.id,
           set: {
-            status: order.status,
+            status: sql`excluded.status`,
             paymentStatus: sql`excluded.payment_status`,
             grandTotal: sql`excluded.grand_total`,
             syncStatus: "synced",
@@ -539,30 +787,33 @@ export async function upsertOrders(
   });
 }
 
-export async function upsertPriceHistory(remotePriceHistory: any[]) {
+export async function upsertPriceHistory(
+  remotePriceHistory: any[],
+  defaultTenantId: string,
+) {
   if (!remotePriceHistory.length) return;
   const now = new Date().toISOString();
 
+  const priceHistoryToInsert = remotePriceHistory.map((ph) => ({
+    id: ph.id,
+    remoteId: ph.remoteId,
+    tenantId: ph.tenantId || defaultTenantId,
+    productId: ph.productId,
+    variantId: ph.variantId,
+    oldPrice: Number(ph.oldPrice ?? 0),
+    newPrice: Number(ph.newPrice ?? 0),
+    changedBy: ph.changedBy,
+    reason: ph.reason,
+    syncStatus: "synced",
+    syncError: null,
+    createdAt: ph.createdAt ?? now,
+    updatedAt: ph.updatedAt ?? now,
+    lastSyncedAt: now,
+  }));
+
   await getOfflineDb()
     .insert(priceHistory)
-    .values(
-      remotePriceHistory.map((ph) => ({
-        id: ph.id,
-        remoteId: ph.remoteId,
-        tenantId: ph.tenantId,
-        productId: ph.productId,
-        variantId: ph.variantId,
-        oldPrice: Number(ph.oldPrice ?? 0),
-        newPrice: Number(ph.newPrice ?? 0),
-        changedBy: ph.changedBy,
-        reason: ph.reason,
-        syncStatus: "synced",
-        syncError: null,
-        createdAt: ph.createdAt ?? now,
-        updatedAt: ph.updatedAt ?? now,
-        lastSyncedAt: now,
-      })),
-    )
+    .values(priceHistoryToInsert)
     .onConflictDoUpdate({
       target: priceHistory.id,
       set: {
@@ -581,6 +832,7 @@ export async function upsertPriceHistory(remotePriceHistory: any[]) {
 export async function upsertGenericRecords<T extends { id: string }>(
   entity: string,
   records: T[],
+  defaultTenantId: string,
 ) {
   if (!records.length) return;
   const now = new Date().toISOString();
@@ -592,6 +844,7 @@ export async function upsertGenericRecords<T extends { id: string }>(
         remoteId: (record as any).remoteId,
         entity,
         data: record,
+        tenantId: (record as any).tenantId || defaultTenantId,
         isActive: (record as any).isActive ?? true,
         syncStatus: "synced",
         syncError: null,
@@ -614,7 +867,7 @@ export async function upsertGenericRecords<T extends { id: string }>(
 }
 
 // ============================================
-// GET LOCAL FUNCTIONS (Read from SQLite)
+// GET LOCAL FUNCTIONS
 // ============================================
 
 export async function getLocalProducts(storeId?: string) {
@@ -664,10 +917,6 @@ export async function getLocalProductBySku(sku: string) {
   return row ? toProduct(row) : undefined;
 }
 
-// ============================================
-// PRODUCT VARIANT FUNCTIONS
-// ============================================
-
 export async function getLocalVariants(productId?: string) {
   const db = getOfflineDb();
   let query = db.select().from(productVariants).$dynamic();
@@ -704,10 +953,6 @@ export async function getLocalVariantByBarcode(barcode: string) {
     .limit(1);
   return row ? toProductVariant(row) : undefined;
 }
-
-// ============================================
-// INVENTORY FUNCTIONS
-// ============================================
 
 export async function getLocalInventory(storeId?: string) {
   const db = getOfflineDb();
@@ -773,25 +1018,11 @@ export async function getLocalInventoryItem(id: string) {
   return row ? toInventoryItem(row) : undefined;
 }
 
-// ============================================
-// CATEGORY FUNCTIONS
-// ============================================
-
-export async function getLocalCategories(storeId?: string | null) {
+export async function getLocalCategories(_storeId?: string | null) {
   const rows = await getOfflineDb()
     .select()
     .from(categories)
-    .where(
-      and(
-        eq(categories.isActive, true),
-        storeId !== undefined
-          ? or(
-              eq(categories.storeId, storeId ?? ""),
-              sql`${categories.storeId} IS NULL`,
-            )
-          : undefined,
-      ),
-    );
+    .where(eq(categories.isActive, true));
 
   return rows.map((row) => toCategory(row));
 }
@@ -813,10 +1044,6 @@ export async function getLocalCategoryByName(name: string) {
     .limit(1);
   return row ? toCategory(row) : undefined;
 }
-
-// ============================================
-// CUSTOMER FUNCTIONS
-// ============================================
 
 export async function getLocalCustomers() {
   const rows = await getOfflineDb()
@@ -854,10 +1081,6 @@ export async function getLocalCustomerByCode(code: string) {
   return row ? toCustomer(row) : undefined;
 }
 
-// ============================================
-// STORE FUNCTIONS
-// ============================================
-
 export async function getLocalStores() {
   const rows = await getOfflineDb()
     .select()
@@ -883,10 +1106,6 @@ export async function getLocalStoreByCode(code: string) {
     .limit(1);
   return row ? toStore(row) : undefined;
 }
-
-// ============================================
-// SESSION FUNCTIONS
-// ============================================
 
 export async function getLocalSessions(storeId?: string, status?: string) {
   const db = getOfflineDb();
@@ -930,10 +1149,6 @@ export async function getLocalSessionById(id: string) {
   return row ? toSession(row) : undefined;
 }
 
-// ============================================
-// ORDER FUNCTIONS
-// ============================================
-
 export async function getLocalOrders(storeId?: string) {
   const rows = await getOfflineDb()
     .select()
@@ -971,10 +1186,6 @@ export async function getLocalOrdersBySession(sessionId: string) {
   return Promise.all(rows.map((order) => toOrder(order)));
 }
 
-// ============================================
-// INVENTORY MOVEMENT FUNCTIONS
-// ============================================
-
 export async function getLocalInventoryMovements(
   storeId?: string,
   type?: string,
@@ -1003,10 +1214,6 @@ export async function getLocalInventoryMovementById(id: string) {
   return row;
 }
 
-// ============================================
-// PRICE HISTORY FUNCTIONS
-// ============================================
-
 export async function getLocalPriceHistory(
   productId?: string,
   variantId?: string,
@@ -1023,10 +1230,6 @@ export async function getLocalPriceHistory(
 
   return await query.orderBy(desc(priceHistory.createdAt));
 }
-
-// ============================================
-// GENERIC RECORDS FUNCTIONS
-// ============================================
 
 export async function getLocalGenericRecords<T>(entity: string) {
   const rows = await getOfflineDb()
@@ -1059,14 +1262,16 @@ export async function getLocalGenericRecord<T>(entity: string, id: string) {
 }
 
 // ============================================
-// CREATE OFFLINE FUNCTIONS (Push to Server later)
+// CREATE OFFLINE FUNCTIONS
 // ============================================
 
 export async function createOfflineProduct(
   payload: Partial<Product> & {
     categoryName?: string;
     storeId?: string;
+    brandId?: string;
     variants?: any[];
+    initialStock?: number;
   },
 ) {
   const now = new Date().toISOString();
@@ -1078,13 +1283,13 @@ export async function createOfflineProduct(
   let productId = id;
 
   sqlite.withTransactionSync(() => {
-    // Insert product
     sqlite.runSync(
       `INSERT INTO products (
-        id, tenant_id, name, sku, barcode, description, brand,
-        category_id, supplier_id, cost_price, selling_price, wholesale_price,
+        id, tenant_id, name, sku, barcode, description,
+        brand_id, store_id, category_id, supplier_id,
+        cost_price, selling_price, wholesale_price,
         is_active, sync_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         productId,
         payload.tenantId || null,
@@ -1092,8 +1297,9 @@ export async function createOfflineProduct(
         payload.sku || `LOCAL-${Date.now().toString(36).toUpperCase()}`,
         payload.barcode || null,
         payload.description || null,
-        payload.brand || null,
-        payload.categoryId || null,
+        payload.brandId || null,
+        payload.storeId || null,
+        payload.categoryId || "default-category",
         payload.supplierId || null,
         Number(payload.costPrice ?? 0),
         Number(payload.sellingPrice ?? 0),
@@ -1105,7 +1311,6 @@ export async function createOfflineProduct(
       ],
     );
 
-    // Insert variants if provided
     if (payload.variants && payload.variants.length > 0) {
       for (const variant of payload.variants) {
         const variantId = createLocalId("var");
@@ -1134,7 +1339,6 @@ export async function createOfflineProduct(
           ],
         );
 
-        // Create inventory for variant if storeId provided
         if (payload.storeId) {
           const invId = createLocalId("inv");
           sqlite.runSync(
@@ -1158,7 +1362,6 @@ export async function createOfflineProduct(
       }
     }
 
-    // Create product-level inventory if storeId provided and no variants
     if (
       payload.storeId &&
       (!payload.variants || payload.variants.length === 0)
@@ -1182,7 +1385,6 @@ export async function createOfflineProduct(
       );
     }
 
-    // Enqueue sync mutation
     sqlite.runSync(
       `INSERT INTO sync_outbox (
         id, entity, entity_id, operation, endpoint, method, payload, status,
@@ -1226,9 +1428,10 @@ export async function createOfflineCategory(
       id: id,
       remoteId: null,
       tenantId: payload.tenantId,
-      storeId: payload.storeId,
-      name: payload.name,
-      slug: payload.slug ?? payload.name.toLowerCase().replace(/\s+/g, "-"),
+      name: payload.name || "Unnamed Category",
+      slug:
+        (payload.slug ?? payload.name?.toLowerCase().replace(/\s+/g, "-")) ||
+        "cat-" + Date.now(),
       description: payload.description,
       parentId: payload.parentId,
       isActive: payload.isActive ?? true,
@@ -1271,7 +1474,7 @@ export async function createOfflineCustomer(payload: CreateCustomerPayload) {
       remoteId: null,
       tenantId: payload.tenantId,
       code,
-      name: payload.name,
+      name: payload.name || "Unnamed Customer",
       phone: payload.phone,
       email: payload.email,
       address: payload.address,
@@ -1322,7 +1525,7 @@ export async function createOfflineStore(payload: CreateStorePayload) {
       remoteId: null,
       tenantId: payload.tenantId,
       code,
-      name: payload.name,
+      name: payload.name || "Unnamed Store",
       address: payload.address,
       phone: payload.phone,
       email: payload.email,
@@ -1361,32 +1564,30 @@ export async function openOfflineSession(payload: {
   const now = new Date().toISOString();
   const id = createLocalId("ses");
 
-  await getOfflineDb()
-    .insert(sessions)
-    .values({
-      id: id,
-      remoteId: null,
-      tenantId: payload.tenantId,
-      userId: payload.userId,
-      storeId: payload.storeId,
-      registerId: payload.registerId,
-      status: "OPEN",
-      openedAt: now,
-      closedAt: null,
-      openingBalance: payload.openingBalance,
-      closingBalance: null,
-      expectedBalance: null,
-      discrepancy: null,
-      cashSales: 0,
-      cardSales: 0,
-      digitalSales: 0,
-      notes: payload.notes,
-      syncStatus: "pending",
-      syncError: null,
-      createdAt: now,
-      updatedAt: now,
-      lastSyncedAt: null,
-    });
+  await getOfflineDb().insert(sessions).values({
+    id: id,
+    remoteId: null,
+    tenantId: payload.tenantId,
+    userId: payload.userId,
+    storeId: payload.storeId,
+    registerId: payload.registerId,
+    status: "OPEN",
+    openedAt: now,
+    closedAt: null,
+    openingBalance: payload.openingBalance,
+    closingBalance: null,
+    expectedBalance: null,
+    discrepancy: null,
+    cashSales: 0,
+    cardSales: 0,
+    digitalSales: 0,
+    notes: payload.notes,
+    syncStatus: "pending",
+    syncError: null,
+    createdAt: now,
+    updatedAt: now,
+    lastSyncedAt: null,
+  });
 
   await enqueueMutation(
     "sessions",
@@ -1484,7 +1685,6 @@ export async function createOfflineOrder(
         ],
       );
 
-      // Update inventory quantity
       const variantCondition = item.variantId
         ? `AND variant_id = '${item.variantId}'`
         : `AND variant_id IS NULL`;
@@ -1530,9 +1730,11 @@ export async function createOfflineOrder(
 
   return {
     id: created.id,
+    tenantId: created.tenantId,
     grandTotal: created.grandTotal,
     status: created.status as Order["status"],
     createdAt: created.createdAt,
+    updatedAt: created.updatedAt,
     subTotal: created.subTotal,
     taxAmount: created.taxAmount,
     discountAmount: created.discountAmount,
@@ -1548,15 +1750,26 @@ export async function createOfflineOrder(
     userId: created.userId,
     items: items.map((item) => ({
       id: item.id,
+      orderId: item.orderId,
       productId: item.productId,
       variantId: item.variantId ?? undefined,
       productName: item.productName ?? "",
-      price: item.unitPrice,
       quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      discountAmount: item.discountAmount,
+      subTotal: item.subTotal,
+      createdAt: item.createdAt,
       product: {
+        id: item.productId,
+        sku: "",
         name: item.productName ?? "",
         sellingPrice: String(item.unitPrice),
-      },
+        costPrice: 0,
+        isTaxable: true,
+        isActive: true,
+        isReturnable: true,
+        createdAt: item.createdAt,
+      } as any,
     })),
   };
 }
@@ -1608,6 +1821,24 @@ export async function createOfflineInventoryMovement(
       [now, payload.productId, payload.storeId],
     );
 
+    // ✅ Map type to server enum
+    const mappedType = mapMovementType(payload.type, payload.referenceType);
+
+    // Strip null/undefined values and build clean payload
+    const cleanPayload: any = {
+      storeId: payload.storeId,
+      productId: payload.productId,
+      quantity: payload.quantity,
+      type: mappedType,
+      referenceId: payload.referenceId,
+      referenceType: payload.referenceType,
+      reason: payload.reason || null,
+    };
+
+    if (payload.variantId && payload.variantId.trim() !== "") {
+      cleanPayload.variantId = payload.variantId;
+    }
+
     sqlite.runSync(
       `INSERT INTO sync_outbox (
         id, entity, entity_id, operation, endpoint, method, payload, status,
@@ -1620,7 +1851,7 @@ export async function createOfflineInventoryMovement(
         "create",
         "/api/tenant/inventory/movements",
         "POST",
-        JSON.stringify(payload),
+        JSON.stringify(cleanPayload),
         "pending",
         0,
         now,
@@ -1957,7 +2188,7 @@ export async function updateOfflineGenericRecord<T extends Record<string, any>>(
 }
 
 // ============================================
-// DELETE OFFLINE FUNCTIONS (Soft Delete)
+// DELETE OFFLINE FUNCTIONS
 // ============================================
 
 export async function deleteOfflineProduct(id: string) {
@@ -2202,6 +2433,21 @@ export async function markOutboxFailed(
   attempts: number,
   error: string,
 ) {
+  const MAX_ATTEMPTS = 10;
+
+  if (attempts >= MAX_ATTEMPTS) {
+    await getOfflineDb()
+      .update(syncOutbox)
+      .set({
+        status: "dead",
+        attempts,
+        lastError: `[DEAD after ${MAX_ATTEMPTS} attempts] ${error}`,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(syncOutbox.id, id));
+    return;
+  }
+
   const delaySeconds = Math.min(300, Math.pow(2, attempts) * 5);
   const nextAttemptAt = new Date(
     Date.now() + delaySeconds * 1000,
@@ -2234,7 +2480,6 @@ export async function getQueuedCount() {
     .select({ count: sql<number>`count(*)` })
     .from(syncOutbox)
     .where(inArray(syncOutbox.status, ["pending", "failed"]));
-
   return Number(result[0]?.count ?? 0);
 }
 
@@ -2243,7 +2488,6 @@ export async function getFailedCount() {
     .select({ count: sql<number>`count(*)` })
     .from(syncOutbox)
     .where(inArray(syncOutbox.status, ["failed", "dead"]));
-
   return Number(result[0]?.count ?? 0);
 }
 
@@ -2358,6 +2602,8 @@ export async function markEntitySynced(
         ...(remote.sku && { sku: remote.sku }),
         ...(remote.name && { name: remote.name }),
         ...(remote.sellingPrice && { sellingPrice: remote.sellingPrice }),
+        ...(remote.brandId && { brandId: remote.brandId }),
+        ...(remote.storeId && { storeId: remote.storeId }),
       })
       .where(eq(products.id, localId));
   } else if (entity === "product_variants") {
@@ -2679,7 +2925,7 @@ export async function cleanupOldData(daysToKeep = 30) {
 }
 
 // ============================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (conversion)
 // ============================================
 
 function parsePaymentBreakdown(value: unknown) {
@@ -2696,6 +2942,7 @@ function parsePaymentBreakdown(value: unknown) {
   return [];
 }
 
+// ✅ Fixed toProduct
 function toProduct(product: LocalProduct): Product {
   return {
     id: product.id,
@@ -2703,19 +2950,33 @@ function toProduct(product: LocalProduct): Product {
     barcode: product.barcode ?? undefined,
     name: product.name,
     description: product.description ?? undefined,
-    brand: product.brand ?? undefined,
+    brand: product.brandId ?? undefined,
     costPrice: product.costPrice,
     sellingPrice: product.sellingPrice,
     wholesalePrice: product.wholesalePrice ?? 0,
-    stockQuantity: 0,
     categoryId: product.categoryId ?? "",
     category: product.categoryId
-      ? { id: product.categoryId, name: "" }
+      ? {
+          id: product.categoryId,
+          tenantId: product.tenantId,
+          name: "",
+          slug: "",
+          isActive: true,
+          sortOrder: 0,
+          createdAt: product.createdAt,
+          updatedAt: product.createdAt,
+        }
       : undefined,
     supplierId: product.supplierId ?? undefined,
+    tenantId: product.tenantId,
+    isTaxable: product.isTaxable,
+    isActive: product.isActive,
+    isReturnable: product.isReturnable,
     manufacturingDate: product.manufacturingDate ?? undefined,
     expiryDate: product.expiryDate ?? undefined,
+    version: product.version ?? 1,
     createdAt: product.createdAt,
+    updatedAt: product.updatedAt ?? product.createdAt,
   };
 }
 
@@ -2763,11 +3024,14 @@ async function toOrder(order: LocalOrder): Promise<Order> {
     .select()
     .from(orderItems)
     .where(eq(orderItems.orderId, order.id));
+
   return {
     id: order.id,
+    tenantId: order.tenantId,
     grandTotal: order.grandTotal,
     status: order.status as Order["status"],
     createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
     subTotal: order.subTotal,
     taxAmount: order.taxAmount,
     discountAmount: order.discountAmount,
@@ -2781,15 +3045,26 @@ async function toOrder(order: LocalOrder): Promise<Order> {
     userId: order.userId,
     items: items.map((item) => ({
       id: item.id,
+      orderId: item.orderId,
       productId: item.productId,
       variantId: item.variantId ?? undefined,
       productName: item.productName ?? "",
-      price: item.unitPrice,
       quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      discountAmount: item.discountAmount,
+      subTotal: item.subTotal,
+      createdAt: item.createdAt,
       product: {
+        id: item.productId,
+        sku: "",
         name: item.productName ?? "",
         sellingPrice: String(item.unitPrice),
-      },
+        costPrice: 0,
+        isTaxable: true,
+        isActive: true,
+        isReturnable: true,
+        createdAt: item.createdAt,
+      } as any,
     })),
   };
 }
@@ -2797,9 +3072,11 @@ async function toOrder(order: LocalOrder): Promise<Order> {
 function toCategory(category: LocalCategory): Category {
   return {
     id: category.id,
+    remoteId: category.remoteId ?? null,
     tenantId: category.tenantId,
+    storeId: (category as any).storeId ?? null,
     name: category.name,
-    slug: category.slug,
+    slug: category.slug ?? "",
     description: category.description ?? undefined,
     parentId: category.parentId ?? undefined,
     isActive: category.isActive,
@@ -2812,6 +3089,7 @@ function toCategory(category: LocalCategory): Category {
 function toCustomer(customer: LocalCustomer): Customer {
   return {
     id: customer.id,
+    remoteId: customer.remoteId ?? undefined,
     tenantId: customer.tenantId,
     code: customer.code,
     name: customer.name,
@@ -2819,7 +3097,7 @@ function toCustomer(customer: LocalCustomer): Customer {
     email: customer.email ?? undefined,
     address: customer.address ?? undefined,
     dateOfBirth: customer.dateOfBirth ?? undefined,
-    gender: customer.gender ?? undefined,
+    gender: customer.gender as "MALE" | "FEMALE" | "OTHER" | undefined,
     debtAmount: customer.debtAmount ?? 0,
     loyaltyPoints: customer.loyaltyPoints,
     totalSpent: customer.totalSpent,
@@ -2835,6 +3113,8 @@ function toCustomer(customer: LocalCustomer): Customer {
 function toStore(store: LocalStore): Store {
   return {
     id: store.id,
+    remoteId: store.remoteId,
+    tenantId: store.tenantId,
     code: store.code,
     name: store.name,
     address: store.address ?? undefined,
@@ -2850,6 +3130,7 @@ function toStore(store: LocalStore): Store {
 function toSession(session: LocalSession): Session {
   return {
     id: session.id,
+    remoteId: session.remoteId,
     tenantId: session.tenantId,
     userId: session.userId,
     status: session.status as Session["status"],
@@ -2863,11 +3144,13 @@ function toSession(session: LocalSession): Session {
     cardSales: session.cardSales,
     digitalSales: session.digitalSales,
     notes: session.notes ?? undefined,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
   };
 }
 
 // ============================================
-// GET SYNC STATUS
+// SYNC STATUS INTERFACE AND FUNCTIONS
 // ============================================
 
 export interface SyncStatus {
@@ -2967,10 +3250,6 @@ export async function getSyncStatus(): Promise<SyncStatus> {
   };
 }
 
-// ============================================
-// GET SYNC STATUS BY ENTITY
-// ============================================
-
 export async function getSyncStatusByEntity(entity: string) {
   const db = getOfflineDb();
 
@@ -3002,10 +3281,6 @@ export async function getSyncStatusByEntity(entity: string) {
     })),
   };
 }
-
-// ============================================
-// GET FAILED ITEMS WITH DETAILS
-// ============================================
 
 export async function getFailedItemsWithDetails(limit = 50) {
   const db = getOfflineDb();
@@ -3114,10 +3389,6 @@ export async function getFailedItemsWithDetails(limit = 50) {
   return result;
 }
 
-// ============================================
-// GET PENDING ITEMS WITH DETAILS
-// ============================================
-
 export async function getPendingItemsWithDetails(limit = 50) {
   const db = getOfflineDb();
 
@@ -3225,10 +3496,6 @@ export async function getPendingItemsWithDetails(limit = 50) {
   return result;
 }
 
-// ============================================
-// GET SYNC QUEUE SUMMARY
-// ============================================
-
 export async function getSyncQueueSummary() {
   const db = getOfflineDb();
 
@@ -3288,6 +3555,10 @@ export async function getSyncQueueSummary() {
   return summary;
 }
 
+// // ============================================
+// // FILE: services/offline/repository.ts
+// // ============================================
+
 // import type {
 //   Category,
 //   CreateCategoryPayload,
@@ -3301,8 +3572,11 @@ export async function getSyncQueueSummary() {
 //   CreateMovementPayload,
 //   InventoryItem,
 // } from "@/services/features/inventory/inventoryTypes";
-// import type { CreateOrderPayload } from "@/services/features/order/orderApi";
-// import type { Order, OrderItem } from "@/services/features/order/orderTypes";
+// import type {
+//   CreateOrderPayload,
+//   Order,
+//   OrderItem,
+// } from "@/services/features/order/orderTypes";
 // import type { Product } from "@/services/features/products/productTypes";
 // import type {
 //   CloseSessionPayload,
@@ -3317,57 +3591,183 @@ export async function getSyncQueueSummary() {
 // import { createLocalId } from "./ids";
 // import { isOnline } from "./network";
 // import {
+//   brands,
 //   categories,
 //   customers,
 //   genericRecords,
+//   inventory,
 //   inventoryCounts,
 //   inventoryMovements,
 //   orderItems,
 //   orders,
+//   priceHistory,
+//   productVariants,
 //   products,
 //   sessions,
+//   staff,
 //   stores,
+//   suppliers,
 //   syncOutbox,
+//   type LocalBrand,
 //   type LocalCategory,
 //   type LocalCustomer,
+//   type LocalInventory,
 //   type LocalOrder,
 //   type LocalProduct,
+//   type LocalProductVariant,
 //   type LocalSession,
 //   type LocalStore,
 // } from "./schema";
 
 // // ============================================
 // // NORMALIZATION FUNCTIONS
+
 // // ============================================
+
+// // Add this near the top of repository.ts
+// async function withForeignKeysOff<T>(
+//   db: ReturnType<typeof getOfflineDb>,
+//   callback: () => Promise<T>,
+// ): Promise<T> {
+//   await db.run(sql`PRAGMA foreign_keys = OFF`);
+//   try {
+//     return await callback();
+//   } finally {
+//     await db.run(sql`PRAGMA foreign_keys = ON`);
+//   }
+// }
 
 // export function normalizeProduct(
 //   product: Product & Record<string, any>,
 // ): typeof products.$inferInsert {
 //   return {
 //     id: product.id,
+//     remoteId: product.remoteId || null,
 //     tenantId: product.tenantId,
-//     storeId: product.storeId,
-//     sku: product.sku,
-//     barcode: product.barcode,
-//     name: product.name,
+//     name: product.name || "Unnamed Product",
 //     description: product.description,
-//     brand: product.brand,
-//     categoryId: product.categoryId,
-//     categoryName: product.category?.name,
-//     supplierId: product.supplierId,
+//     // 🔥 Convert empty strings to null for foreign keys
+//     brandId:
+//       product.brandId && product.brandId.trim() !== "" ? product.brandId : null,
+//     storeId:
+//       product.storeId && product.storeId.trim() !== "" ? product.storeId : null,
+//     categoryId:
+//       product.categoryId && product.categoryId.trim() !== ""
+//         ? product.categoryId
+//         : null,
+//     supplierId:
+//       product.supplierId && product.supplierId.trim() !== ""
+//         ? product.supplierId
+//         : null,
+//     sku: product.sku || `SKU-${product.id?.slice(-8) || Date.now()}`,
+//     barcode: product.barcode,
 //     costPrice: Number(product.costPrice ?? 0),
 //     sellingPrice: Number(product.sellingPrice ?? 0),
 //     wholesalePrice: Number(product.wholesalePrice ?? 0),
-//     stockQuantity: Number(
-//       product.stockQuantity ?? product.inventory?.quantity ?? 0,
-//     ),
-//     manufacturingDate: product.manufacturingDate,
-//     expiryDate: product.expiryDate,
-//     version: Number(product.version ?? 0),
+//     promoPrice: product.promoPrice ? Number(product.promoPrice) : null,
+//     promoStartAt: product.promoStartAt,
+//     promoEndAt: product.promoEndAt,
+//     isTaxable: product.isTaxable ?? true,
 //     isActive: product.isActive ?? true,
+//     isReturnable: product.isReturnable ?? true,
+//     expiryDate: product.expiryDate,
+//     manufacturingDate: product.manufacturingDate,
+//     bestBeforeDate: product.bestBeforeDate,
 //     deletedAt: product.deletedAt,
+//     version: Number(product.version ?? 0),
+//     syncStatus: "synced",
+//     syncError: null,
 //     createdAt: product.createdAt ?? new Date().toISOString(),
 //     updatedAt: product.updatedAt ?? new Date().toISOString(),
+//     lastSyncedAt: new Date().toISOString(),
+//   };
+// }
+// // export function normalizeProduct(
+// //   product: Product & Record<string, any>,
+// // ): typeof products.$inferInsert {
+// //   return {
+// //     id: product.id,
+// //     remoteId: product.remoteId || null,
+// //     tenantId: product.tenantId,
+// //     name: product.name || "Unnamed Product",
+// //     description: product.description,
+// //     brandId: product.brandId ?? null,
+// //     storeId: product.storeId ?? null,
+// //     sku: product.sku || `SKU-${product.id?.slice(-8) || Date.now()}`,
+// //     barcode: product.barcode,
+// //     costPrice: Number(product.costPrice ?? 0),
+// //     sellingPrice: Number(product.sellingPrice ?? 0),
+// //     wholesalePrice: Number(product.wholesalePrice ?? 0),
+// //     promoPrice: product.promoPrice ? Number(product.promoPrice) : null,
+// //     promoStartAt: product.promoStartAt,
+// //     promoEndAt: product.promoEndAt,
+// //     isTaxable: product.isTaxable ?? true,
+// //     isActive: product.isActive ?? true,
+// //     isReturnable: product.isReturnable ?? true,
+// //     expiryDate: product.expiryDate,
+// //     manufacturingDate: product.manufacturingDate,
+// //     bestBeforeDate: product.bestBeforeDate,
+// //     // 🔥 FALLBACK for categoryId (required in schema)
+// //     categoryId: product.categoryId || null,
+// //     supplierId: product.supplierId || null,
+// //     deletedAt: product.deletedAt,
+// //     version: Number(product.version ?? 0),
+// //     syncStatus: "synced",
+// //     syncError: null,
+// //     createdAt: product.createdAt ?? new Date().toISOString(),
+// //     updatedAt: product.updatedAt ?? new Date().toISOString(),
+// //     lastSyncedAt: new Date().toISOString(),
+// //   };
+// // }
+
+// export function normalizeProductVariant(
+//   variant: any,
+// ): typeof productVariants.$inferInsert {
+//   return {
+//     id: variant.id,
+//     remoteId: variant.remoteId,
+//     name: variant.name || "Unnamed Variant",
+//     productId: variant.productId,
+//     tenantId: variant.tenantId,
+//     sku: variant.sku || `VAR-${Date.now()}`,
+//     barcode: variant.barcode,
+//     price: Number(variant.price ?? 0),
+//     costPrice: Number(variant.costPrice ?? 0),
+//     color: variant.color,
+//     size: variant.size,
+//     weight: variant.weight ? Number(variant.weight) : null,
+//     isActive: variant.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: variant.createdAt ?? new Date().toISOString(),
+//     updatedAt: variant.updatedAt ?? new Date().toISOString(),
+//     lastSyncedAt: new Date().toISOString(),
+//   };
+// }
+
+// export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
+//   return {
+//     id: inv.id,
+//     remoteId: inv.remoteId,
+//     tenantId: inv.tenantId,
+//     storeId: inv.storeId,
+//     productId:
+//       inv.productId && inv.productId.trim() !== "" ? inv.productId : null,
+//     variantId:
+//       inv.variantId && inv.variantId.trim() !== "" ? inv.variantId : null,
+
+//     // productId: inv.productId,
+//     // variantId: inv.variantId,
+//     quantity: Number(inv.quantity ?? 0),
+//     reservedQty: Number(inv.reservedQty ?? 0),
+//     reorderPoint: Number(inv.reorderPoint ?? 10),
+//     reorderQty: Number(inv.reorderQty ?? 0),
+//     shelfLocation: inv.shelfLocation,
+//     version: Number(inv.version ?? 0),
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: inv.createdAt ?? new Date().toISOString(),
+//     updatedAt: inv.updatedAt ?? new Date().toISOString(),
 //     lastSyncedAt: new Date().toISOString(),
 //   };
 // }
@@ -3376,63 +3776,430 @@ export async function getSyncQueueSummary() {
 // // UPSERT FUNCTIONS (Pull from Server)
 // // ============================================
 
-// export async function upsertProducts(remoteProducts: Product[]) {
-//   if (!remoteProducts.length) return;
+// export async function upsertBrands(
+//   remoteBrands: any[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteBrands.length) return;
+//   const now = new Date().toISOString();
 
-//   const db = getOfflineDb();
-//   await db
-//     .insert(products)
-//     .values(remoteProducts.map((product) => normalizeProduct(product)))
+//   const brandsToInsert = remoteBrands.map((brand) => ({
+//     id: brand.id,
+//     remoteId: brand.remoteId,
+//     tenantId: brand.tenantId || defaultTenantId,
+//     name: brand.name,
+//     description: brand.description,
+//     isActive: brand.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: brand.createdAt ?? now,
+//     updatedAt: brand.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
+//   await getOfflineDb()
+//     .insert(brands)
+//     .values(brandsToInsert)
 //     .onConflictDoUpdate({
-//       target: products.id,
+//       target: brands.id,
 //       set: {
-//         sku: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.sku ELSE ${products.sku} END`,
-//         barcode: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.barcode ELSE ${products.barcode} END`,
-//         name: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.name ELSE ${products.name} END`,
-//         description: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.description ELSE ${products.description} END`,
-//         brand: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.brand ELSE ${products.brand} END`,
-//         categoryId: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.category_id ELSE ${products.categoryId} END`,
-//         categoryName: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.category_name ELSE ${products.categoryName} END`,
-//         supplierId: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.supplier_id ELSE ${products.supplierId} END`,
-//         costPrice: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.cost_price ELSE ${products.costPrice} END`,
-//         sellingPrice: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.selling_price ELSE ${products.sellingPrice} END`,
-//         wholesalePrice: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.wholesale_price ELSE ${products.wholesalePrice} END`,
-//         stockQuantity: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.stock_quantity ELSE ${products.stockQuantity} END`,
-//         manufacturingDate: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.manufacturing_date ELSE ${products.manufacturingDate} END`,
-//         expiryDate: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.expiry_date ELSE ${products.expiryDate} END`,
-//         version: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.version ELSE ${products.version} END`,
-//         isActive: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.is_active ELSE ${products.isActive} END`,
-//         deletedAt: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.deleted_at ELSE ${products.deletedAt} END`,
-//         updatedAt: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.updated_at ELSE ${products.updatedAt} END`,
-//         lastSyncedAt: sql`CASE WHEN excluded.updated_at > ${products.updatedAt} THEN excluded.last_synced_at ELSE ${products.lastSyncedAt} END`,
+//         name: sql`excluded.name`,
+//         description: sql`excluded.description`,
+//         isActive: sql`excluded.is_active`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: now,
 //       },
 //     });
 // }
 
-// export async function upsertCategories(remoteCategories: Category[]) {
+// export async function upsertProducts(
+//   remoteProducts: Product[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteProducts.length) return;
+//   const db = getOfflineDb();
+
+//   const productsToInsert = remoteProducts.map((product) => {
+//     const normalized = normalizeProduct(product);
+//     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
+//     return normalized;
+//   });
+
+//   await withForeignKeysOff(db, async () => {
+//     await db
+//       .insert(products)
+//       .values(productsToInsert)
+//       .onConflictDoUpdate({
+//         target: products.id,
+//         set: {
+//           sku: sql`excluded.sku`,
+//           barcode: sql`excluded.barcode`,
+//           name: sql`excluded.name`,
+//           description: sql`excluded.description`,
+//           brandId: sql`excluded.brand_id`,
+//           storeId: sql`excluded.store_id`,
+//           costPrice: sql`excluded.cost_price`,
+//           sellingPrice: sql`excluded.selling_price`,
+//           wholesalePrice: sql`excluded.wholesale_price`,
+//           promoPrice: sql`excluded.promo_price`,
+//           promoStartAt: sql`excluded.promo_start_at`,
+//           promoEndAt: sql`excluded.promo_end_at`,
+//           isTaxable: sql`excluded.is_taxable`,
+//           isActive: sql`excluded.is_active`,
+//           isReturnable: sql`excluded.is_returnable`,
+//           expiryDate: sql`excluded.expiry_date`,
+//           manufacturingDate: sql`excluded.manufacturing_date`,
+//           bestBeforeDate: sql`excluded.best_before_date`,
+//           categoryId: sql`excluded.category_id`,
+//           supplierId: sql`excluded.supplier_id`,
+//           deletedAt: sql`excluded.deleted_at`,
+//           version: sql`excluded.version`,
+//           syncStatus: "synced",
+//           syncError: null,
+//           updatedAt: sql`excluded.updated_at`,
+//           lastSyncedAt: sql`excluded.last_synced_at`,
+//         },
+//       });
+//   });
+// }
+
+// // export async function upsertProducts(
+// //   remoteProducts: Product[],
+// //   defaultTenantId: string,
+// // ) {
+// //   if (!remoteProducts.length) return;
+
+// //   const db = getOfflineDb();
+
+// //   const productsToInsert = remoteProducts.map((product) => {
+// //     const normalized = normalizeProduct(product);
+// //     if (!normalized.tenantId) {
+// //       normalized.tenantId = defaultTenantId;
+// //     }
+// //     return normalized;
+// //   });
+
+// //   await db
+// //     .insert(products)
+// //     .values(productsToInsert)
+// //     .onConflictDoUpdate({
+// //       target: products.id,
+// //       set: {
+// //         sku: sql`excluded.sku`,
+// //         barcode: sql`excluded.barcode`,
+// //         name: sql`excluded.name`,
+// //         description: sql`excluded.description`,
+// //         brandId: sql`excluded.brand_id`,
+// //         storeId: sql`excluded.store_id`,
+// //         costPrice: sql`excluded.cost_price`,
+// //         sellingPrice: sql`excluded.selling_price`,
+// //         wholesalePrice: sql`excluded.wholesale_price`,
+// //         promoPrice: sql`excluded.promo_price`,
+// //         promoStartAt: sql`excluded.promo_start_at`,
+// //         promoEndAt: sql`excluded.promo_end_at`,
+// //         isTaxable: sql`excluded.is_taxable`,
+// //         isActive: sql`excluded.is_active`,
+// //         isReturnable: sql`excluded.is_returnable`,
+// //         expiryDate: sql`excluded.expiry_date`,
+// //         manufacturingDate: sql`excluded.manufacturing_date`,
+// //         bestBeforeDate: sql`excluded.best_before_date`,
+// //         categoryId: sql`excluded.category_id`,
+// //         supplierId: sql`excluded.supplier_id`,
+// //         deletedAt: sql`excluded.deleted_at`,
+// //         version: sql`excluded.version`,
+// //         syncStatus: "synced",
+// //         syncError: null,
+// //         updatedAt: sql`excluded.updated_at`,
+// //         lastSyncedAt: sql`excluded.last_synced_at`,
+// //       },
+// //     });
+// // }
+
+// // export async function upsertProducts(
+// //   remoteProducts: Product[],
+// //   defaultTenantId: string,
+// // ) {
+// //   if (!remoteProducts.length) return;
+
+// //   const db = getOfflineDb();
+
+// //   // ✅ Disable foreign key constraints temporarily
+// //   await db.run(sql`PRAGMA foreign_keys = OFF`);
+
+// //   try {
+// //     const productsToInsert = remoteProducts.map((product) => {
+// //       const normalized = normalizeProduct(product);
+// //       if (!normalized.tenantId) {
+// //         normalized.tenantId = defaultTenantId;
+// //       }
+// //       return normalized;
+// //     });
+
+// //     await db
+// //       .insert(products)
+// //       .values(productsToInsert)
+// //       .onConflictDoUpdate({
+// //         target: products.id,
+// //         set: {
+// //           sku: sql`excluded.sku`,
+// //           barcode: sql`excluded.barcode`,
+// //           name: sql`excluded.name`,
+// //           description: sql`excluded.description`,
+// //           brandId: sql`excluded.brand_id`,
+// //           storeId: sql`excluded.store_id`,
+// //           costPrice: sql`excluded.cost_price`,
+// //           sellingPrice: sql`excluded.selling_price`,
+// //           wholesalePrice: sql`excluded.wholesale_price`,
+// //           promoPrice: sql`excluded.promo_price`,
+// //           promoStartAt: sql`excluded.promo_start_at`,
+// //           promoEndAt: sql`excluded.promo_end_at`,
+// //           isTaxable: sql`excluded.is_taxable`,
+// //           isActive: sql`excluded.is_active`,
+// //           isReturnable: sql`excluded.is_returnable`,
+// //           expiryDate: sql`excluded.expiry_date`,
+// //           manufacturingDate: sql`excluded.manufacturing_date`,
+// //           bestBeforeDate: sql`excluded.best_before_date`,
+// //           categoryId: sql`excluded.category_id`,
+// //           supplierId: sql`excluded.supplier_id`,
+// //           deletedAt: sql`excluded.deleted_at`,
+// //           version: sql`excluded.version`,
+// //           syncStatus: "synced",
+// //           syncError: null,
+// //           updatedAt: sql`excluded.updated_at`,
+// //           lastSyncedAt: sql`excluded.last_synced_at`,
+// //         },
+// //       });
+// //   } finally {
+// //     // ✅ Re-enable foreign key constraints
+// //     await db.run(sql`PRAGMA foreign_keys = ON`);
+// //   }
+// // }
+// // export async function upsertProductVariants(
+// //   remoteVariants: any[],
+// //   defaultTenantId: string,
+// // ) {
+// //   if (!remoteVariants.length) return;
+
+// //   const db = getOfflineDb();
+// //   const variantsToInsert = remoteVariants.map((variant) => {
+// //     const normalized = normalizeProductVariant(variant);
+// //     if (!normalized.tenantId) {
+// //       normalized.tenantId = defaultTenantId;
+// //     }
+// //     return normalized;
+// //   });
+
+// //   await db
+// //     .insert(productVariants)
+// //     .values(variantsToInsert)
+// //     .onConflictDoUpdate({
+// //       target: productVariants.id,
+// //       set: {
+// //         sku: sql`excluded.sku`,
+// //         barcode: sql`excluded.barcode`,
+// //         name: sql`excluded.name`,
+// //         price: sql`excluded.price`,
+// //         costPrice: sql`excluded.cost_price`,
+// //         color: sql`excluded.color`,
+// //         size: sql`excluded.size`,
+// //         weight: sql`excluded.weight`,
+// //         isActive: sql`excluded.is_active`,
+// //         syncStatus: "synced",
+// //         syncError: null,
+// //         updatedAt: sql`excluded.updated_at`,
+// //         lastSyncedAt: sql`excluded.last_synced_at`,
+// //       },
+// //     });
+// // }
+
+// export async function upsertProductVariants(
+//   remoteVariants: any[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteVariants.length) return;
+//   const db = getOfflineDb();
+
+//   const variantsToInsert = remoteVariants.map((variant) => {
+//     const normalized = normalizeProductVariant(variant);
+//     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
+//     return normalized;
+//   });
+
+//   await withForeignKeysOff(db, async () => {
+//     await db
+//       .insert(productVariants)
+//       .values(variantsToInsert)
+//       .onConflictDoUpdate({
+//         target: productVariants.id,
+//         set: {
+//           sku: sql`excluded.sku`,
+//           barcode: sql`excluded.barcode`,
+//           name: sql`excluded.name`,
+//           price: sql`excluded.price`,
+//           costPrice: sql`excluded.cost_price`,
+//           color: sql`excluded.color`,
+//           size: sql`excluded.size`,
+//           weight: sql`excluded.weight`,
+//           isActive: sql`excluded.is_active`,
+//           syncStatus: "synced",
+//           syncError: null,
+//           updatedAt: sql`excluded.updated_at`,
+//           lastSyncedAt: sql`excluded.last_synced_at`,
+//         },
+//       });
+//   });
+// }
+// // // export async function upsertInventory(
+// // //   remoteInventory: any[],
+// // //   defaultTenantId: string,
+// // // ) {
+// // //   if (!remoteInventory.length) return;
+
+// // //   const db = getOfflineDb();
+// // //   const inventoryToInsert = remoteInventory.map((inv) => {
+// // //     const normalized = normalizeInventory(inv);
+// // //     if (!normalized.tenantId) {
+// // //       normalized.tenantId = defaultTenantId;
+// // //     }
+// // //     return normalized;
+// // //   });
+
+// // //   await db
+// // //     .insert(inventory)
+// // //     .values(inventoryToInsert)
+// // //     .onConflictDoUpdate({
+// // //       target: inventory.id,
+// // //       set: {
+// // //         tenantId: sql`excluded.tenant_id`,
+// // //         storeId: sql`excluded.store_id`,
+// // //         productId: sql`excluded.product_id`,
+// // //         variantId: sql`excluded.variant_id`,
+// // //         quantity: sql`excluded.quantity`,
+// // //         reservedQty: sql`excluded.reserved_qty`,
+// // //         reorderPoint: sql`excluded.reorder_point`,
+// // //         reorderQty: sql`excluded.reorder_qty`,
+// // //         shelfLocation: sql`excluded.shelf_location`,
+// // //         version: sql`excluded.version`,
+// // //         syncStatus: "synced",
+// // //         syncError: null,
+// // //         updatedAt: sql`excluded.updated_at`,
+// // //         lastSyncedAt: sql`excluded.last_synced_at`,
+// // //       },
+// // //     });
+// // // }
+
+// // export async function upsertInventory(
+// //   remoteInventory: any[],
+// //   defaultTenantId: string,
+// // ) {
+// //   if (!remoteInventory.length) return;
+
+// //   const db = getOfflineDb();
+// //   await db.run(sql`PRAGMA foreign_keys = OFF`);
+// //   try {
+// //     const inventoryToInsert = remoteInventory.map((inv) => {
+// //       const normalized = normalizeInventory(inv);
+// //       if (!normalized.tenantId) {
+// //         normalized.tenantId = defaultTenantId;
+// //       }
+// //       return normalized;
+// //     });
+
+// //     await db
+// //       .insert(inventory)
+// //       .values(inventoryToInsert)
+// //       .onConflictDoUpdate({
+// //         target: inventory.id,
+// //         set: {
+// //           tenantId: sql`excluded.tenant_id`,
+// //           storeId: sql`excluded.store_id`,
+// //           productId: sql`excluded.product_id`,
+// //           variantId: sql`excluded.variant_id`,
+// //           quantity: sql`excluded.quantity`,
+// //           reservedQty: sql`excluded.reserved_qty`,
+// //           reorderPoint: sql`excluded.reorder_point`,
+// //           reorderQty: sql`excluded.reorder_qty`,
+// //           shelfLocation: sql`excluded.shelf_location`,
+// //           version: sql`excluded.version`,
+// //           syncStatus: "synced",
+// //           syncError: null,
+// //           updatedAt: sql`excluded.updated_at`,
+// //           lastSyncedAt: sql`excluded.last_synced_at`,
+// //         },
+// //       });
+// //   } finally {
+// //     await db.run(sql`PRAGMA foreign_keys = ON`);
+// //   }
+// // }
+
+// export async function upsertInventory(
+//   remoteInventory: any[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteInventory.length) return;
+//   const db = getOfflineDb();
+
+//   const inventoryToInsert = remoteInventory.map((inv) => {
+//     const normalized = normalizeInventory(inv);
+//     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
+//     return normalized;
+//   });
+
+//   await withForeignKeysOff(db, async () => {
+//     await db
+//       .insert(inventory)
+//       .values(inventoryToInsert)
+//       .onConflictDoUpdate({
+//         target: inventory.id,
+//         set: {
+//           tenantId: sql`excluded.tenant_id`,
+//           storeId: sql`excluded.store_id`,
+//           productId: sql`excluded.product_id`,
+//           variantId: sql`excluded.variant_id`,
+//           quantity: sql`excluded.quantity`,
+//           reservedQty: sql`excluded.reserved_qty`,
+//           reorderPoint: sql`excluded.reorder_point`,
+//           reorderQty: sql`excluded.reorder_qty`,
+//           shelfLocation: sql`excluded.shelf_location`,
+//           version: sql`excluded.version`,
+//           syncStatus: "synced",
+//           syncError: null,
+//           updatedAt: sql`excluded.updated_at`,
+//           lastSyncedAt: sql`excluded.last_synced_at`,
+//         },
+//       });
+//   });
+// }
+
+// export async function upsertCategories(
+//   remoteCategories: Category[],
+//   defaultTenantId: string,
+// ) {
 //   if (!remoteCategories.length) return;
 //   const now = new Date().toISOString();
 
+//   const categoriesToInsert = remoteCategories.map((category) => ({
+//     id: category.id,
+//     remoteId: category.remoteId,
+//     tenantId: category.tenantId || defaultTenantId,
+//     name: category.name || "Unnamed Category",
+//     slug: category.slug,
+//     description: category.description,
+//     parentId: category.parentId,
+//     isActive: category.isActive ?? true,
+//     sortOrder: category.sortOrder ?? 0,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: category.createdAt ?? now,
+//     updatedAt: category.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
 //   await getOfflineDb()
 //     .insert(categories)
-//     .values(
-//       remoteCategories.map((category) => ({
-//         id: category.id,
-//         tenantId: category.tenantId,
-//         storeId: category.storeId,
-//         name: category.name,
-//         slug: category.slug,
-//         description: category.description,
-//         parentId: category.parentId,
-//         isActive: category.isActive ?? true,
-//         sortOrder: category.sortOrder ?? 0,
-//         syncStatus: "synced",
-//         syncError: null,
-//         createdAt: category.createdAt ?? now,
-//         updatedAt: category.updatedAt ?? now,
-//         lastSyncedAt: now,
-//       })),
-//     )
+//     .values(categoriesToInsert)
 //     .onConflictDoUpdate({
 //       target: categories.id,
 //       set: {
@@ -3440,7 +4207,6 @@ export async function getSyncQueueSummary() {
 //         slug: sql`excluded.slug`,
 //         description: sql`excluded.description`,
 //         parentId: sql`excluded.parent_id`,
-//         storeId: sql`excluded.store_id`,
 //         isActive: sql`excluded.is_active`,
 //         sortOrder: sql`excluded.sort_order`,
 //         syncStatus: "synced",
@@ -3451,37 +4217,41 @@ export async function getSyncQueueSummary() {
 //     });
 // }
 
-// export async function upsertCustomers(remoteCustomers: Customer[]) {
+// export async function upsertCustomers(
+//   remoteCustomers: Customer[],
+//   defaultTenantId: string,
+// ) {
 //   if (!remoteCustomers.length) return;
 //   const now = new Date().toISOString();
 
+//   const customersToInsert = remoteCustomers.map((customer) => ({
+//     id: customer.id,
+//     remoteId: customer.remoteId,
+//     tenantId: customer.tenantId || defaultTenantId,
+//     code: customer.code || `CUS-${Date.now()}`,
+//     name: customer.name || "Unnamed Customer",
+//     phone: customer.phone,
+//     email: customer.email,
+//     address: customer.address,
+//     dateOfBirth: customer.dateOfBirth,
+//     gender: customer.gender,
+//     debtAmount: customer.debtAmount ?? 0,
+//     loyaltyPoints: customer.loyaltyPoints ?? 0,
+//     totalSpent: customer.totalSpent ?? 0,
+//     totalOrders: customer.totalOrders ?? 0,
+//     tier: customer.tier ?? "BRONZE",
+//     tierValidUntil: customer.tierValidUntil,
+//     isActive: customer.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: customer.createdAt ?? now,
+//     updatedAt: customer.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
 //   await getOfflineDb()
 //     .insert(customers)
-//     .values(
-//       remoteCustomers.map((customer) => ({
-//         id: customer.id,
-//         tenantId: customer.tenantId,
-//         code: customer.code,
-//         name: customer.name,
-//         phone: customer.phone,
-//         email: customer.email,
-//         address: customer.address,
-//         dateOfBirth: customer.dateOfBirth,
-//         gender: customer.gender,
-//         debtAmount: customer.debtAmount ?? 0,
-//         loyaltyPoints: customer.loyaltyPoints ?? 0,
-//         totalSpent: customer.totalSpent ?? 0,
-//         totalOrders: customer.totalOrders ?? 0,
-//         tier: customer.tier ?? "BRONZE",
-//         tierValidUntil: customer.tierValidUntil,
-//         isActive: customer.isActive ?? true,
-//         syncStatus: "synced",
-//         syncError: null,
-//         createdAt: customer.createdAt ?? now,
-//         updatedAt: customer.updatedAt ?? now,
-//         lastSyncedAt: now,
-//       })),
-//     )
+//     .values(customersToInsert)
 //     .onConflictDoUpdate({
 //       target: customers.id,
 //       set: {
@@ -3507,30 +4277,349 @@ export async function getSyncQueueSummary() {
 //     });
 // }
 
-// export async function upsertStores(remoteStores: Store[]) {
+// // export async function upsertStaff(
+// //   remoteStaff: Staff[],
+// //   defaultTenantId: string,
+// // ) {
+// //   if (!remoteStaff.length) return;
+// //   const now = new Date().toISOString();
+
+// //   const staffToInsert = remoteStaff.map((staff) => ({
+// //     id: staff.id,
+// //     remoteId: staff.remoteId,
+// //     tenantId: staff.tenantId || defaultTenantId,
+// //     code: staff.code || `STAFF-${Date.now()}`,
+// //     name: staff.name || "Unnamed Staff",
+// //     phone: staff.phone,
+// //     email: staff.email,
+// //     role: staff.role,
+// //     isActive: staff.isActive ?? true,
+// //     syncStatus: "synced",
+// //     syncError: null,
+// //     createdAt: staff.createdAt ?? now,
+// //     updatedAt: staff.updatedAt ?? now,
+// //     lastSyncedAt: now,
+// //   }));
+
+// //   await getOfflineDb()
+// //     .insert(staff)
+// //     .values(staffToInsert)
+// //     .onConflictDoUpdate({
+// //       target: staff.id,
+// //       set: {
+// //         code: sql`excluded.code`,
+// //         name: sql`excluded.name`,
+// //         phone: sql`excluded.phone`,
+// //         email: sql`excluded.email`,
+// //         role: sql`excluded.role`,
+// //         isActive: sql`excluded.is_active`,
+// //         syncStatus: "synced",
+// //         syncError: null,
+// //         updatedAt: sql`excluded.updated_at`,
+// //         lastSyncedAt: now,
+// //       },
+// //     });
+// // }
+// // export async function upsertSuppliers(
+// //   remoteSuppliers: Supplier[],
+// //   defaultTenantId: string,
+// // ) {
+// //   if (!remoteSuppliers.length) return;
+// //   const now = new Date().toISOString();
+
+// //   const suppliersToInsert = remoteSuppliers.map((supplier) => ({
+// //     id: supplier.id,
+// //     remoteId: supplier.remoteId,
+// //     tenantId: supplier.tenantId || defaultTenantId,
+// //     code: supplier.code || `SUPPLIER-${Date.now()}`,
+// //     name: supplier.name || "Unnamed Supplier",
+// //     address: supplier.address,
+// //     phone: supplier.phone,
+// //     email: supplier.email,
+// //     taxNumber: supplier.taxNumber,
+// //     isActive: supplier.isActive ?? true,
+// //     syncStatus: "synced",
+// //     syncError: null,
+// //     createdAt: supplier.createdAt ?? now,
+// //     updatedAt: supplier.updatedAt ?? now,
+// //     lastSyncedAt: now,
+// //   }));
+
+// //   await getOfflineDb()
+// //     .insert(suppliers)
+// //     .values(suppliersToInsert)
+// //     .onConflictDoUpdate({
+// //       target: suppliers.id,
+// //       set: {
+// //         code: sql`excluded.code`,
+// //         name: sql`excluded.name`,
+// //         phone: sql`excluded.phone`,
+// //         email: sql`excluded.email`,
+// //         address: sql`excluded.address`,
+// //         taxNumber: sql`excluded.tax_number`,
+// //         isActive: sql`excluded.is_active`,
+// //         syncStatus: "synced",
+// //         syncError: null,
+// //         updatedAt: sql`excluded.updated_at`,
+// //         lastSyncedAt: now,
+// //       },
+// //     });
+// // }
+
+// export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
+//   if (!remoteStaff.length) return;
+//   const now = new Date().toISOString();
+
+//   // Deduplicate by (tenantId, username)
+//   const seen = new Set<string>();
+//   const uniqueStaff = remoteStaff.filter((s) => {
+//     const key = `${s.tenantId || defaultTenantId}:${(s.username || "").toLowerCase()}`;
+//     if (seen.has(key)) return false;
+//     seen.add(key);
+//     return true;
+//   });
+
+//   const staffToInsert = uniqueStaff.map((s) => ({
+//     id: s.id,
+//     remoteId: s.remoteId,
+//     tenantId: s.tenantId || defaultTenantId,
+//     storeId: s.storeId,
+//     username: s.username,
+//     email: s.email?.trim() || null,
+//     name: s.name,
+//     role: s.role,
+//     permissions: s.permissions || [],
+//     isActive: s.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: s.createdAt ?? now,
+//     updatedAt: s.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
+//   await getOfflineDb()
+//     .insert(staff)
+//     .values(staffToInsert)
+//     .onConflictDoUpdate({
+//       target: [staff.tenantId, staff.username], // ✅ Use composite index
+//       set: {
+//         username: sql`excluded.username`,
+//         email: sql`excluded.email`,
+//         name: sql`excluded.name`,
+//         role: sql`excluded.role`,
+//         permissions: sql`excluded.permissions`,
+//         storeId: sql`excluded.store_id`,
+//         isActive: sql`excluded.is_active`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: now,
+//       },
+//     });
+// }
+
+// // // ============================================
+// // // UPSERT STAFF (corrected)
+// // // ============================================
+// // export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
+// //   if (!remoteStaff.length) return;
+// //   const now = new Date().toISOString();
+
+// //   const staffToInsert = remoteStaff.map((staff) => ({
+// //     id: staff.id,
+// //     remoteId: staff.remoteId,
+// //     tenantId: staff.tenantId || defaultTenantId,
+// //     storeId: staff.storeId,
+// //     username: staff.username,
+// //     email: staff.email,
+// //     name: staff.name,
+// //     role: staff.role,
+// //     permissions: staff.permissions || [],
+// //     isActive: staff.isActive ?? true,
+// //     syncStatus: "synced",
+// //     syncError: null,
+// //     createdAt: staff.createdAt ?? now,
+// //     updatedAt: staff.updatedAt ?? now,
+// //     lastSyncedAt: now,
+// //   }));
+
+// //   await getOfflineDb()
+// //     .insert(staff)
+// //     .values(staffToInsert)
+// //     .onConflictDoUpdate({
+// //       target: staff.id,
+// //       set: {
+// //         username: sql`excluded.username`,
+// //         email: sql`excluded.email`,
+// //         name: sql`excluded.name`,
+// //         role: sql`excluded.role`,
+// //         permissions: sql`excluded.permissions`,
+// //         storeId: sql`excluded.store_id`,
+// //         isActive: sql`excluded.is_active`,
+// //         syncStatus: "synced",
+// //         syncError: null,
+// //         updatedAt: sql`excluded.updated_at`,
+// //         lastSyncedAt: now,
+// //       },
+// //     });
+// // }
+
+// // // ============================================
+// // // UPSERT SUPPLIERS (corrected)
+// // // ============================================
+// // export async function upsertSuppliers(
+// //   remoteSuppliers: any[],
+// //   defaultTenantId: string,
+// // ) {
+// //   if (!remoteSuppliers.length) return;
+// //   const now = new Date().toISOString();
+
+// //   const suppliersToInsert = remoteSuppliers.map((supplier) => ({
+// //     id: supplier.id,
+// //     remoteId: supplier.remoteId,
+// //     tenantId: supplier.tenantId || defaultTenantId,
+// //     storeId: supplier.storeId,
+// //     code: supplier.code,
+// //     name: supplier.name,
+// //     contactName: supplier.contactName,
+// //     phone: supplier.phone,
+// //     email: supplier.email,
+// //     address: supplier.address,
+// //     taxNumber: supplier.taxNumber,
+// //     paymentTerms: supplier.paymentTerms,
+// //     creditLimit: supplier.creditLimit,
+// //     currentBalance: supplier.currentBalance ?? 0,
+// //     isActive: supplier.isActive ?? true,
+// //     syncStatus: "synced",
+// //     syncError: null,
+// //     createdAt: supplier.createdAt ?? now,
+// //     updatedAt: supplier.updatedAt ?? now,
+// //     lastSyncedAt: now,
+// //   }));
+
+// //   await getOfflineDb()
+// //     .insert(suppliers)
+// //     .values(suppliersToInsert)
+// //     .onConflictDoUpdate({
+// //       target: suppliers.id,
+// //       set: {
+// //         code: sql`excluded.code`,
+// //         name: sql`excluded.name`,
+// //         contactName: sql`excluded.contact_name`,
+// //         phone: sql`excluded.phone`,
+// //         email: sql`excluded.email`,
+// //         address: sql`excluded.address`,
+// //         taxNumber: sql`excluded.tax_number`,
+// //         paymentTerms: sql`excluded.payment_terms`,
+// //         creditLimit: sql`excluded.credit_limit`,
+// //         currentBalance: sql`excluded.current_balance`,
+// //         storeId: sql`excluded.store_id`,
+// //         isActive: sql`excluded.is_active`,
+// //         syncStatus: "synced",
+// //         syncError: null,
+// //         updatedAt: sql`excluded.updated_at`,
+// //         lastSyncedAt: now,
+// //       },
+// //     });
+// // }
+
+// // ============================================
+// // UPSERT SUPPLIERS (fixed)
+// // ============================================
+// export async function upsertSuppliers(
+//   remoteSuppliers: any[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remoteSuppliers.length) return;
+//   const now = new Date().toISOString();
+
+//   // 1. Deduplicate by (tenantId, email) to avoid batch conflicts
+//   const seen = new Set<string>();
+//   const uniqueSuppliers = remoteSuppliers.filter((s) => {
+//     const key = `${s.tenantId || defaultTenantId}:${(s.email || "").toLowerCase()}`;
+//     if (seen.has(key)) return false;
+//     seen.add(key);
+//     return true;
+//   });
+
+//   const suppliersToInsert = uniqueSuppliers.map((supplier) => ({
+//     id: supplier.id,
+//     remoteId: supplier.remoteId,
+//     tenantId: supplier.tenantId || defaultTenantId,
+//     storeId: supplier.storeId,
+//     code: supplier.code,
+//     name: supplier.name,
+//     contactName: supplier.contactName,
+//     phone: supplier.phone,
+//     email: supplier.email?.trim() || null, // ✅ convert empty to null
+//     address: supplier.address,
+//     taxNumber: supplier.taxNumber,
+//     paymentTerms: supplier.paymentTerms,
+//     creditLimit: supplier.creditLimit,
+//     currentBalance: supplier.currentBalance ?? 0,
+//     isActive: supplier.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: supplier.createdAt ?? now,
+//     updatedAt: supplier.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
+//   // 2. Upsert using the composite unique index
+//   await getOfflineDb()
+//     .insert(suppliers)
+//     .values(suppliersToInsert)
+//     .onConflictDoUpdate({
+//       target: [suppliers.tenantId, suppliers.email], // ✅ Use the composite index
+//       set: {
+//         code: sql`excluded.code`,
+//         name: sql`excluded.name`,
+//         contactName: sql`excluded.contact_name`,
+//         phone: sql`excluded.phone`,
+//         email: sql`excluded.email`,
+//         address: sql`excluded.address`,
+//         taxNumber: sql`excluded.tax_number`,
+//         paymentTerms: sql`excluded.payment_terms`,
+//         creditLimit: sql`excluded.credit_limit`,
+//         currentBalance: sql`excluded.current_balance`,
+//         storeId: sql`excluded.store_id`,
+//         isActive: sql`excluded.is_active`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: now,
+//       },
+//     });
+// }
+
+// export async function upsertStores(
+//   remoteStores: Store[],
+//   defaultTenantId: string,
+// ) {
 //   if (!remoteStores.length) return;
 //   const now = new Date().toISOString();
 
+//   const storesToInsert = remoteStores.map((store) => ({
+//     id: store.id,
+//     remoteId: store.remoteId,
+//     tenantId: store.tenantId || defaultTenantId,
+//     code: store.code || `STORE-${Date.now()}`,
+//     name: store.name || "Unnamed Store",
+//     address: store.address,
+//     phone: store.phone,
+//     email: store.email,
+//     taxNumber: store.taxNumber,
+//     isActive: store.isActive ?? true,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: store.createdAt ?? now,
+//     updatedAt: store.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
 //   await getOfflineDb()
 //     .insert(stores)
-//     .values(
-//       remoteStores.map((store) => ({
-//         id: store.id,
-//         tenantId: store.tenantId,
-//         code: store.code,
-//         name: store.name,
-//         address: store.address,
-//         phone: store.phone,
-//         email: store.email,
-//         taxNumber: store.taxNumber,
-//         isActive: store.isActive ?? true,
-//         syncStatus: "synced",
-//         syncError: null,
-//         createdAt: store.createdAt ?? now,
-//         updatedAt: store.updatedAt ?? now,
-//         lastSyncedAt: now,
-//       })),
-//     )
+//     .values(storesToInsert)
 //     .onConflictDoUpdate({
 //       target: stores.id,
 //       set: {
@@ -3549,37 +4638,41 @@ export async function getSyncQueueSummary() {
 //     });
 // }
 
-// export async function upsertSessions(remoteSessions: Session[]) {
+// export async function upsertSessions(
+//   remoteSessions: Session[],
+//   defaultTenantId: string,
+// ) {
 //   if (!remoteSessions.length) return;
 //   const now = new Date().toISOString();
 
+//   const sessionsToInsert = remoteSessions.map((session) => ({
+//     id: session.id,
+//     remoteId: session.remoteId,
+//     tenantId: session.tenantId || defaultTenantId,
+//     storeId: session.storeId,
+//     registerId: session.registerId,
+//     userId: session.userId,
+//     status: session.status || "OPEN",
+//     openedAt: session.openedAt || now,
+//     closedAt: session.closedAt,
+//     openingBalance: session.openingBalance ?? 0,
+//     closingBalance: session.closingBalance,
+//     expectedBalance: session.expectedBalance,
+//     discrepancy: session.discrepancy,
+//     cashSales: session.cashSales ?? 0,
+//     cardSales: session.cardSales ?? 0,
+//     digitalSales: session.digitalSales ?? 0,
+//     notes: session.notes,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: session.openedAt ?? now,
+//     updatedAt: session.closedAt ?? session.openedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
 //   await getOfflineDb()
 //     .insert(sessions)
-//     .values(
-//       remoteSessions.map((session) => ({
-//         id: session.id,
-//         tenantId: session.tenantId,
-//         storeId: session.storeId,
-//         registerId: session.registerId,
-//         userId: session.userId,
-//         status: session.status,
-//         openedAt: session.openedAt,
-//         closedAt: session.closedAt,
-//         openingBalance: session.openingBalance ?? 0,
-//         closingBalance: session.closingBalance,
-//         expectedBalance: session.expectedBalance,
-//         discrepancy: session.discrepancy,
-//         cashSales: session.cashSales ?? 0,
-//         cardSales: session.cardSales ?? 0,
-//         digitalSales: session.digitalSales ?? 0,
-//         notes: session.notes,
-//         syncStatus: "synced",
-//         syncError: null,
-//         createdAt: session.openedAt ?? now,
-//         updatedAt: session.closedAt ?? session.openedAt ?? now,
-//         lastSyncedAt: now,
-//       })),
-//     )
+//     .values(sessionsToInsert)
 //     .onConflictDoUpdate({
 //       target: sessions.id,
 //       set: {
@@ -3602,6 +4695,7 @@ export async function getSyncQueueSummary() {
 
 // export async function upsertOrders(
 //   remoteOrders: (Order & Record<string, any>)[],
+//   defaultTenantId: string,
 // ) {
 //   if (!remoteOrders.length) return;
 //   const now = new Date().toISOString();
@@ -3609,17 +4703,20 @@ export async function getSyncQueueSummary() {
 //   const db = getOfflineDb();
 //   await db.transaction(async (tx) => {
 //     for (const order of remoteOrders) {
+//       const tenantId = order.tenantId || defaultTenantId;
+
 //       await tx
 //         .insert(orders)
 //         .values({
 //           id: order.id,
-//           tenantId: order.tenantId,
+//           remoteId: order.remoteId,
+//           tenantId,
 //           storeId: order.storeId,
 //           registerId: order.registerId,
 //           userId: order.userId ?? "",
 //           customerId: order.customerId,
 //           sessionId: order.sessionId,
-//           orderNumber: order.orderNumber,
+//           orderNumber: order.orderNumber || `ORD-${Date.now()}`,
 //           status: order.status ?? "COMPLETED",
 //           paymentStatus: order.paymentStatus ?? "PAID",
 //           paymentMethod: order.paymentMethod ?? "CASH",
@@ -3639,7 +4736,7 @@ export async function getSyncQueueSummary() {
 //         .onConflictDoUpdate({
 //           target: orders.id,
 //           set: {
-//             status: order.status,
+//             status: sql`excluded.status`,
 //             paymentStatus: sql`excluded.payment_status`,
 //             grandTotal: sql`excluded.grand_total`,
 //             syncStatus: "synced",
@@ -3682,9 +4779,52 @@ export async function getSyncQueueSummary() {
 //   });
 // }
 
+// export async function upsertPriceHistory(
+//   remotePriceHistory: any[],
+//   defaultTenantId: string,
+// ) {
+//   if (!remotePriceHistory.length) return;
+//   const now = new Date().toISOString();
+
+//   const priceHistoryToInsert = remotePriceHistory.map((ph) => ({
+//     id: ph.id,
+//     remoteId: ph.remoteId,
+//     tenantId: ph.tenantId || defaultTenantId,
+//     productId: ph.productId,
+//     variantId: ph.variantId,
+//     oldPrice: Number(ph.oldPrice ?? 0),
+//     newPrice: Number(ph.newPrice ?? 0),
+//     changedBy: ph.changedBy,
+//     reason: ph.reason,
+//     syncStatus: "synced",
+//     syncError: null,
+//     createdAt: ph.createdAt ?? now,
+//     updatedAt: ph.updatedAt ?? now,
+//     lastSyncedAt: now,
+//   }));
+
+//   await getOfflineDb()
+//     .insert(priceHistory)
+//     .values(priceHistoryToInsert)
+//     .onConflictDoUpdate({
+//       target: priceHistory.id,
+//       set: {
+//         oldPrice: sql`excluded.old_price`,
+//         newPrice: sql`excluded.new_price`,
+//         changedBy: sql`excluded.changed_by`,
+//         reason: sql`excluded.reason`,
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: sql`excluded.updated_at`,
+//         lastSyncedAt: now,
+//       },
+//     });
+// }
+
 // export async function upsertGenericRecords<T extends { id: string }>(
 //   entity: string,
 //   records: T[],
+//   defaultTenantId: string,
 // ) {
 //   if (!records.length) return;
 //   const now = new Date().toISOString();
@@ -3693,8 +4833,10 @@ export async function getSyncQueueSummary() {
 //     .values(
 //       records.map((record) => ({
 //         id: record.id,
+//         remoteId: (record as any).remoteId,
 //         entity,
 //         data: record,
+//         tenantId: (record as any).tenantId || defaultTenantId,
 //         isActive: (record as any).isActive ?? true,
 //         syncStatus: "synced",
 //         syncError: null,
@@ -3717,7 +4859,7 @@ export async function getSyncQueueSummary() {
 // }
 
 // // ============================================
-// // GET LOCAL FUNCTIONS (Read from SQLite)
+// // GET LOCAL FUNCTIONS
 // // ============================================
 
 // export async function getLocalProducts(storeId?: string) {
@@ -3734,7 +4876,7 @@ export async function getSyncQueueSummary() {
 //       ),
 //     );
 
-//   return rows.map(toProduct);
+//   return rows.map((row) => toProduct(row));
 // }
 
 // export async function getLocalProductById(id: string) {
@@ -3757,23 +4899,124 @@ export async function getSyncQueueSummary() {
 //   return row ? toProduct(row) : undefined;
 // }
 
-// export async function getLocalCategories(storeId?: string | null) {
+// export async function getLocalProductBySku(sku: string) {
+//   const db = getOfflineDb();
+//   const [row] = await db
+//     .select()
+//     .from(products)
+//     .where(and(eq(products.sku, sku), eq(products.isActive, true)))
+//     .limit(1);
+//   return row ? toProduct(row) : undefined;
+// }
+
+// export async function getLocalVariants(productId?: string) {
+//   const db = getOfflineDb();
+//   let query = db.select().from(productVariants).$dynamic();
+
+//   if (productId) {
+//     query = query.where(eq(productVariants.productId, productId));
+//   }
+
+//   const rows = await query.where(eq(productVariants.isActive, true));
+//   return rows.map((row) => toProductVariant(row));
+// }
+
+// export async function getLocalVariantById(id: string) {
+//   const db = getOfflineDb();
+//   const [row] = await db
+//     .select()
+//     .from(productVariants)
+//     .where(eq(productVariants.id, id))
+//     .limit(1);
+//   return row ? toProductVariant(row) : undefined;
+// }
+
+// export async function getLocalVariantByBarcode(barcode: string) {
+//   const db = getOfflineDb();
+//   const [row] = await db
+//     .select()
+//     .from(productVariants)
+//     .where(
+//       and(
+//         eq(productVariants.barcode, barcode),
+//         eq(productVariants.isActive, true),
+//       ),
+//     )
+//     .limit(1);
+//   return row ? toProductVariant(row) : undefined;
+// }
+
+// export async function getLocalInventory(storeId?: string) {
+//   const db = getOfflineDb();
+//   let query = db.select().from(inventory).$dynamic();
+
+//   const conditions = [];
+//   if (storeId) {
+//     conditions.push(eq(inventory.storeId, storeId));
+//   }
+//   if (conditions.length) {
+//     query = query.where(and(...conditions));
+//   }
+
+//   const rows = await query;
+//   return rows.map((row) => toInventoryItem(row));
+// }
+
+// export async function getLocalInventoryByProduct(
+//   productId: string,
+//   storeId?: string,
+// ) {
+//   const db = getOfflineDb();
+//   let query = db
+//     .select()
+//     .from(inventory)
+//     .where(eq(inventory.productId, productId))
+//     .$dynamic();
+
+//   if (storeId) {
+//     query = query.where(eq(inventory.storeId, storeId));
+//   }
+
+//   const rows = await query;
+//   return rows.map((row) => toInventoryItem(row));
+// }
+
+// export async function getLocalInventoryByVariant(
+//   variantId: string,
+//   storeId?: string,
+// ) {
+//   const db = getOfflineDb();
+//   let query = db
+//     .select()
+//     .from(inventory)
+//     .where(eq(inventory.variantId, variantId))
+//     .$dynamic();
+
+//   if (storeId) {
+//     query = query.where(eq(inventory.storeId, storeId));
+//   }
+
+//   const rows = await query;
+//   return rows.map((row) => toInventoryItem(row));
+// }
+
+// export async function getLocalInventoryItem(id: string) {
+//   const db = getOfflineDb();
+//   const [row] = await db
+//     .select()
+//     .from(inventory)
+//     .where(eq(inventory.id, id))
+//     .limit(1);
+//   return row ? toInventoryItem(row) : undefined;
+// }
+
+// export async function getLocalCategories(_storeId?: string | null) {
 //   const rows = await getOfflineDb()
 //     .select()
 //     .from(categories)
-//     .where(
-//       and(
-//         eq(categories.isActive, true),
-//         storeId !== undefined
-//           ? or(
-//               eq(categories.storeId, storeId ?? ""),
-//               sql`${categories.storeId} IS NULL`,
-//             )
-//           : undefined,
-//       ),
-//     );
+//     .where(eq(categories.isActive, true));
 
-//   return rows.map(toCategory);
+//   return rows.map((row) => toCategory(row));
 // }
 
 // export async function getLocalCategoryById(id: string) {
@@ -3785,13 +5028,22 @@ export async function getSyncQueueSummary() {
 //   return row ? toCategory(row) : undefined;
 // }
 
+// export async function getLocalCategoryByName(name: string) {
+//   const [row] = await getOfflineDb()
+//     .select()
+//     .from(categories)
+//     .where(and(eq(categories.name, name), eq(categories.isActive, true)))
+//     .limit(1);
+//   return row ? toCategory(row) : undefined;
+// }
+
 // export async function getLocalCustomers() {
 //   const rows = await getOfflineDb()
 //     .select()
 //     .from(customers)
 //     .where(eq(customers.isActive, true));
 
-//   return rows.map(toCustomer);
+//   return rows.map((row) => toCustomer(row));
 // }
 
 // export async function getLocalCustomerById(id: string) {
@@ -3803,12 +5055,30 @@ export async function getSyncQueueSummary() {
 //   return row ? toCustomer(row) : undefined;
 // }
 
+// export async function getLocalCustomerByPhone(phone: string) {
+//   const [row] = await getOfflineDb()
+//     .select()
+//     .from(customers)
+//     .where(and(eq(customers.phone, phone), eq(customers.isActive, true)))
+//     .limit(1);
+//   return row ? toCustomer(row) : undefined;
+// }
+
+// export async function getLocalCustomerByCode(code: string) {
+//   const [row] = await getOfflineDb()
+//     .select()
+//     .from(customers)
+//     .where(and(eq(customers.code, code), eq(customers.isActive, true)))
+//     .limit(1);
+//   return row ? toCustomer(row) : undefined;
+// }
+
 // export async function getLocalStores() {
 //   const rows = await getOfflineDb()
 //     .select()
 //     .from(stores)
 //     .where(eq(stores.isActive, true));
-//   return rows.map(toStore);
+//   return rows.map((row) => toStore(row));
 // }
 
 // export async function getLocalStoreById(id: string) {
@@ -3816,6 +5086,15 @@ export async function getSyncQueueSummary() {
 //     .select()
 //     .from(stores)
 //     .where(eq(stores.id, id))
+//     .limit(1);
+//   return row ? toStore(row) : undefined;
+// }
+
+// export async function getLocalStoreByCode(code: string) {
+//   const [row] = await getOfflineDb()
+//     .select()
+//     .from(stores)
+//     .where(and(eq(stores.code, code), eq(stores.isActive, true)))
 //     .limit(1);
 //   return row ? toStore(row) : undefined;
 // }
@@ -3832,7 +5111,7 @@ export async function getSyncQueueSummary() {
 //   }
 
 //   const rows = await query.orderBy(desc(sessions.createdAt));
-//   return rows.map(toSession);
+//   return rows.map((row) => toSession(row));
 // }
 
 // export async function getLocalActiveSession(userId: string, storeId?: string) {
@@ -3850,6 +5129,15 @@ export async function getSyncQueueSummary() {
 //     )
 //     .limit(1);
 
+//   return row ? toSession(row) : undefined;
+// }
+
+// export async function getLocalSessionById(id: string) {
+//   const [row] = await getOfflineDb()
+//     .select()
+//     .from(sessions)
+//     .where(eq(sessions.id, id))
+//     .limit(1);
 //   return row ? toSession(row) : undefined;
 // }
 
@@ -3872,38 +5160,28 @@ export async function getSyncQueueSummary() {
 //   return row ? toOrder(row) : undefined;
 // }
 
-// export async function getLocalInventory(
-//   storeId?: string,
-// ): Promise<InventoryItem[]> {
-//   const db = getOfflineDb();
-//   const rows = await db
+// export async function getLocalOrdersByCustomer(customerId: string) {
+//   const rows = await getOfflineDb()
 //     .select()
-//     .from(products)
-//     .where(
-//       and(
-//         eq(products.isActive, true),
-//         storeId
-//           ? or(eq(products.storeId, storeId), sql`${products.storeId} IS NULL`)
-//           : undefined,
-//       ),
-//     );
+//     .from(orders)
+//     .where(eq(orders.customerId, customerId));
 
-//   return rows.map((row) => ({
-//     id: row.id,
-//     productId: row.id,
-//     storeId: storeId ?? row.storeId ?? "unknown",
-//     quantity: row.stockQuantity,
-//     product: {
-//       id: row.id,
-//       name: row.name,
-//       sku: row.sku,
-//     },
-//   }));
+//   return Promise.all(rows.map((order) => toOrder(order)));
+// }
+
+// export async function getLocalOrdersBySession(sessionId: string) {
+//   const rows = await getOfflineDb()
+//     .select()
+//     .from(orders)
+//     .where(eq(orders.sessionId, sessionId));
+
+//   return Promise.all(rows.map((order) => toOrder(order)));
 // }
 
 // export async function getLocalInventoryMovements(
 //   storeId?: string,
 //   type?: string,
+//   productId?: string,
 // ) {
 //   const db = getOfflineDb();
 //   let query = db.select().from(inventoryMovements).$dynamic();
@@ -3911,11 +5189,38 @@ export async function getSyncQueueSummary() {
 //   const conditions = [];
 //   if (storeId) conditions.push(eq(inventoryMovements.storeId, storeId));
 //   if (type) conditions.push(eq(inventoryMovements.type, type));
+//   if (productId) conditions.push(eq(inventoryMovements.productId, productId));
 //   if (conditions.length) {
 //     query = query.where(and(...conditions));
 //   }
 
 //   return await query.orderBy(desc(inventoryMovements.createdAt));
+// }
+
+// export async function getLocalInventoryMovementById(id: string) {
+//   const [row] = await getOfflineDb()
+//     .select()
+//     .from(inventoryMovements)
+//     .where(eq(inventoryMovements.id, id))
+//     .limit(1);
+//   return row;
+// }
+
+// export async function getLocalPriceHistory(
+//   productId?: string,
+//   variantId?: string,
+// ) {
+//   const db = getOfflineDb();
+//   let query = db.select().from(priceHistory).$dynamic();
+
+//   const conditions = [];
+//   if (productId) conditions.push(eq(priceHistory.productId, productId));
+//   if (variantId) conditions.push(eq(priceHistory.variantId, variantId));
+//   if (conditions.length) {
+//     query = query.where(and(...conditions));
+//   }
+
+//   return await query.orderBy(desc(priceHistory.createdAt));
 // }
 
 // export async function getLocalGenericRecords<T>(entity: string) {
@@ -3932,59 +5237,175 @@ export async function getSyncQueueSummary() {
 //   }));
 // }
 
+// export async function getLocalGenericRecord<T>(entity: string, id: string) {
+//   const [row] = await getOfflineDb()
+//     .select()
+//     .from(genericRecords)
+//     .where(
+//       and(
+//         eq(genericRecords.entity, entity),
+//         eq(genericRecords.id, id),
+//         eq(genericRecords.isActive, true),
+//       ),
+//     )
+//     .limit(1);
+
+//   return row ? { ...(row.data as T), id: row.id } : undefined;
+// }
+
 // // ============================================
-// // CREATE OFFLINE FUNCTIONS (Push to Server later)
+// // CREATE OFFLINE FUNCTIONS
 // // ============================================
 
 // export async function createOfflineProduct(
-//   payload: Partial<Product> & { categoryName?: string; storeId?: string },
+//   payload: Partial<Product> & {
+//     categoryName?: string;
+//     storeId?: string;
+//     brandId?: string;
+//     variants?: any[];
+//     initialStock?: number;
+//   },
 // ) {
 //   const now = new Date().toISOString();
 //   const id = createLocalId("prod");
 
-//   await getOfflineDb()
-//     .insert(products)
-//     .values({
-//       id,
-//       storeId: payload.storeId,
-//       sku: payload.sku ?? `LOCAL-${Date.now().toString(36).toUpperCase()}`,
-//       barcode:
-//         payload.barcode && payload.barcode.trim() !== ""
-//           ? payload.barcode.trim()
-//           : `QR-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
-//       name: payload.name ?? "Offline product",
-//       description: payload.description,
-//       brand: payload.brand,
-//       categoryId: payload.categoryId ?? "",
-//       categoryName: payload.categoryName,
-//       supplierId: payload.supplierId,
-//       costPrice: Number(payload.costPrice ?? 0),
-//       sellingPrice: Number(payload.sellingPrice ?? 0),
-//       wholesalePrice: Number(payload.wholesalePrice ?? 0),
-//       stockQuantity: Number(payload.stockQuantity ?? 0),
-//       isActive: true,
-//       syncStatus: "pending" as never,
-//       createdAt: now,
-//       updatedAt: now,
-//     } as typeof products.$inferInsert);
+//   const db = getOfflineDb();
+//   const sqlite = getSqliteDatabase();
 
-//   await enqueueMutation(
-//     "products",
-//     id,
-//     "create",
-//     "/api/tenant/products",
-//     "POST",
-//     payload,
-//   );
-//   return toProduct(
-//     (
-//       await getOfflineDb()
-//         .select()
-//         .from(products)
-//         .where(eq(products.id, id))
-//         .limit(1)
-//     )[0],
-//   );
+//   let productId = id;
+
+//   sqlite.withTransactionSync(() => {
+//     sqlite.runSync(
+//       `INSERT INTO products (
+//         id, tenant_id, name, sku, barcode, description,
+//         brand_id, store_id, category_id, supplier_id,
+//         cost_price, selling_price, wholesale_price,
+//         is_active, sync_status, created_at, updated_at
+//       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         productId,
+//         payload.tenantId || null,
+//         payload.name || "Offline product",
+//         payload.sku || `LOCAL-${Date.now().toString(36).toUpperCase()}`,
+//         payload.barcode || null,
+//         payload.description || null,
+//         payload.brandId || null,
+//         payload.storeId || null,
+//         payload.categoryId || "default-category",
+//         payload.supplierId || null,
+//         Number(payload.costPrice ?? 0),
+//         Number(payload.sellingPrice ?? 0),
+//         Number(payload.wholesalePrice ?? 0),
+//         1,
+//         "pending",
+//         now,
+//         now,
+//       ],
+//     );
+
+//     if (payload.variants && payload.variants.length > 0) {
+//       for (const variant of payload.variants) {
+//         const variantId = createLocalId("var");
+//         sqlite.runSync(
+//           `INSERT INTO product_variants (
+//             id, product_id, tenant_id, name, sku, barcode,
+//             price, cost_price, color, size, weight, is_active,
+//             sync_status, created_at, updated_at
+//           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//           [
+//             variantId,
+//             productId,
+//             payload.tenantId || null,
+//             variant.name || "Variant",
+//             variant.sku || `VAR-${Date.now().toString(36).toUpperCase()}`,
+//             variant.barcode || null,
+//             Number(variant.price ?? 0),
+//             Number(variant.costPrice ?? 0),
+//             variant.color || null,
+//             variant.size || null,
+//             variant.weight ? Number(variant.weight) : null,
+//             variant.isActive !== undefined ? (variant.isActive ? 1 : 0) : 1,
+//             "pending",
+//             now,
+//             now,
+//           ],
+//         );
+
+//         if (payload.storeId) {
+//           const invId = createLocalId("inv");
+//           sqlite.runSync(
+//             `INSERT INTO inventory (
+//               id, tenant_id, store_id, product_id, variant_id, quantity,
+//               sync_status, created_at, updated_at
+//             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//             [
+//               invId,
+//               payload.tenantId || null,
+//               payload.storeId,
+//               productId,
+//               variantId,
+//               Number(variant.initialStock ?? 0),
+//               "pending",
+//               now,
+//               now,
+//             ],
+//           );
+//         }
+//       }
+//     }
+
+//     if (
+//       payload.storeId &&
+//       (!payload.variants || payload.variants.length === 0)
+//     ) {
+//       const invId = createLocalId("inv");
+//       sqlite.runSync(
+//         `INSERT INTO inventory (
+//           id, tenant_id, store_id, product_id, quantity,
+//           sync_status, created_at, updated_at
+//         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+//         [
+//           invId,
+//           payload.tenantId || null,
+//           payload.storeId,
+//           productId,
+//           Number(payload.initialStock ?? 0),
+//           "pending",
+//           now,
+//           now,
+//         ],
+//       );
+//     }
+
+//     sqlite.runSync(
+//       `INSERT INTO sync_outbox (
+//         id, entity, entity_id, operation, endpoint, method, payload, status,
+//         attempts, next_attempt_at, created_at, updated_at
+//       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [
+//         createLocalId("outbox"),
+//         "products",
+//         productId,
+//         "create",
+//         "/api/tenant/products",
+//         "POST",
+//         JSON.stringify(payload),
+//         "pending",
+//         0,
+//         now,
+//         now,
+//         now,
+//       ],
+//     );
+//   });
+
+//   const [row] = await db
+//     .select()
+//     .from(products)
+//     .where(eq(products.id, productId))
+//     .limit(1);
+
+//   return toProduct(row);
 // }
 
 // export async function createOfflineCategory(
@@ -3996,17 +5417,23 @@ export async function getSyncQueueSummary() {
 //   await getOfflineDb()
 //     .insert(categories)
 //     .values({
-//       id,
-//       storeId: payload.storeId,
-//       name: payload.name,
-//       slug: payload.slug ?? payload.name.toLowerCase().replace(/\s+/g, "-"),
+//       id: id,
+//       remoteId: null,
+//       tenantId: payload.tenantId,
+//       // storeId: payload.storeId,
+//       name: payload.name || "Unnamed Category",
+//       slug:
+//         (payload.slug ?? payload.name?.toLowerCase().replace(/\s+/g, "-")) ||
+//         "cat-" + Date.now(),
 //       description: payload.description,
 //       parentId: payload.parentId,
 //       isActive: payload.isActive ?? true,
 //       sortOrder: payload.sortOrder ?? 0,
 //       syncStatus: "pending",
+//       syncError: null,
 //       createdAt: now,
 //       updatedAt: now,
+//       lastSyncedAt: null,
 //     });
 
 //   await enqueueMutation(
@@ -4036,9 +5463,11 @@ export async function getSyncQueueSummary() {
 //   await getOfflineDb()
 //     .insert(customers)
 //     .values({
-//       id,
+//       id: id,
+//       remoteId: null,
+//       tenantId: payload.tenantId,
 //       code,
-//       name: payload.name,
+//       name: payload.name || "Unnamed Customer",
 //       phone: payload.phone,
 //       email: payload.email,
 //       address: payload.address,
@@ -4049,10 +5478,13 @@ export async function getSyncQueueSummary() {
 //       totalSpent: 0,
 //       totalOrders: 0,
 //       tier: "BRONZE",
+//       tierValidUntil: null,
 //       isActive: true,
 //       syncStatus: "pending",
+//       syncError: null,
 //       createdAt: now,
 //       updatedAt: now,
+//       lastSyncedAt: null,
 //     });
 
 //   await enqueueMutation(
@@ -4082,17 +5514,21 @@ export async function getSyncQueueSummary() {
 //   await getOfflineDb()
 //     .insert(stores)
 //     .values({
-//       id,
+//       id: id,
+//       remoteId: null,
+//       tenantId: payload.tenantId,
 //       code,
-//       name: payload.name,
+//       name: payload.name || "Unnamed Store",
 //       address: payload.address,
 //       phone: payload.phone,
 //       email: payload.email,
 //       taxNumber: payload.taxNumber,
 //       isActive: payload.isActive ?? true,
 //       syncStatus: "pending",
+//       syncError: null,
 //       createdAt: now,
 //       updatedAt: now,
+//       lastSyncedAt: null,
 //     });
 
 //   await enqueueMutation("stores", id, "create", "/api/tenant/stores", "POST", {
@@ -4112,6 +5548,7 @@ export async function getSyncQueueSummary() {
 
 // export async function openOfflineSession(payload: {
 //   userId: string;
+//   tenantId: string;
 //   openingBalance: number;
 //   notes?: string;
 //   storeId?: string;
@@ -4121,20 +5558,28 @@ export async function getSyncQueueSummary() {
 //   const id = createLocalId("ses");
 
 //   await getOfflineDb().insert(sessions).values({
-//     id,
+//     id: id,
+//     remoteId: null,
+//     tenantId: payload.tenantId,
 //     userId: payload.userId,
 //     storeId: payload.storeId,
 //     registerId: payload.registerId,
 //     status: "OPEN",
 //     openedAt: now,
+//     closedAt: null,
 //     openingBalance: payload.openingBalance,
+//     closingBalance: null,
+//     expectedBalance: null,
+//     discrepancy: null,
 //     cashSales: 0,
 //     cardSales: 0,
 //     digitalSales: 0,
 //     notes: payload.notes,
 //     syncStatus: "pending",
+//     syncError: null,
 //     createdAt: now,
 //     updatedAt: now,
+//     lastSyncedAt: null,
 //   });
 
 //   await enqueueMutation(
@@ -4168,9 +5613,7 @@ export async function getSyncQueueSummary() {
 //     ...payload,
 //     subTotal: Number(payload.subTotal) || 0,
 //     taxAmount: Number(payload.taxAmount) || 0,
-
 //     discountAmount: Number(payload.discountAmount) || 0,
-
 //     grandTotal: Number(payload.grandTotal) || 0,
 //     paidAmount: Number(payload.paidAmount) || 0,
 //     changeAmount: Number(payload.changeAmount) || 0,
@@ -4186,12 +5629,14 @@ export async function getSyncQueueSummary() {
 //   sqlite.withTransactionSync(() => {
 //     sqlite.runSync(
 //       `INSERT INTO orders (
-//         id, store_id, register_id, user_id, customer_id, session_id, status, payment_status,
-//         payment_method, sub_total, tax_amount, discount_amount, grand_total,
-//         paid_amount, change_amount, payment_breakdown, sync_status, created_at, updated_at
-//       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//         id, tenant_id, store_id, register_id, user_id, customer_id, session_id,
+//         status, payment_status, payment_method, sub_total, tax_amount,
+//         discount_amount, grand_total, paid_amount, change_amount,
+//         payment_breakdown, sync_status, created_at, updated_at
+//       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 //       [
 //         orderId,
+//         payload.tenantId || null,
 //         cleanPayload.storeId ?? null,
 //         cleanPayload.registerId ?? null,
 //         cleanPayload.userId,
@@ -4233,9 +5678,14 @@ export async function getSyncQueueSummary() {
 //         ],
 //       );
 
+//       const variantCondition = item.variantId
+//         ? `AND variant_id = '${item.variantId}'`
+//         : `AND variant_id IS NULL`;
+
 //       sqlite.runSync(
-//         "UPDATE products SET stock_quantity = MAX(stock_quantity - ?, 0), updated_at = ? WHERE id = ?",
-//         [item.quantity, now, item.productId],
+//         `UPDATE inventory SET quantity = MAX(quantity - ?, 0), updated_at = ?
+//          WHERE product_id = ? AND store_id = ? ${variantCondition}`,
+//         [item.quantity, now, item.productId, cleanPayload.storeId],
 //       );
 //     }
 
@@ -4273,9 +5723,11 @@ export async function getSyncQueueSummary() {
 
 //   return {
 //     id: created.id,
+//     tenantId: created.tenantId,
 //     grandTotal: created.grandTotal,
 //     status: created.status as Order["status"],
 //     createdAt: created.createdAt,
+//     updatedAt: created.updatedAt,
 //     subTotal: created.subTotal,
 //     taxAmount: created.taxAmount,
 //     discountAmount: created.discountAmount,
@@ -4291,14 +5743,26 @@ export async function getSyncQueueSummary() {
 //     userId: created.userId,
 //     items: items.map((item) => ({
 //       id: item.id,
+//       orderId: item.orderId,
 //       productId: item.productId,
+//       variantId: item.variantId ?? undefined,
 //       productName: item.productName ?? "",
-//       price: item.unitPrice,
 //       quantity: item.quantity,
+//       unitPrice: item.unitPrice,
+//       discountAmount: item.discountAmount,
+//       subTotal: item.subTotal,
+//       createdAt: item.createdAt,
 //       product: {
+//         id: item.productId,
+//         sku: "",
 //         name: item.productName ?? "",
 //         sellingPrice: String(item.unitPrice),
-//       },
+//         costPrice: 0,
+//         isTaxable: true,
+//         isActive: true,
+//         isReturnable: true,
+//         createdAt: item.createdAt,
+//       } as any,
 //     })),
 //   };
 // }
@@ -4319,7 +5783,7 @@ export async function getSyncQueueSummary() {
 //       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 //       [
 //         id,
-//         null,
+//         payload.tenantId || null,
 //         payload.storeId,
 //         payload.productId,
 //         payload.variantId ?? null,
@@ -4334,10 +5798,26 @@ export async function getSyncQueueSummary() {
 //       ],
 //     );
 
-//     const multiplier = ["IN", "TRANSFER"].includes(payload.type) ? 1 : -1;
+//     const multiplier = ["IN", "TRANSFER_IN"].includes(payload.type) ? 1 : -1;
+//     const newQuantity =
+//       multiplier > 0
+//         ? `quantity + ${payload.quantity}`
+//         : `MAX(quantity - ${payload.quantity}, 0)`;
+
+//     const variantCondition = payload.variantId
+//       ? `AND variant_id = '${payload.variantId}'`
+//       : `AND variant_id IS NULL`;
+
 //     sqlite.runSync(
-//       "UPDATE products SET stock_quantity = MAX(stock_quantity + ?, 0), updated_at = ? WHERE id = ?",
-//       [payload.quantity * multiplier, now, payload.productId],
+//       `UPDATE inventory SET quantity = ${newQuantity}, updated_at = ?
+//        WHERE product_id = ? AND store_id = ? ${variantCondition}`,
+//       [now, payload.productId, payload.storeId],
+//     );
+
+//     // Strip null/undefined values (e.g. variantId) before persisting
+//     // to avoid server 422 validation errors during sync
+//     const cleanPayload = Object.fromEntries(
+//       Object.entries(payload).filter(([_, v]) => v !== null && v !== undefined),
 //     );
 
 //     sqlite.runSync(
@@ -4352,7 +5832,7 @@ export async function getSyncQueueSummary() {
 //         "create",
 //         "/api/tenant/inventory/movements",
 //         "POST",
-//         JSON.stringify(payload),
+//         JSON.stringify(cleanPayload),
 //         "pending",
 //         0,
 //         now,
@@ -4382,7 +5862,7 @@ export async function getSyncQueueSummary() {
 //       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 //       [
 //         countId,
-//         null,
+//         payload.tenantId || null,
 //         payload.storeId,
 //         "COMPLETED",
 //         payload.scheduledDate ?? null,
@@ -4411,9 +5891,14 @@ export async function getSyncQueueSummary() {
 //         ],
 //       );
 
+//       const variantCondition = item.variantId
+//         ? `AND variant_id = '${item.variantId}'`
+//         : `AND variant_id IS NULL`;
+
 //       sqlite.runSync(
-//         "UPDATE products SET stock_quantity = ?, updated_at = ? WHERE id = ?",
-//         [item.countedQuantity, now, item.productId],
+//         `UPDATE inventory SET quantity = ?, updated_at = ?
+//          WHERE product_id = ? AND store_id = ? ${variantCondition}`,
+//         [item.countedQuantity, now, item.productId, payload.storeId],
 //       );
 //     }
 
@@ -4459,13 +5944,16 @@ export async function getSyncQueueSummary() {
 //   };
 
 //   await getOfflineDb().insert(genericRecords).values({
-//     id,
+//     id: id,
+//     remoteId: null,
 //     entity,
 //     data,
 //     isActive: data.isActive,
 //     syncStatus: "pending",
+//     syncError: null,
 //     createdAt: now,
 //     updatedAt: now,
+//     lastSyncedAt: null,
 //   });
 
 //   await enqueueMutation(entity, id, "create", endpoint, "POST", payload);
@@ -4480,11 +5968,14 @@ export async function getSyncQueueSummary() {
 //   id: string,
 //   data: Partial<Product> & { categoryName?: string },
 // ) {
+//   const now = new Date().toISOString();
 //   await getOfflineDb()
 //     .update(products)
-//     .set({ ...data, updatedAt: new Date().toISOString() } as Partial<
-//       typeof products.$inferInsert
-//     >)
+//     .set({
+//       ...data,
+//       updatedAt: now,
+//       syncStatus: "pending",
+//     } as Partial<typeof products.$inferInsert>)
 //     .where(eq(products.id, id));
 
 //   await enqueueMutation(
@@ -4507,11 +5998,14 @@ export async function getSyncQueueSummary() {
 //   id: string,
 //   data: Partial<Category>,
 // ) {
+//   const now = new Date().toISOString();
 //   await getOfflineDb()
 //     .update(categories)
-//     .set({ ...data, updatedAt: new Date().toISOString() } as Partial<
-//       typeof categories.$inferInsert
-//     >)
+//     .set({
+//       ...data,
+//       updatedAt: now,
+//       syncStatus: "pending",
+//     } as Partial<typeof categories.$inferInsert>)
 //     .where(eq(categories.id, id));
 
 //   await enqueueMutation(
@@ -4534,11 +6028,14 @@ export async function getSyncQueueSummary() {
 //   id: string,
 //   data: Partial<Customer>,
 // ) {
+//   const now = new Date().toISOString();
 //   await getOfflineDb()
 //     .update(customers)
-//     .set({ ...data, updatedAt: new Date().toISOString() } as Partial<
-//       typeof customers.$inferInsert
-//     >)
+//     .set({
+//       ...data,
+//       updatedAt: now,
+//       syncStatus: "pending",
+//     } as Partial<typeof customers.$inferInsert>)
 //     .where(eq(customers.id, id));
 
 //   await enqueueMutation(
@@ -4558,11 +6055,14 @@ export async function getSyncQueueSummary() {
 // }
 
 // export async function updateOfflineStore(id: string, data: Partial<Store>) {
+//   const now = new Date().toISOString();
 //   await getOfflineDb()
 //     .update(stores)
-//     .set({ ...data, updatedAt: new Date().toISOString() } as Partial<
-//       typeof stores.$inferInsert
-//     >)
+//     .set({
+//       ...data,
+//       updatedAt: now,
+//       syncStatus: "pending",
+//     } as Partial<typeof stores.$inferInsert>)
 //     .where(eq(stores.id, id));
 
 //   await enqueueMutation(
@@ -4669,16 +6169,18 @@ export async function getSyncQueueSummary() {
 // }
 
 // // ============================================
-// // DELETE OFFLINE FUNCTIONS (Soft Delete)
+// // DELETE OFFLINE FUNCTIONS
 // // ============================================
 
 // export async function deleteOfflineProduct(id: string) {
+//   const now = new Date().toISOString();
 //   await getOfflineDb()
 //     .update(products)
 //     .set({
 //       isActive: false,
-//       deletedAt: new Date().toISOString(),
-//       updatedAt: new Date().toISOString(),
+//       deletedAt: now,
+//       updatedAt: now,
+//       syncStatus: "pending",
 //     })
 //     .where(eq(products.id, id));
 
@@ -4693,11 +6195,13 @@ export async function getSyncQueueSummary() {
 // }
 
 // export async function deleteOfflineCategory(id: string) {
+//   const now = new Date().toISOString();
 //   await getOfflineDb()
 //     .update(categories)
 //     .set({
 //       isActive: false,
-//       updatedAt: new Date().toISOString(),
+//       updatedAt: now,
+//       syncStatus: "pending",
 //     })
 //     .where(eq(categories.id, id));
 
@@ -4712,11 +6216,13 @@ export async function getSyncQueueSummary() {
 // }
 
 // export async function deleteOfflineCustomer(id: string) {
+//   const now = new Date().toISOString();
 //   await getOfflineDb()
 //     .update(customers)
 //     .set({
 //       isActive: false,
-//       updatedAt: new Date().toISOString(),
+//       updatedAt: now,
+//       syncStatus: "pending",
 //     })
 //     .where(eq(customers.id, id));
 
@@ -4731,11 +6237,13 @@ export async function getSyncQueueSummary() {
 // }
 
 // export async function deleteOfflineStore(id: string) {
+//   const now = new Date().toISOString();
 //   await getOfflineDb()
 //     .update(stores)
 //     .set({
 //       isActive: false,
-//       updatedAt: new Date().toISOString(),
+//       updatedAt: now,
+//       syncStatus: "pending",
 //     })
 //     .where(eq(stores.id, id));
 
@@ -4806,6 +6314,7 @@ export async function getSyncQueueSummary() {
 //       status: "pending",
 //       attempts: 0,
 //       nextAttemptAt: now,
+//       lastError: null,
 //       createdAt: now,
 //       updatedAt: now,
 //     });
@@ -4833,6 +6342,7 @@ export async function getSyncQueueSummary() {
 //       status: "pending",
 //       attempts: 0,
 //       nextAttemptAt: now,
+//       lastError: null,
 //       createdAt: now,
 //       updatedAt: now,
 //     })),
@@ -4904,6 +6414,22 @@ export async function getSyncQueueSummary() {
 //   attempts: number,
 //   error: string,
 // ) {
+//   const MAX_ATTEMPTS = 10;
+
+//   // Escalate to "dead" after max attempts to stop infinite retries
+//   if (attempts >= MAX_ATTEMPTS) {
+//     await getOfflineDb()
+//       .update(syncOutbox)
+//       .set({
+//         status: "dead",
+//         attempts,
+//         lastError: `[DEAD after ${MAX_ATTEMPTS} attempts] ${error}`,
+//         updatedAt: new Date().toISOString(),
+//       })
+//       .where(eq(syncOutbox.id, id));
+//     return;
+//   }
+
 //   const delaySeconds = Math.min(300, Math.pow(2, attempts) * 5);
 //   const nextAttemptAt = new Date(
 //     Date.now() + delaySeconds * 1000,
@@ -4936,6 +6462,15 @@ export async function getSyncQueueSummary() {
 //     .select({ count: sql<number>`count(*)` })
 //     .from(syncOutbox)
 //     .where(inArray(syncOutbox.status, ["pending", "failed"]));
+
+//   return Number(result[0]?.count ?? 0);
+// }
+
+// export async function getFailedCount() {
+//   const result = await getOfflineDb()
+//     .select({ count: sql<number>`count(*)` })
+//     .from(syncOutbox)
+//     .where(inArray(syncOutbox.status, ["failed", "dead"]));
 
 //   return Number(result[0]?.count ?? 0);
 // }
@@ -4987,6 +6522,16 @@ export async function getSyncQueueSummary() {
 //     .from(products)
 //     .where(eq(products.syncStatus, "pending"));
 
+//   const [variantsPending] = await db
+//     .select({ count: sql<number>`count(*)` })
+//     .from(productVariants)
+//     .where(eq(productVariants.syncStatus, "pending"));
+
+//   const [inventoryPending] = await db
+//     .select({ count: sql<number>`count(*)` })
+//     .from(inventory)
+//     .where(eq(inventory.syncStatus, "pending"));
+
 //   return {
 //     outbox: {
 //       pending: Number(totalPending?.count ?? 0),
@@ -4996,29 +6541,11 @@ export async function getSyncQueueSummary() {
 //     entities: {
 //       orders: Number(ordersPending?.count ?? 0),
 //       products: Number(productsPending?.count ?? 0),
+//       variants: Number(variantsPending?.count ?? 0),
+//       inventory: Number(inventoryPending?.count ?? 0),
 //     },
 //   };
 // }
-
-// // export async function getSyncStatusByEntity(entity: string) {
-// //   const db = getOfflineDb();
-// //   const result = await db
-// //     .select({
-// //       status: syncOutbox.status,
-// //       count: sql<number>`count(*)`,
-// //     })
-// //     .from(syncOutbox)
-// //     .where(eq(syncOutbox.entity, entity))
-// //     .groupBy(syncOutbox.status);
-
-// //   return result.reduce(
-// //     (acc, row) => {
-// //       acc[row.status] = Number(row.count);
-// //       return acc;
-// //     },
-// //     {} as Record<string, number>,
-// //   );
-// // }
 
 // // ============================================
 // // MARK SYNCED FUNCTIONS
@@ -5059,8 +6586,34 @@ export async function getSyncQueueSummary() {
 //         ...(remote.sku && { sku: remote.sku }),
 //         ...(remote.name && { name: remote.name }),
 //         ...(remote.sellingPrice && { sellingPrice: remote.sellingPrice }),
+//         ...(remote.brandId && { brandId: remote.brandId }),
+//         ...(remote.storeId && { storeId: remote.storeId }),
 //       })
 //       .where(eq(products.id, localId));
+//   } else if (entity === "product_variants") {
+//     await getOfflineDb()
+//       .update(productVariants)
+//       .set({
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: now,
+//         lastSyncedAt: now,
+//         ...(remote.sku && { sku: remote.sku }),
+//         ...(remote.name && { name: remote.name }),
+//         ...(remote.price && { price: remote.price }),
+//       })
+//       .where(eq(productVariants.id, localId));
+//   } else if (entity === "inventory") {
+//     await getOfflineDb()
+//       .update(inventory)
+//       .set({
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: now,
+//         lastSyncedAt: now,
+//         ...(remote.quantity !== undefined && { quantity: remote.quantity }),
+//       })
+//       .where(eq(inventory.id, localId));
 //   } else if (entity === "customers") {
 //     await getOfflineDb()
 //       .update(customers)
@@ -5129,6 +6682,16 @@ export async function getSyncQueueSummary() {
 //         lastSyncedAt: now,
 //       } as any)
 //       .where(eq(inventoryCounts.id, localId));
+//   } else if (entity === "price_history") {
+//     await getOfflineDb()
+//       .update(priceHistory)
+//       .set({
+//         syncStatus: "synced",
+//         syncError: null,
+//         updatedAt: now,
+//         lastSyncedAt: now,
+//       })
+//       .where(eq(priceHistory.id, localId));
 //   } else {
 //     await getOfflineDb()
 //       .update(genericRecords)
@@ -5170,6 +6733,16 @@ export async function getSyncQueueSummary() {
 //       .update(products)
 //       .set(update)
 //       .where(eq(products.id, localId));
+//   } else if (entity === "product_variants") {
+//     await getOfflineDb()
+//       .update(productVariants)
+//       .set(update)
+//       .where(eq(productVariants.id, localId));
+//   } else if (entity === "inventory") {
+//     await getOfflineDb()
+//       .update(inventory)
+//       .set(update)
+//       .where(eq(inventory.id, localId));
 //   } else if (entity === "customers") {
 //     await getOfflineDb()
 //       .update(customers)
@@ -5200,6 +6773,11 @@ export async function getSyncQueueSummary() {
 //       .update(inventoryCounts)
 //       .set(update)
 //       .where(eq(inventoryCounts.id, localId));
+//   } else if (entity === "price_history") {
+//     await getOfflineDb()
+//       .update(priceHistory)
+//       .set(update)
+//       .where(eq(priceHistory.id, localId));
 //   } else {
 //     await getOfflineDb()
 //       .update(genericRecords)
@@ -5261,6 +6839,10 @@ export async function getSyncQueueSummary() {
 //   switch (entity) {
 //     case "products":
 //       return products;
+//     case "product_variants":
+//       return productVariants;
+//     case "inventory":
+//       return inventory;
 //     case "categories":
 //       return categories;
 //     case "customers":
@@ -5275,6 +6857,8 @@ export async function getSyncQueueSummary() {
 //       return inventoryMovements;
 //     case "inventory_counts":
 //       return inventoryCounts;
+//     case "price_history":
+//       return priceHistory;
 //     default:
 //       return null;
 //   }
@@ -5325,7 +6909,7 @@ export async function getSyncQueueSummary() {
 // }
 
 // // ============================================
-// // HELPER FUNCTIONS
+// // HELPER FUNCTIONS (conversion)
 // // ============================================
 
 // function parsePaymentBreakdown(value: unknown) {
@@ -5342,6 +6926,7 @@ export async function getSyncQueueSummary() {
 //   return [];
 // }
 
+// // ✅ Fixed toProduct
 // function toProduct(product: LocalProduct): Product {
 //   return {
 //     id: product.id,
@@ -5349,19 +6934,72 @@ export async function getSyncQueueSummary() {
 //     barcode: product.barcode ?? undefined,
 //     name: product.name,
 //     description: product.description ?? undefined,
-//     brand: product.brand ?? undefined,
+//     brand: product.brandId ?? undefined,
 //     costPrice: product.costPrice,
 //     sellingPrice: product.sellingPrice,
 //     wholesalePrice: product.wholesalePrice ?? 0,
-//     stockQuantity: product.stockQuantity,
 //     categoryId: product.categoryId ?? "",
 //     category: product.categoryId
-//       ? { id: product.categoryId, name: product.categoryName ?? "" }
+//       ? {
+//           id: product.categoryId,
+//           tenantId: product.tenantId,
+//           name: "",
+//           slug: "",
+//           isActive: true,
+//           sortOrder: 0,
+//           createdAt: product.createdAt,
+//           updatedAt: product.createdAt,
+//         }
 //       : undefined,
 //     supplierId: product.supplierId ?? undefined,
+//     tenantId: product.tenantId,
+//     isTaxable: product.isTaxable,
+//     isActive: product.isActive,
+//     isReturnable: product.isReturnable,
 //     manufacturingDate: product.manufacturingDate ?? undefined,
 //     expiryDate: product.expiryDate ?? undefined,
+//     version: product.version ?? 1,
 //     createdAt: product.createdAt,
+//     updatedAt: product.updatedAt ?? product.createdAt,
+//   };
+// }
+
+// function toProductVariant(variant: LocalProductVariant): any {
+//   return {
+//     id: variant.id,
+//     name: variant.name,
+//     productId: variant.productId,
+//     tenantId: variant.tenantId,
+//     sku: variant.sku,
+//     barcode: variant.barcode ?? undefined,
+//     price: variant.price,
+//     costPrice: variant.costPrice,
+//     color: variant.color ?? undefined,
+//     size: variant.size ?? undefined,
+//     weight: variant.weight ?? undefined,
+//     isActive: variant.isActive,
+//     createdAt: variant.createdAt,
+//     updatedAt: variant.updatedAt,
+//   };
+// }
+
+// function toInventoryItem(inv: LocalInventory): InventoryItem {
+//   return {
+//     id: inv.id,
+//     productId: inv.productId,
+//     storeId: inv.storeId,
+//     variantId: inv.variantId ?? undefined,
+//     quantity: inv.quantity,
+//     reservedQty: inv.reservedQty,
+//     reorderPoint: inv.reorderPoint,
+//     reorderQty: inv.reorderQty,
+//     shelfLocation: inv.shelfLocation ?? undefined,
+//     version: inv.version,
+//     product: {
+//       id: "",
+//       name: "",
+//       sku: "",
+//     },
 //   };
 // }
 
@@ -5370,11 +7008,14 @@ export async function getSyncQueueSummary() {
 //     .select()
 //     .from(orderItems)
 //     .where(eq(orderItems.orderId, order.id));
+
 //   return {
 //     id: order.id,
+//     tenantId: order.tenantId,
 //     grandTotal: order.grandTotal,
 //     status: order.status as Order["status"],
 //     createdAt: order.createdAt,
+//     updatedAt: order.updatedAt,
 //     subTotal: order.subTotal,
 //     taxAmount: order.taxAmount,
 //     discountAmount: order.discountAmount,
@@ -5388,15 +7029,27 @@ export async function getSyncQueueSummary() {
 //     userId: order.userId,
 //     items: items.map((item) => ({
 //       id: item.id,
+//       orderId: item.orderId,
 //       productId: item.productId,
 //       variantId: item.variantId ?? undefined,
 //       productName: item.productName ?? "",
-//       price: item.unitPrice,
 //       quantity: item.quantity,
+//       unitPrice: item.unitPrice,
+//       discountAmount: item.discountAmount,
+//       subTotal: item.subTotal,
+//       createdAt: item.createdAt,
+//       // ✅ Provide a minimal Product (or leave undefined)
 //       product: {
+//         id: item.productId,
+//         sku: "",
 //         name: item.productName ?? "",
 //         sellingPrice: String(item.unitPrice),
-//       },
+//         costPrice: 0,
+//         isTaxable: true,
+//         isActive: true,
+//         isReturnable: true,
+//         createdAt: item.createdAt,
+//       } as any, // as Product
 //     })),
 //   };
 // }
@@ -5404,9 +7057,11 @@ export async function getSyncQueueSummary() {
 // function toCategory(category: LocalCategory): Category {
 //   return {
 //     id: category.id,
+//     remoteId: category.remoteId ?? null,
 //     tenantId: category.tenantId,
+//     storeId: (category as any).storeId ?? null,
 //     name: category.name,
-//     slug: category.slug,
+//     slug: category.slug ?? "",
 //     description: category.description ?? undefined,
 //     parentId: category.parentId ?? undefined,
 //     isActive: category.isActive,
@@ -5419,6 +7074,7 @@ export async function getSyncQueueSummary() {
 // function toCustomer(customer: LocalCustomer): Customer {
 //   return {
 //     id: customer.id,
+//     remoteId: customer.remoteId ?? undefined,
 //     tenantId: customer.tenantId,
 //     code: customer.code,
 //     name: customer.name,
@@ -5426,7 +7082,7 @@ export async function getSyncQueueSummary() {
 //     email: customer.email ?? undefined,
 //     address: customer.address ?? undefined,
 //     dateOfBirth: customer.dateOfBirth ?? undefined,
-//     gender: customer.gender ?? undefined,
+//     gender: customer.gender as "MALE" | "FEMALE" | "OTHER" | undefined,
 //     debtAmount: customer.debtAmount ?? 0,
 //     loyaltyPoints: customer.loyaltyPoints,
 //     totalSpent: customer.totalSpent,
@@ -5442,6 +7098,8 @@ export async function getSyncQueueSummary() {
 // function toStore(store: LocalStore): Store {
 //   return {
 //     id: store.id,
+//     remoteId: store.remoteId, // ✅ add
+//     tenantId: store.tenantId, // ✅ add
 //     code: store.code,
 //     name: store.name,
 //     address: store.address ?? undefined,
@@ -5457,6 +7115,7 @@ export async function getSyncQueueSummary() {
 // function toSession(session: LocalSession): Session {
 //   return {
 //     id: session.id,
+//     remoteId: session.remoteId, // ✅ add
 //     tenantId: session.tenantId,
 //     userId: session.userId,
 //     status: session.status as Session["status"],
@@ -5470,14 +7129,13 @@ export async function getSyncQueueSummary() {
 //     cardSales: session.cardSales,
 //     digitalSales: session.digitalSales,
 //     notes: session.notes ?? undefined,
+//     createdAt: session.createdAt, // ✅ add
+//     updatedAt: session.updatedAt, // ✅ add
 //   };
 // }
 
-// // #######
-// // services/offline/repository.ts ထဲမှာ ထည့်ပါ (အောက်ဆုံးမှာ)
-
 // // ============================================
-// // GET SYNC STATUS
+// // SYNC STATUS INTERFACE AND FUNCTIONS
 // // ============================================
 
 // export interface SyncStatus {
@@ -5516,23 +7174,19 @@ export async function getSyncQueueSummary() {
 //   const db = getOfflineDb();
 //   const online = await isOnline();
 
-//   // Get all outbox items
 //   const allItems = await db
 //     .select()
 //     .from(syncOutbox)
 //     .orderBy(syncOutbox.createdAt);
 
-//   // Get pending items
 //   const pendingItems = allItems.filter(
 //     (item) => item.status === "pending" || item.status === "failed",
 //   );
 
-//   // Get failed items
 //   const failedItems = allItems.filter(
 //     (item) => item.status === "failed" || item.status === "dead",
 //   );
 
-//   // Calculate entity counts
 //   const entityCounts: SyncStatus["entityCounts"] = {};
 
 //   for (const item of allItems) {
@@ -5581,10 +7235,6 @@ export async function getSyncQueueSummary() {
 //   };
 // }
 
-// // ============================================
-// // GET SYNC STATUS BY ENTITY
-// // ============================================
-
 // export async function getSyncStatusByEntity(entity: string) {
 //   const db = getOfflineDb();
 
@@ -5617,10 +7267,6 @@ export async function getSyncQueueSummary() {
 //   };
 // }
 
-// // ============================================
-// // GET FAILED ITEMS WITH DETAILS
-// // ============================================
-
 // export async function getFailedItemsWithDetails(limit = 50) {
 //   const db = getOfflineDb();
 
@@ -5631,7 +7277,6 @@ export async function getSyncQueueSummary() {
 //     .orderBy(syncOutbox.updatedAt)
 //     .limit(limit);
 
-//   // Get related entity data if possible
 //   const result = [];
 //   for (const item of items) {
 //     let entityData = null;
@@ -5644,6 +7289,24 @@ export async function getSyncQueueSummary() {
 //           .where(eq(products.id, item.entityId))
 //           .limit(1);
 //         entityData = product;
+//         break;
+//       }
+//       case "product_variants": {
+//         const [variant] = await db
+//           .select()
+//           .from(productVariants)
+//           .where(eq(productVariants.id, item.entityId))
+//           .limit(1);
+//         entityData = variant;
+//         break;
+//       }
+//       case "inventory": {
+//         const [inv] = await db
+//           .select()
+//           .from(inventory)
+//           .where(eq(inventory.id, item.entityId))
+//           .limit(1);
+//         entityData = inv;
 //         break;
 //       }
 //       case "orders": {
@@ -5691,6 +7354,15 @@ export async function getSyncQueueSummary() {
 //         entityData = session;
 //         break;
 //       }
+//       case "price_history": {
+//         const [ph] = await db
+//           .select()
+//           .from(priceHistory)
+//           .where(eq(priceHistory.id, item.entityId))
+//           .limit(1);
+//         entityData = ph;
+//         break;
+//       }
 //     }
 
 //     result.push({
@@ -5701,10 +7373,6 @@ export async function getSyncQueueSummary() {
 
 //   return result;
 // }
-
-// // ============================================
-// // GET PENDING ITEMS WITH DETAILS
-// // ============================================
 
 // export async function getPendingItemsWithDetails(limit = 50) {
 //   const db = getOfflineDb();
@@ -5716,7 +7384,6 @@ export async function getSyncQueueSummary() {
 //     .orderBy(syncOutbox.createdAt)
 //     .limit(limit);
 
-//   // Get related entity data if possible
 //   const result = [];
 //   for (const item of items) {
 //     let entityData = null;
@@ -5729,6 +7396,24 @@ export async function getSyncQueueSummary() {
 //           .where(eq(products.id, item.entityId))
 //           .limit(1);
 //         entityData = product;
+//         break;
+//       }
+//       case "product_variants": {
+//         const [variant] = await db
+//           .select()
+//           .from(productVariants)
+//           .where(eq(productVariants.id, item.entityId))
+//           .limit(1);
+//         entityData = variant;
+//         break;
+//       }
+//       case "inventory": {
+//         const [inv] = await db
+//           .select()
+//           .from(inventory)
+//           .where(eq(inventory.id, item.entityId))
+//           .limit(1);
+//         entityData = inv;
 //         break;
 //       }
 //       case "orders": {
@@ -5776,6 +7461,15 @@ export async function getSyncQueueSummary() {
 //         entityData = session;
 //         break;
 //       }
+//       case "price_history": {
+//         const [ph] = await db
+//           .select()
+//           .from(priceHistory)
+//           .where(eq(priceHistory.id, item.entityId))
+//           .limit(1);
+//         entityData = ph;
+//         break;
+//       }
 //     }
 
 //     result.push({
@@ -5786,10 +7480,6 @@ export async function getSyncQueueSummary() {
 
 //   return result;
 // }
-
-// // ============================================
-// // GET SYNC QUEUE SUMMARY
-// // ============================================
 
 // export async function getSyncQueueSummary() {
 //   const db = getOfflineDb();
@@ -5817,13 +7507,11 @@ export async function getSyncQueueSummary() {
 //   };
 
 //   for (const item of allItems) {
-//     // Count by status
 //     if (item.status === "pending") summary.pending++;
 //     else if (item.status === "synced") summary.synced++;
 //     else if (item.status === "failed") summary.failed++;
 //     else if (item.status === "dead") summary.dead++;
 
-//     // Count by entity
 //     if (!summary.byEntity[item.entity]) {
 //       summary.byEntity[item.entity] = {
 //         total: 0,
@@ -5839,7 +7527,6 @@ export async function getSyncQueueSummary() {
 //     else if (item.status === "failed") summary.byEntity[item.entity].failed++;
 //     else if (item.status === "dead") summary.byEntity[item.entity].dead++;
 
-//     // Track oldest and newest pending
 //     if (item.status === "pending") {
 //       if (!summary.oldestPending || item.createdAt < summary.oldestPending) {
 //         summary.oldestPending = item.createdAt;

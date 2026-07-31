@@ -14,8 +14,10 @@ import {
 import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
 import {
   useAdjustLocalStockMutation,
+  useCreateLocalBrandMutation,
   useCreateLocalInventoryMovementMutation,
   useCreateLocalProductMutation,
+  useGetLocalBrandsQuery,
   useGetLocalCategoriesQuery,
   useGetLocalInventoryMovementsQuery,
   useGetLocalInventoryQuery,
@@ -48,7 +50,7 @@ export default function InventoryScreen() {
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [selectedInventory, setSelectedInventory] = useState<any>(null);
 
-  // ✅ Use the new inventory table
+  // ✅ Queries
   const {
     data: inventoryData,
     isLoading: isInventoryLoading,
@@ -61,8 +63,12 @@ export default function InventoryScreen() {
     refetch: refetchMovements,
   } = useGetLocalInventoryMovementsQuery({});
 
-  // ✅ Get products for display
-  const { data: productsData } = useGetLocalProductsQuery({});
+  const { data: productsData, refetch: refetchProducts } =
+    useGetLocalProductsQuery({});
+  const { data: categories } = useGetLocalCategoriesQuery({});
+  const { data: brands, refetch: refetchBrands } = useGetLocalBrandsQuery({
+    isActive: true,
+  });
 
   // Mutations
   const [createMovement, { isLoading: isCreatingMovement }] =
@@ -71,14 +77,16 @@ export default function InventoryScreen() {
     useAdjustLocalStockMutation();
   const [createProduct, { isLoading: isCreatingProduct }] =
     useCreateLocalProductMutation();
-  const { data: categories } = useGetLocalCategoriesQuery({});
 
-  // ✅ Build inventory items with product details
+  // ✅ Build inventory items with product & brand details
   const inventoryWithDetails = React.useMemo(() => {
     if (!inventoryData || !productsData) return [];
 
     return inventoryData.map((inv: any) => {
       const product = productsData.find((p: any) => p.id === inv.productId);
+      const brand = product?.brandId
+        ? brands?.find((b: any) => b.id === product.brandId)
+        : null;
       return {
         ...inv,
         name: product?.name || "Unknown Product",
@@ -86,9 +94,11 @@ export default function InventoryScreen() {
         sellingPrice: product?.sellingPrice || 0,
         costPrice: product?.costPrice || 0,
         categoryId: product?.categoryId,
+        brandName: brand?.name || null,
+        brandId: product?.brandId || null,
       };
     });
-  }, [inventoryData, productsData]);
+  }, [inventoryData, productsData, brands]);
 
   // Computed values
   const filteredInventory = inventoryWithDetails.filter((item: any) => {
@@ -96,7 +106,8 @@ export default function InventoryScreen() {
     const q = searchQuery.toLowerCase();
     return (
       item.name?.toLowerCase().includes(q) ||
-      item.sku?.toLowerCase().includes(q)
+      item.sku?.toLowerCase().includes(q) ||
+      item.brandName?.toLowerCase().includes(q)
     );
   });
 
@@ -127,12 +138,19 @@ export default function InventoryScreen() {
         setSelectedInventory(null);
         refetchInventory();
         refetchMovements();
+        refetchProducts();
         Alert.alert("Success", "Stock adjusted successfully");
       } catch (err: any) {
         Alert.alert("Error", err?.message ?? "Failed to adjust stock");
       }
     },
-    [selectedInventory, adjustStock, refetchInventory, refetchMovements],
+    [
+      selectedInventory,
+      adjustStock,
+      refetchInventory,
+      refetchMovements,
+      refetchProducts,
+    ],
   );
 
   const handleCreateMovement = useCallback(
@@ -174,12 +192,14 @@ export default function InventoryScreen() {
         }).unwrap();
         setShowProductModal(false);
         refetchInventory();
+        refetchProducts();
+        refetchBrands();
         Alert.alert("Success", "Product created successfully");
       } catch (err: any) {
         Alert.alert("Error", err?.message ?? "Failed to create product");
       }
     },
-    [createProduct, refetchInventory],
+    [createProduct, refetchInventory, refetchProducts, refetchBrands],
   );
 
   const handleScan = useCallback(
@@ -247,9 +267,19 @@ export default function InventoryScreen() {
               <Text className="text-white font-bold text-sm" numberOfLines={1}>
                 {item.name}
               </Text>
-              <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mt-0.5">
-                {item.sku}
-              </Text>
+              <View className="flex-row items-center mt-0.5">
+                <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px]">
+                  {item.sku}
+                </Text>
+                {item.brandName && (
+                  <>
+                    <Text className="text-slate-500 text-[9px] mx-1">•</Text>
+                    <Text className="text-purple-300/80 text-[9px] font-medium">
+                      {item.brandName}
+                    </Text>
+                  </>
+                )}
+              </View>
               {item.variantId && (
                 <Text className="text-slate-500 text-[9px] mt-0.5">
                   Variant: {item.variantId}
@@ -394,7 +424,7 @@ export default function InventoryScreen() {
             <MaterialIcons name="search" size={20} color="#94a3b8" />
             <TextInput
               className="flex-1 ml-3 text-white text-sm font-medium"
-              placeholder="Search by name or SKU..."
+              placeholder="Search by name, SKU, or brand..."
               placeholderTextColor="#64748b"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -500,14 +530,16 @@ export default function InventoryScreen() {
       />
 
       {/* ============================================ */}
-      {/* NEW PRODUCT MODAL */}
+      {/* NEW PRODUCT MODAL (with Brand support) */}
       {/* ============================================ */}
       <NewProductModal
         visible={showProductModal}
         categories={categories ?? []}
+        brands={brands ?? []}
         isLoading={isCreatingProduct}
         onClose={() => setShowProductModal(false)}
         onSubmit={handleCreateProduct}
+        onBrandCreated={refetchBrands}
       />
 
       {/* ============================================ */}
@@ -559,7 +591,7 @@ function AdjustStockModal({
         className="flex-1"
       >
         <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-slate-900 rounded-t-[32px] border-t border-white/10 p-6">
+          <View className="bg-slate-900 rounded-t-4xl border-t border-white/10 p-6">
             <View className="flex-row items-center justify-between mb-6">
               <Text className="text-white font-black text-xl">
                 Adjust Stock
@@ -575,6 +607,12 @@ function AdjustStockModal({
             {inventory && (
               <Card className="mb-5">
                 <StatRow label="Product" value={inventory.name} />
+                {inventory.brandName && (
+                  <>
+                    <Divider />
+                    <StatRow label="Brand" value={inventory.brandName} />
+                  </>
+                )}
                 <Divider />
                 <StatRow label="SKU" value={inventory.sku} />
                 <Divider />
@@ -679,7 +717,8 @@ function NewMovementModal({
     const q = productSearch.toLowerCase();
     return (
       item.name?.toLowerCase().includes(q) ||
-      item.sku?.toLowerCase().includes(q)
+      item.sku?.toLowerCase().includes(q) ||
+      item.brandName?.toLowerCase().includes(q)
     );
   });
 
@@ -700,7 +739,7 @@ function NewMovementModal({
         className="flex-1"
       >
         <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-slate-900 rounded-t-[32px] border-t border-white/10 p-6 max-h-[85%]">
+          <View className="bg-slate-900 rounded-t-4xl border-t border-white/10 p-6 max-h-[85%]">
             <View className="flex-row items-center justify-between mb-6">
               <Text className="text-white font-black text-xl">
                 New Movement
@@ -778,8 +817,23 @@ function NewMovementModal({
                       <Text className="text-white font-bold">
                         {selectedItem.name}
                       </Text>
-                      <Text className="text-sky-300/60 text-xs mt-0.5">
-                        {selectedItem.sku} — Stock: {selectedItem.quantity}
+                      <View className="flex-row items-center mt-0.5">
+                        <Text className="text-sky-300/60 text-xs">
+                          {selectedItem.sku}
+                        </Text>
+                        {selectedItem.brandName && (
+                          <>
+                            <Text className="text-slate-500 text-[9px] mx-1">
+                              •
+                            </Text>
+                            <Text className="text-purple-300/60 text-[9px]">
+                              {selectedItem.brandName}
+                            </Text>
+                          </>
+                        )}
+                      </View>
+                      <Text className="text-slate-400 text-xs mt-0.5">
+                        Stock: {selectedItem.quantity}
                       </Text>
                       {selectedItem.variantId && (
                         <Text className="text-slate-500 text-[10px] mt-0.5">
@@ -801,7 +855,7 @@ function NewMovementModal({
                     <MaterialIcons name="search" size={18} color="#64748b" />
                     <TextInput
                       className="flex-1 ml-2 text-white text-sm"
-                      placeholder="Search products..."
+                      placeholder="Search by name, SKU, or brand..."
                       placeholderTextColor="#64748b"
                       value={productSearch}
                       onChangeText={setProductSearch}
@@ -823,9 +877,16 @@ function NewMovementModal({
                             size={16}
                             color="#64748b"
                           />
-                          <Text className="text-slate-200 font-medium ml-2 flex-1 text-sm">
-                            {item.name}
-                          </Text>
+                          <View className="flex-1 ml-2">
+                            <Text className="text-slate-200 font-medium text-sm">
+                              {item.name}
+                            </Text>
+                            {item.brandName && (
+                              <Text className="text-purple-300/60 text-[9px]">
+                                {item.brandName}
+                              </Text>
+                            )}
+                          </View>
                           <Text className="text-slate-500 text-xs">
                             Qty: {item.quantity}
                           </Text>
@@ -907,17 +968,20 @@ function NewMovementModal({
 }
 
 // ============================================
-// NEW PRODUCT MODAL COMPONENT
+// NEW PRODUCT MODAL COMPONENT (with Brand)
 // ============================================
 function NewProductModal({
   visible,
   categories,
+  brands,
   isLoading,
   onClose,
   onSubmit,
+  onBrandCreated,
 }: {
   visible: boolean;
   categories: any[];
+  brands: any[];
   isLoading: boolean;
   onClose: () => void;
   onSubmit: (payload: {
@@ -928,7 +992,9 @@ function NewProductModal({
     sellingPrice: number;
     stockQuantity: number;
     categoryId: string;
+    brandId?: string;
   }) => void;
+  onBrandCreated: () => void;
 }) {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
@@ -937,6 +1003,12 @@ function NewProductModal({
   const [sellingPrice, setSellingPrice] = useState("");
   const [stockQuantity, setStockQuantity] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [brandId, setBrandId] = useState("");
+  const [showCreateBrand, setShowCreateBrand] = useState(false);
+  const [newBrandName, setNewBrandName] = useState("");
+  const [newBrandDescription, setNewBrandDescription] = useState("");
+  const [isCreatingBrand, setIsCreatingBrand] = useState(false);
+  const [createBrand] = useCreateLocalBrandMutation();
 
   const handleOpen = useCallback(() => {
     setName("");
@@ -946,7 +1018,37 @@ function NewProductModal({
     setSellingPrice("");
     setStockQuantity("");
     setCategoryId("");
+    setBrandId("");
+    setShowCreateBrand(false);
+    setNewBrandName("");
+    setNewBrandDescription("");
   }, []);
+
+  const handleCreateBrand = async () => {
+    if (!newBrandName.trim()) {
+      Alert.alert("Error", "Brand name is required");
+      return;
+    }
+    setIsCreatingBrand(true);
+    try {
+      const result = await createBrand({
+        tenantId: "default",
+        name: newBrandName.trim(),
+        description: newBrandDescription.trim() || undefined,
+        isActive: true,
+      }).unwrap();
+      await onBrandCreated();
+      setBrandId(result.id);
+      setShowCreateBrand(false);
+      setNewBrandName("");
+      setNewBrandDescription("");
+      Alert.alert("Success", "Brand created successfully");
+    } catch (err: any) {
+      Alert.alert("Error", err?.message || "Failed to create brand");
+    } finally {
+      setIsCreatingBrand(false);
+    }
+  };
 
   return (
     <Modal
@@ -961,7 +1063,7 @@ function NewProductModal({
         className="flex-1"
       >
         <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-slate-900 rounded-t-[32px] border-t border-white/10 p-6 max-h-[90%]">
+          <View className="bg-slate-900 rounded-t-4xl border-t border-white/10 p-6 max-h-[90%]">
             <View className="flex-row items-center justify-between mb-6">
               <Text className="text-white font-black text-xl">New Product</Text>
               <TouchableOpacity
@@ -1052,13 +1154,14 @@ function NewProductModal({
                 </View>
               </View>
 
+              {/* Category Selection */}
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
                 Category
               </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                className="mb-6"
+                className="mb-4"
                 contentContainerStyle={{ paddingRight: 20 }}
               >
                 {categories.map((cat: any) => (
@@ -1084,6 +1187,91 @@ function NewProductModal({
                 ))}
               </ScrollView>
 
+              {/* Brand Selection */}
+              <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                Brand (Optional)
+              </Text>
+              {showCreateBrand ? (
+                <View className="mb-4 rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4">
+                  <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-purple-400">
+                    Create New Brand
+                  </Text>
+                  <TextInput
+                    className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-3"
+                    value={newBrandName}
+                    onChangeText={setNewBrandName}
+                    placeholder="Brand Name"
+                    placeholderTextColor="#64748b"
+                  />
+                  <TextInput
+                    className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-3"
+                    value={newBrandDescription}
+                    onChangeText={setNewBrandDescription}
+                    placeholder="Description (optional)"
+                    placeholderTextColor="#64748b"
+                  />
+                  <View className="flex-row gap-3">
+                    <TouchableOpacity
+                      className="flex-1 bg-white/10 rounded-2xl py-3 items-center"
+                      onPress={() => setShowCreateBrand(false)}
+                    >
+                      <Text className="text-white font-bold">Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className={`flex-1 bg-purple-500 rounded-2xl py-3 items-center ${
+                        isCreatingBrand ? "opacity-50" : ""
+                      }`}
+                      onPress={handleCreateBrand}
+                      disabled={isCreatingBrand}
+                    >
+                      {isCreatingBrand ? (
+                        <ActivityIndicator color="white" />
+                      ) : (
+                        <Text className="text-white font-bold">Create</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    className="mb-2"
+                    contentContainerStyle={{ paddingRight: 20 }}
+                  >
+                    {brands.map((brand: any) => (
+                      <TouchableOpacity
+                        key={brand.id}
+                        className={`mr-2 px-4 py-2 rounded-full border ${
+                          brandId === brand.id
+                            ? "bg-purple-500/20 border-purple-500/40"
+                            : "bg-white/5 border-white/10"
+                        }`}
+                        onPress={() => setBrandId(brand.id)}
+                      >
+                        <Text
+                          className={`font-semibold text-sm ${
+                            brandId === brand.id
+                              ? "text-purple-400"
+                              : "text-slate-300"
+                          }`}
+                        >
+                          {brand.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity
+                    onPress={() => setShowCreateBrand(true)}
+                    className="border border-dashed border-purple-500/30 rounded-2xl py-3 items-center mb-4"
+                  >
+                    <Text className="text-purple-400">+ Create New Brand</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {/* Submit */}
               <TouchableOpacity
                 className={`bg-sky-500 rounded-2xl py-4 items-center border border-sky-400 mb-6 ${
                   isLoading || !name || !sellingPrice ? "opacity-50" : ""
@@ -1097,6 +1285,7 @@ function NewProductModal({
                     sellingPrice: Number(sellingPrice) || 0,
                     stockQuantity: Number(stockQuantity) || 0,
                     categoryId,
+                    brandId: brandId || undefined,
                   })
                 }
                 disabled={isLoading || !name || !sellingPrice}

@@ -181,7 +181,7 @@ export function MetricCard({
   const t = toneStyles[tone] || toneStyles.sky;
 
   return (
-    <View className={`flex-1 rounded-[24px] border ${t.border} bg-white/5 p-4`}>
+    <View className={`flex-1 rounded-3xl border ${t.border} bg-white/5 p-4`}>
       <View className="flex-row items-start justify-between">
         <View>
           <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
@@ -245,14 +245,28 @@ export function RowItem({
   subtitle,
   right,
   icon,
+  onPress,
+  accent = "default", // new
 }: {
   title: string;
   subtitle?: string;
   right?: string;
   icon?: IconName;
 }) {
+  const accentStyles = {
+    default: { bg: "bg-white/4", border: "border-white/8" },
+    sky: { bg: "bg-sky-500/10", border: "border-sky-500/20" },
+    emerald: { bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
+    amber: { bg: "bg-amber-500/10", border: "border-amber-500/20" },
+    rose: { bg: "bg-rose-500/10", border: "border-rose-500/20" },
+  };
+  const s = accentStyles[accent] || accentStyles.default;
+
   return (
-    <View className="flex-row items-center gap-3 rounded-[20px] border border-white/8 bg-white/4 px-4 py-3">
+    <Pressable
+      onPress={onPress}
+      className={`flex-row items-center gap-3 rounded-[20px] border ${s.border} ${s.bg} px-4 py-3`}
+    >
       {icon ? (
         <View className="h-11 w-11 items-center justify-center rounded-2xl bg-white/8">
           <MaterialIcons name={icon} size={20} color="#e2e8f0" />
@@ -267,7 +281,7 @@ export function RowItem({
       {right ? (
         <Text className="text-sm font-bold text-slate-200">{right}</Text>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 

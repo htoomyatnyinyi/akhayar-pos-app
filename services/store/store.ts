@@ -23,6 +23,7 @@ import { posApi } from "@/services/api/posApi";
 
 // import { remoteApi } from "@/services/api/remoteApi";
 import { localApi } from "@/services/features/offline/localApi";
+import { remoteApi } from "../api/remoteApi";
 
 const persistConfig = {
   key: "root",
@@ -37,6 +38,7 @@ const rootReducer = combineReducers({
   settings: settingsReducer,
   offline: offlineReducer,
   [posApi.reducerPath]: posApi.reducer,
+  [remoteApi.reducerPath]: remoteApi.reducer,
   [localApi.reducerPath]: localApi.reducer,
   // [remoteApi.reducerPath]: remoteApi.reducer,
 });
@@ -52,7 +54,8 @@ export const store = configureStore({
       },
     })
       .concat(posApi.middleware)
-      .concat(localApi.middleware),
+      .concat(localApi.middleware)
+      .concat(remoteApi.middleware),
   // .concat(remoteApi.middleware, localApi.middleware),
 });
 
