@@ -10,7 +10,6 @@ import {
   updateQuantity,
 } from "@/services/features/cart/cartSlice";
 import {
-  useCreateLocalInventoryMovementMutation,
   useCreateLocalOrderMutation,
   useGetActiveSessionQuery,
   useGetLocalCategoriesQuery,
@@ -79,7 +78,6 @@ export default function POSScreen() {
 
   // Mutations
   const [createOrder] = useCreateLocalOrderMutation();
-  const [createInventoryMovement] = useCreateLocalInventoryMovementMutation();
 
   // Cart state
   const cartItems = useAppSelector((state) => state.cart.items);
@@ -219,18 +217,8 @@ export default function POSScreen() {
       };
 
       const result = await createOrder(orderPayload).unwrap();
-
-      for (const item of cartItems) {
-        await createInventoryMovement({
-          tenantId: user?.tenantId,
-          storeId: activeSession.storeId,
-          productId: item.id,
-          quantity: item.qty,
-          type: "OUT",
-          referenceId: result.id,
-          referenceType: "ORDER",
-          reason: `Order #${result.orderNumber || result.id}`,
-        }).unwrap();
+      if (!result?.id) {
+        throw new Error("Order was created locally but no id was returned");
       }
 
       dispatch(clearCart());

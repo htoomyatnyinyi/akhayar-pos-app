@@ -24,3 +24,26 @@ export const QUEUE = {
   MAX_ITEMS: 1000,
   CLEANUP_INTERVAL: 24 * 60 * 60 * 1000, // 24 hours
 } as const;
+
+/** Lower number = synced first. Ensures dependencies resolve before dependents. */
+export function getOutboxPriority(entity: string, operation: string): number {
+  if (entity === "sessions" && operation === "open") return 30;
+  if (entity === "orders") return 40;
+  if (entity === "sessions" && operation === "close") return 45;
+  if (entity === "inventory_movements") return 50;
+
+  const base: Record<string, number> = {
+    stores: 10,
+    categories: 10,
+    brands: 10,
+    customers: 10,
+    suppliers: 10,
+    staff: 10,
+    products: 20,
+    product_variants: 20,
+    inventory_counts: 55,
+    price_history: 60,
+  };
+
+  return base[entity] ?? 35;
+}

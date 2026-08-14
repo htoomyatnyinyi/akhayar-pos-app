@@ -23,6 +23,10 @@ import { useCallback, useEffect, useState } from "react";
 import { getOfflineDb, runMigrations } from "./db";
 import { isOnline, subscribeToOnlineStatus } from "./network";
 import {
+  resolveOptionalRemoteId,
+  resolveRemoteId,
+} from "./idResolver";
+import {
   getDueOutboxItems,
   getFailedOutboxItems,
   getQueuedCount,
@@ -247,9 +251,8 @@ export async function syncNow(
     dispatch(setSyncProgress(65));
     if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
 
-    // --- PULL Orders --- //byme
+    // --- PULL Orders ---
     const orderResult = await pullOrders(dispatch, tenantId);
-    console.log("byme order result: ", orderResult);
     syncedItems += orderResult.synced;
     dispatch(setSyncProgress(70));
     if (!silent) console.log(`✅ Synced ${orderResult.synced} orders`);
@@ -783,6 +786,99 @@ function stripNulls(obj: any): any {
   return obj;
 }
 
+async function buildRemoteOrderPayload(payload: Record<string, any>) {
+  const storeId = await resolveRemoteId("stores", payload.storeId);
+  const sessionId = payload.sessionId
+    ? await resolveOptionalRemoteId("sessions", payload.sessionId)
+    : undefined;
+  const customerId = payload.customerId
+    ? await resolveOptionalRemoteId("customers", payload.customerId)
+    : undefined;
+
+  const items = await Promise.all(
+    (payload.items ?? []).map(async (item: any) =>
+      stripNulls({
+        productId: await resolveRemoteId("products", item.productId),
+        variantId: item.variantId
+          ? await resolveOptionalRemoteId("product_variants", item.variantId)
+          : undefined,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        subTotal: Number(item.subTotal) || 0,
+        discountAmount: item.discountAmount
+          ? Number(item.discountAmount)
+          : undefined,
+      }),
+    ),
+  );
+
+  return stripNulls({
+    subTotal: Number(payload.subTotal) || 0,
+    taxAmount: Number(payload.taxAmount) || 0,
+    discountAmount: Number(payload.discountAmount) || 0,
+    grandTotal: Number(payload.grandTotal) || 0,
+    paymentMethod: payload.paymentMethod,
+    paidAmount: Number(payload.paidAmount) || 0,
+    changeAmount: Number(payload.changeAmount) || 0,
+    storeId,
+    sessionId,
+    customerId,
+    registerId: payload.registerId,
+    items,
+  });
+}
+
+async function buildRemoteMovementPayload(payload: Record<string, any>) {
+  let mappedType = payload.type;
+  const referenceType = payload.referenceType;
+
+  if (referenceType === "STOCK_ADJUSTMENT") {
+    mappedType = "ADJUSTMENT";
+  } else if (referenceType === "ORDER") {
+    if (payload.type === "OUT") mappedType = "SALE";
+    else if (payload.type === "IN") mappedType = "RETURN_IN";
+  } else if (
+    referenceType === "PURCHASE" ||
+    referenceType === "PURCHASE_ORDER"
+  ) {
+    mappedType = "PURCHASE";
+  } else if (
+    referenceType === "TRANSFER" ||
+    referenceType === "STOCK_TRANSFER"
+  ) {
+    if (payload.type === "IN") mappedType = "TRANSFER_IN";
+    else if (payload.type === "OUT") mappedType = "TRANSFER_OUT";
+  } else if (
+    referenceType === "INVENTORY_COUNT" ||
+    referenceType === "COUNT"
+  ) {
+    mappedType = "COUNTING";
+  } else if (referenceType === "OPENING_STOCK") {
+    mappedType = "OPENING_STOCK";
+  } else {
+    if (payload.type === "IN") mappedType = "PURCHASE";
+    else if (payload.type === "OUT") mappedType = "SALE";
+  }
+
+  const referenceId =
+    referenceType === "ORDER" && payload.referenceId
+      ? await resolveRemoteId("orders", payload.referenceId)
+      : payload.referenceId;
+
+  return stripNulls({
+    storeId: await resolveRemoteId("stores", payload.storeId),
+    productId: await resolveRemoteId("products", payload.productId),
+    variantId: payload.variantId
+      ? await resolveOptionalRemoteId("product_variants", payload.variantId)
+      : undefined,
+    quantity: Number(payload.quantity) || 0,
+    type: mappedType,
+    referenceId,
+    referenceType: payload.referenceType,
+    reason: payload.reason,
+  });
+}
+
 // ============================================
 // PROCESS OUTBOX ITEM (FIXED)
 // ============================================
@@ -877,43 +973,45 @@ async function processOutboxItem(
 
     case "orders": {
       try {
-        // Only handle create
         if (item.operation === "create") {
-          // ✅ Check if session is still open locally
-          const [session] = await db
-            .select()
-            .from(sessions)
-            .where(eq(sessions.id, payload.sessionId))
-            .limit(1);
+          const [session] = payload.sessionId
+            ? await db
+                .select()
+                .from(sessions)
+                .where(eq(sessions.id, payload.sessionId))
+                .limit(1)
+            : [null];
 
-          if (!session || session.status !== "OPEN") {
-            const error = `Session ${payload.sessionId} is closed. Please reopen a session and retry.`;
-            console.warn(`⚠️ ${error}`);
-            await markOrderSyncFailed(item.entityId, error);
-            await markOutboxDead(item.id); // Stop retrying
-            return { success: false, error };
+          if (payload.sessionId) {
+            if (!session || session.status !== "OPEN") {
+              const error = `Session ${payload.sessionId} is closed. Please reopen a session and retry.`;
+              await markOrderSyncFailed(item.entityId, error);
+              await markOutboxDead(item.id);
+              return { success: false, error };
+            }
+
+            if (!session.remoteId && session.syncStatus !== "synced") {
+              return {
+                success: false,
+                error: `Session ${payload.sessionId} not synced to server yet`,
+              };
+            }
           }
 
-          // Session open – proceed
+          const remotePayload = await buildRemoteOrderPayload(payload);
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.createRemoteOrder.initiate(payload),
+            remoteApi.endpoints.createRemoteOrder.initiate(remotePayload),
           );
           if (error) {
             const errorMessage =
-              error?.data?.message ||
-              error?.data ||
-              error?.error ||
+              (error as any)?.data?.message ||
+              (error as any)?.data ||
+              (error as any)?.error ||
               JSON.stringify(error);
             throw new Error(errorMessage);
           }
-          console.log(
-            "data orders from createRemoteOrder",
-            data,
-            "payload",
-            payload,
-          );
 
-          const remoteId = data?.id || data?.order?.id || data?.data?.id;
+          const remoteId = (data as any)?.id || (data as any)?.order?.id || (data as any)?.data?.id;
           if (!remoteId) {
             throw new Error("Order created but no ID returned");
           }
@@ -926,9 +1024,10 @@ async function processOutboxItem(
           await markOutboxSynced(item.id);
           return { success: true };
         } else if (item.operation === "updateStatus") {
+          const remoteOrderId = await resolveRemoteId("orders", item.entityId);
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteOrderStatus.initiate({
-              id: item.entityId,
+              id: remoteOrderId,
               ...payload,
             }),
           );
@@ -940,8 +1039,9 @@ async function processOutboxItem(
           await markOutboxSynced(item.id);
           return { success: true };
         } else if (item.operation === "delete") {
+          const remoteOrderId = await resolveRemoteId("orders", item.entityId);
           const { error } = await store.dispatch(
-            remoteApi.endpoints.deleteRemoteOrder.initiate(item.entityId),
+            remoteApi.endpoints.deleteRemoteOrder.initiate(remoteOrderId),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db.delete(orders).where(eq(orders.id, item.entityId));
@@ -960,30 +1060,67 @@ async function processOutboxItem(
       try {
         let result;
         if (item.operation === "open") {
-          console.log("Opening session with ID:", item);
-          result = await store.dispatch(
-            remoteApi.endpoints.openRemoteSession.initiate(payload),
-          );
+          const openPayload = stripNulls({
+            openingBalance: Number(payload.openingBalance) || 0,
+            storeId: payload.storeId
+              ? await resolveOptionalRemoteId("stores", payload.storeId)
+              : undefined,
+            registerId: payload.registerId,
+            notes: payload.notes,
+          });
 
-          console.log(result, "session open return data");
+          result = await store.dispatch(
+            remoteApi.endpoints.openRemoteSession.initiate(openPayload),
+          );
         } else if (item.operation === "close") {
-          console.log("Closing session with ID:", item);
+          const [session] = await db
+            .select()
+            .from(sessions)
+            .where(eq(sessions.id, item.entityId))
+            .limit(1);
+
+          if (!session?.remoteId && session?.syncStatus !== "synced") {
+            return {
+              success: false,
+              error: `Session ${item.entityId} not synced to server yet`,
+            };
+          }
+
+          const remoteSessionId =
+            session?.remoteId ?? (await resolveRemoteId("sessions", item.entityId));
+
           result = await store.dispatch(
             remoteApi.endpoints.closeRemoteSession.initiate({
-              id: item.entityId,
-              ...payload,
+              id: remoteSessionId,
+              closingBalance: Number(payload.closingBalance) || 0,
+              expectedBalance: payload.expectedBalance,
+              discrepancy: payload.discrepancy,
+              cashSales: payload.cashSales,
+              cardSales: payload.cardSales,
+              digitalSales: payload.digitalSales,
+              notes: payload.notes,
             }),
           );
-          console.log(result, "session close return data");
         } else {
           throw new Error(`Unknown session operation: ${item.operation}`);
         }
+
         const { data, error } = result;
         if (error) throw new Error(JSON.stringify(error));
-        await db
-          .update(sessions)
-          .set({ remoteId: data.id, syncStatus: "synced" })
-          .where(eq(sessions.id, item.entityId));
+
+        const remoteId = (data as any)?.id ?? (data as any)?.session?.id;
+        if (remoteId) {
+          await db
+            .update(sessions)
+            .set({ remoteId, syncStatus: "synced" })
+            .where(eq(sessions.id, item.entityId));
+        } else {
+          await db
+            .update(sessions)
+            .set({ syncStatus: "synced" })
+            .where(eq(sessions.id, item.entityId));
+        }
+
         await markOutboxSynced(item.id);
         return { success: true };
       } catch (error) {
@@ -1071,89 +1208,22 @@ async function processOutboxItem(
       }
     }
 
-    // ---- Inventory (now sends update) ----
+    // ---- Inventory (local-only adjustments; no remote PUT endpoint) ----
     case "inventory": {
-      try {
-        // This handles stock adjustments via the PUT endpoint
-        if (item.operation === "update") {
-          const { data, error } = await store.dispatch(
-            remoteApi.endpoints.updateRemoteInventory.initiate({
-              id: item.entityId,
-              ...payload,
-            }),
-          );
-          if (error) throw new Error(JSON.stringify(error));
-          await db
-            .update(inventory)
-            .set({ remoteId: data.id, syncStatus: "synced" })
-            .where(eq(inventory.id, item.entityId));
-        } else {
-          // If not an update, treat as synced to clear it
-          await markOutboxSynced(item.id);
-        }
-        await markOutboxSynced(item.id);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: (error as Error).message };
-      }
+      await markOutboxSynced(item.id);
+      return { success: true };
     }
 
     case "inventory_movements": {
       try {
-        // Only create is supported
         if (item.operation === "create") {
-          // ✅ Ensure the referenced order is synced before sending movement
-          const [order] = await db
-            .select()
-            .from(orders)
-            .where(eq(orders.id, payload.referenceId))
-            .limit(1);
-
-          if (!order || order.syncStatus !== "synced") {
-            const error = `Order ${payload.referenceId} not synced yet. Skipping movement.`;
-            console.warn(`⚠️ ${error}`);
-            await markOutboxSynced(item.id); // Just clear it
+          // Server deducts inventory when the order is created — skip duplicate movements.
+          if (payload.referenceType === "ORDER") {
+            await markOutboxSynced(item.id);
             return { success: true };
           }
 
-          // ✅ Map type to server enum
-          let mappedType = payload.type;
-          // Use the same mapping helper from repository (we'll import it or duplicate)
-          // We'll duplicate the logic here to keep syncManager self-contained.
-          const referenceType = payload.referenceType;
-          if (referenceType === "STOCK_ADJUSTMENT") {
-            mappedType = "ADJUSTMENT";
-          } else if (referenceType === "ORDER") {
-            if (payload.type === "OUT") mappedType = "SALE";
-            else if (payload.type === "IN") mappedType = "RETURN_IN";
-          } else if (
-            referenceType === "PURCHASE" ||
-            referenceType === "PURCHASE_ORDER"
-          ) {
-            mappedType = "PURCHASE";
-          } else if (
-            referenceType === "TRANSFER" ||
-            referenceType === "STOCK_TRANSFER"
-          ) {
-            if (payload.type === "IN") mappedType = "TRANSFER_IN";
-            else if (payload.type === "OUT") mappedType = "TRANSFER_OUT";
-          } else if (
-            referenceType === "INVENTORY_COUNT" ||
-            referenceType === "COUNT"
-          ) {
-            mappedType = "COUNTING";
-          } else if (referenceType === "OPENING_STOCK") {
-            mappedType = "OPENING_STOCK";
-          } else {
-            if (payload.type === "IN") mappedType = "PURCHASE";
-            else if (payload.type === "OUT") mappedType = "SALE";
-          }
-
-          const cleanPayload = {
-            ...payload,
-            type: mappedType,
-          };
-
+          const cleanPayload = await buildRemoteMovementPayload(payload);
           const { data, error } = await store.dispatch(
             remoteApi.endpoints.createRemoteInventoryMovement.initiate(
               cleanPayload,
@@ -1161,19 +1231,18 @@ async function processOutboxItem(
           );
           if (error) {
             const errorMessage =
-              error?.data?.message ||
-              error?.data ||
-              error?.error ||
+              (error as any)?.data?.message ||
+              (error as any)?.data ||
+              (error as any)?.error ||
               JSON.stringify(error);
             throw new Error(errorMessage);
           }
           await db
             .update(inventoryMovements)
-            .set({ remoteId: data.id, syncStatus: "synced" })
+            .set({ remoteId: (data as any).id, syncStatus: "synced" })
             .where(eq(inventoryMovements.id, item.entityId));
-        } else {
-          await markOutboxSynced(item.id);
         }
+
         await markOutboxSynced(item.id);
         return { success: true };
       } catch (error) {

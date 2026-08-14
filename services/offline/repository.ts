@@ -651,7 +651,7 @@ export async function upsertSessions(
 
   const sessionsToInsert = remoteSessions.map((session) => ({
     id: session.id,
-    remoteId: session.remoteId,
+    remoteId: session.remoteId ?? session.id,
     tenantId: session.tenantId || defaultTenantId,
     storeId: session.storeId,
     registerId: session.registerId,
@@ -713,7 +713,7 @@ export async function upsertOrders(
         .insert(orders)
         .values({
           id: order.id,
-          remoteId: order.remoteId,
+          remoteId: order.remoteId ?? order.id,
           tenantId,
           storeId: order.storeId,
           registerId: order.registerId,
@@ -1591,7 +1591,12 @@ export async function openOfflineSession(payload: {
     "open",
     "/api/tenant/sessions/open",
     "POST",
-    payload,
+    {
+      openingBalance: payload.openingBalance,
+      storeId: payload.storeId,
+      registerId: payload.registerId,
+      notes: payload.notes,
+    },
   );
   return toSession(
     (
@@ -2365,7 +2370,9 @@ export async function enqueueMutations(
 }
 
 export async function getDueOutboxItems(limit = 25) {
-  return getOfflineDb()
+  const { getOutboxPriority } = await import("@/constants/sync");
+
+  const rows = await getOfflineDb()
     .select()
     .from(syncOutbox)
     .where(
@@ -2374,7 +2381,17 @@ export async function getDueOutboxItems(limit = 25) {
         lte(syncOutbox.nextAttemptAt, new Date().toISOString()),
       ),
     )
-    .limit(limit);
+    .limit(Math.max(limit * 4, 100));
+
+  return rows
+    .sort((a, b) => {
+      const priorityDiff =
+        getOutboxPriority(a.entity, a.operation) -
+        getOutboxPriority(b.entity, b.operation);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.createdAt.localeCompare(b.createdAt);
+    })
+    .slice(0, limit);
 }
 
 export async function getOutboxItems(limit = 100) {
