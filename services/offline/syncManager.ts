@@ -716,6 +716,19 @@ async function pullPriceHistory(dispatch: AppDispatch, tenantId: string) {
   }
 }
 
+// Exported for online-first reads (pull remote → cache locally → read local)
+export const pullStoresForRead = pullStores;
+export const pullBrandsForRead = pullBrands;
+export const pullCategoriesForRead = pullCategories;
+export const pullCustomersForRead = pullCustomers;
+export const pullStaffForRead = pullStaff;
+export const pullSuppliersForRead = pullSuppliers;
+export const pullProductsForRead = pullProducts;
+export const pullInventoryForRead = pullInventory;
+export const pullSessionsForRead = pullSessions;
+export const pullOrdersForRead = pullOrders;
+export const pullPriceHistoryForRead = pullPriceHistory;
+
 // ============================================
 // PUSH FUNCTIONS
 // ============================================

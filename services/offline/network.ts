@@ -1,14 +1,41 @@
 import NetInfo from "@react-native-community/netinfo";
+import { POS_API_URL } from "@/services/api/remoteApi";
 
-export async function isOnline() {
-  const state = await NetInfo.fetch();
-  return Boolean(state.isConnected && state.isInternetReachable !== false);
+export async function isOnline(): Promise<boolean> {
+  try {
+    const state = await NetInfo.fetch();
+    if (!state.isConnected || state.isInternetReachable === false) {
+      return false;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    try {
+      const response = await fetch(`${POS_API_URL}/health`, {
+        method: "HEAD",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (response.ok) return true;
+    } catch {
+      clearTimeout(timeoutId);
+    }
+
+    // Fallback: device reports connectivity but health check unavailable
+    return state.isConnected === true && Boolean(state.isInternetReachable ?? true);
+  } catch {
+    return false;
+  }
 }
 
 export function subscribeToOnlineStatus(listener: (online: boolean) => void) {
-  return NetInfo.addEventListener((state) => {
-    listener(Boolean(state.isConnected && state.isInternetReachable !== false));
+  const unsubscribe = NetInfo.addEventListener(() => {
+    void isOnline().then(listener);
   });
+
+  void isOnline().then(listener);
+
+  return unsubscribe;
 }
 
 /*
