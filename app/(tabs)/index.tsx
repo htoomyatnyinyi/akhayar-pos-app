@@ -17,6 +17,7 @@ import {
   useGetLocalCustomersQuery,
   useGetLocalInventoryQuery,
   useGetLocalProductsQuery,
+  useGetLocalVariantsQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -68,8 +69,30 @@ export default function POSScreen() {
     categoryId: selectedCategory,
     storeId: currentStoreId || undefined,
   });
+  const { data: variantsData } = useGetLocalVariantsQuery(undefined);
 
-  const { data: categoriesData } = useGetLocalCategoriesQuery();
+  const saleItems = React.useMemo(() => {
+    if (!productsData) return [];
+    return productsData.flatMap((product: any) => {
+      const variants = (variantsData || []).filter(
+        (variant: any) =>
+          variant.productId === product.id || variant.productId === product.remoteId,
+      );
+      if (!variants.length) return [product];
+      return variants.map((variant: any) => ({
+        ...product,
+        id: `${product.id}::variant::${variant.id}`,
+        productId: product.id,
+        variantId: variant.id,
+        name: `${product.name} — ${variant.name}`,
+        sku: variant.sku || product.sku,
+        barcode: variant.barcode || product.barcode,
+        sellingPrice: variant.price ?? product.sellingPrice,
+      }));
+    });
+  }, [productsData, variantsData]);
+
+  const { data: categoriesData } = useGetLocalCategoriesQuery(undefined);
   const { data: customersData } = useGetLocalCustomersQuery({
     search: customerSearch || undefined,
   });
@@ -99,7 +122,9 @@ export default function POSScreen() {
   // Check if any items are out of stock
   const hasOutOfStockItems = cartItems.some((item) => {
     const inventory = inventoryData?.find(
-      (inv: any) => inv.productId === item.id && inv.quantity < item.qty,
+      (inv: any) =>
+        inv.productId === (item.productId || item.id) &&
+        (inv.variantId || undefined) === (item.variantId || undefined),
     );
     return inventory && inventory.quantity < item.qty;
   });
@@ -107,7 +132,9 @@ export default function POSScreen() {
   // Handlers
   const handleAddToCart = (product: any) => {
     const inventory = inventoryData?.find(
-      (inv: any) => inv.productId === product.id,
+      (inv: any) =>
+        inv.productId === (product.productId || product.id) &&
+        (inv.variantId || undefined) === (product.variantId || undefined),
     );
     if (inventory && inventory.quantity <= 0) {
       Alert.alert("Out of Stock", `${product.name} is currently out of stock.`);
@@ -116,6 +143,8 @@ export default function POSScreen() {
     dispatch(
       addToCart({
         id: product.id,
+        productId: product.productId || product.id,
+        variantId: product.variantId,
         name: product.name,
         price: product.sellingPrice,
         qty: 1,
@@ -140,11 +169,22 @@ export default function POSScreen() {
 
   const handleScan = (data: string) => {
     setShowScannerModal(false);
+    const variant = variantsData?.find(
+      (v: any) =>
+        v.barcode === data || v.sku === data || v.id === data || v.remoteId === data,
+    );
+    if (variant) {
+      const saleItem = saleItems.find((item: any) => item.variantId === variant.id);
+      if (saleItem) {
+        handleAddToCart(saleItem);
+        return;
+      }
+    }
     const product = productsData?.find(
       (p: any) => p.barcode === data || p.sku === data || p.id === data,
     );
     if (product) {
-      handleAddToCart(product);
+      handleAddToCart(saleItems.find((item: any) => item.id === product.id) || product);
     } else {
       setSearchQuery(data);
     }
@@ -213,7 +253,8 @@ export default function POSScreen() {
         paidAmount: grandTotal,
         changeAmount: 0,
         items: cartItems.map((item) => ({
-          productId: item.id,
+          productId: item.productId || item.id,
+          variantId: item.variantId,
           quantity: item.qty,
           unitPrice: item.price,
           subTotal: item.price * item.qty,
@@ -222,12 +263,14 @@ export default function POSScreen() {
       };
 
       const result = await createOrder(orderPayload).unwrap();
+      if (!result) throw new Error("Order was not created");
 
       for (const item of cartItems) {
         await createInventoryMovement({
           tenantId: user?.tenantId,
           storeId: activeSession.storeId,
-          productId: item.id,
+          productId: item.productId || item.id,
+          variantId: item.variantId,
           quantity: item.qty,
           type: "OUT",
           referenceId: result.id,
@@ -253,7 +296,9 @@ export default function POSScreen() {
 
   const renderCartItem = ({ item }: { item: any }) => {
     const inventory = inventoryData?.find(
-      (inv: any) => inv.productId === item.id,
+      (inv: any) =>
+        inv.productId === (item.productId || item.id) &&
+        (inv.variantId || undefined) === (item.variantId || undefined),
     );
     const maxQty = inventory?.quantity || 0;
 
@@ -311,7 +356,9 @@ export default function POSScreen() {
   const renderProduct = ({ item }: { item: any }) => {
     const inCart = cartItems.find((i) => i.id === item.id);
     const inventory = inventoryData?.find(
-      (inv: any) => inv.productId === item.id,
+      (inv: any) =>
+        inv.productId === (item.productId || item.id) &&
+        (inv.variantId || undefined) === (item.variantId || undefined),
     );
     const stockQty = inventory?.quantity ?? 0;
     const isOutOfStock = stockQty === 0;
@@ -456,7 +503,7 @@ export default function POSScreen() {
         </View>
 
         <FlatList
-          data={productsData || []}
+          data={saleItems}
           keyExtractor={(item) => item.id}
           numColumns={2}
           contentContainerStyle={{

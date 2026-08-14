@@ -1451,15 +1451,19 @@ export const localApi = createApi({
           await refreshIfOnline(["inventory","products"]);
           const db = getOfflineDb();
           let query = db.select().from(inventory).$dynamic();
+          const conditions = [];
 
           if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
+            conditions.push(eq(inventory.storeId, storeId));
           }
           if (productId) {
-            query = query.where(eq(inventory.productId, productId));
+            conditions.push(eq(inventory.productId, productId));
           }
           if (variantId) {
-            query = query.where(eq(inventory.variantId, variantId));
+            conditions.push(eq(inventory.variantId, variantId));
+          }
+          if (conditions.length) {
+            query = query.where(and(...conditions));
           }
 
           const result = await query;
@@ -1482,15 +1486,13 @@ export const localApi = createApi({
         try {
           await refreshIfOnline(["inventory"]);
           const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.productId, productId))
-            .$dynamic();
+          let query = db.select().from(inventory).$dynamic();
+          const conditions = [eq(inventory.productId, productId)];
 
           if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
+            conditions.push(eq(inventory.storeId, storeId));
           }
+          query = query.where(and(...conditions));
 
           const result = await query;
           return { data: result };
@@ -1512,15 +1514,13 @@ export const localApi = createApi({
         try {
           await refreshIfOnline(["inventory"]);
           const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.variantId, variantId))
-            .$dynamic();
+          let query = db.select().from(inventory).$dynamic();
+          const conditions = [eq(inventory.variantId, variantId)];
 
           if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
+            conditions.push(eq(inventory.storeId, storeId));
           }
+          query = query.where(and(...conditions));
 
           const result = await query;
           return { data: result };
@@ -1646,9 +1646,21 @@ export const localApi = createApi({
             .$dynamic();
 
           if (payload.variantId) {
-            query = query.where(eq(inventory.variantId, payload.variantId));
+            query = query.where(
+              and(
+                eq(inventory.variantId, payload.variantId),
+                eq(inventory.productId, payload.productId),
+                eq(inventory.storeId, payload.storeId),
+              ),
+            );
           } else {
-            query = query.where(sql`${inventory.variantId} IS NULL`);
+            query = query.where(
+              and(
+                sql`${inventory.variantId} IS NULL`,
+                eq(inventory.productId, payload.productId),
+                eq(inventory.storeId, payload.storeId),
+              ),
+            );
           }
 
           const [existingInventory] = await query;

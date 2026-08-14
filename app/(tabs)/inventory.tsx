@@ -22,6 +22,7 @@ import {
   useGetLocalInventoryMovementsQuery,
   useGetLocalInventoryQuery,
   useGetLocalProductsQuery,
+  useGetLocalVariantsQuery,
   useGetLocalStoresQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -75,6 +76,7 @@ export default function InventoryScreen() {
     // Load all local products so a valid inventory row is never shown as
     // "Unknown" only because product.storeId differs.
     useGetLocalProductsQuery({});
+  const { data: variantsData } = useGetLocalVariantsQuery(undefined);
   const { data: categories } = useGetLocalCategoriesQuery({});
   const { data: stores = [] } = useGetLocalStoresQuery({ isActive: true });
   const { data: brands, refetch: refetchBrands } = useGetLocalBrandsQuery({
@@ -99,21 +101,27 @@ export default function InventoryScreen() {
       const product = productsData.find(
         (p: any) => p.id === inv.productId || p.remoteId === inv.productId,
       );
+      const variant = inv.variantId
+        ? variantsData?.find(
+            (v: any) => v.id === inv.variantId || v.remoteId === inv.variantId,
+          )
+        : undefined;
       const brand = product?.brandId
         ? brands?.find((b: any) => b.id === product.brandId)
         : null;
       return {
         ...inv,
         name: product?.name || "Unknown Product",
-        sku: product?.sku || "N/A",
-        sellingPrice: product?.sellingPrice || 0,
-        costPrice: product?.costPrice || 0,
+        variantName: variant?.name || null,
+        sku: variant?.sku || product?.sku || "N/A",
+        sellingPrice: variant?.price ?? product?.sellingPrice ?? 0,
+        costPrice: variant?.costPrice ?? product?.costPrice ?? 0,
         categoryId: product?.categoryId,
         brandName: brand?.name || null,
         brandId: product?.brandId || null,
       };
     });
-  }, [inventoryData, productsData, brands]);
+  }, [inventoryData, productsData, variantsData, brands]);
 
   // Computed values
   const filteredInventory = inventoryWithDetails.filter((item: any) => {
@@ -121,6 +129,7 @@ export default function InventoryScreen() {
     const q = searchQuery.toLowerCase();
     return (
       item.name?.toLowerCase().includes(q) ||
+      item.variantName?.toLowerCase().includes(q) ||
       item.sku?.toLowerCase().includes(q) ||
       item.brandName?.toLowerCase().includes(q)
     );
@@ -334,6 +343,11 @@ export default function InventoryScreen() {
               <Text className="text-white font-bold text-sm" numberOfLines={1}>
                 {item.name}
               </Text>
+              {item.variantName && (
+                <Text className="text-amber-300/90 text-[10px] font-semibold mt-0.5" numberOfLines={1}>
+                  Variant: {item.variantName}
+                </Text>
+              )}
               <View className="flex-row items-center mt-0.5">
                 <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px]">
                   {item.sku}
@@ -347,11 +361,6 @@ export default function InventoryScreen() {
                   </>
                 )}
               </View>
-              {item.variantId && (
-                <Text className="text-slate-500 text-[9px] mt-0.5">
-                  Variant: {item.variantId}
-                </Text>
-              )}
             </View>
             <View className="items-end">
               <Text className="text-white font-black text-lg">
