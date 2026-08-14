@@ -76,7 +76,9 @@ export default function POSScreen() {
   const { data: activeSession } = useGetActiveSessionQuery({
     userId: user?.id || "",
   });
-  const { data: inventoryData } = useGetLocalInventoryQuery({});
+  const { data: inventoryData } = useGetLocalInventoryQuery({
+    storeId: currentStoreId || undefined,
+  });
 
   // Mutations
   const [createOrder] = useCreateLocalOrderMutation();

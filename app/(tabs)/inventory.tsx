@@ -26,6 +26,9 @@ import {
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useState } from "react";
+import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
+import { isOnline } from "@/services/offline/network";
+import { useCreateStockTransferMutation } from "@/services/api/remoteApi";
 import {
   ActivityIndicator,
   Alert,
@@ -43,6 +46,7 @@ import {
 type ActiveTab = "stock" | "movements";
 
 export default function InventoryScreen() {
+  const { currentStoreId } = useAppSelector((state) => state.auth);
   const [activeTab, setActiveTab] = useState<ActiveTab>("stock");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -56,15 +60,20 @@ export default function InventoryScreen() {
     data: inventoryData,
     isLoading: isInventoryLoading,
     refetch: refetchInventory,
-  } = useGetLocalInventoryQuery({});
+  } = useGetLocalInventoryQuery({ storeId: currentStoreId || undefined });
 
   const {
     data: movementsData,
     isLoading: isMovementsLoading,
     refetch: refetchMovements,
-  } = useGetLocalInventoryMovementsQuery({});
+  } = useGetLocalInventoryMovementsQuery({
+    storeId: currentStoreId || undefined,
+  });
 
   const { data: productsData, refetch: refetchProducts } =
+    // Inventory is store-scoped, but its product master can be tenant-wide.
+    // Load all local products so a valid inventory row is never shown as
+    // "Unknown" only because product.storeId differs.
     useGetLocalProductsQuery({});
   const { data: categories } = useGetLocalCategoriesQuery({});
   const { data: stores = [] } = useGetLocalStoresQuery({ isActive: true });
@@ -75,6 +84,8 @@ export default function InventoryScreen() {
   // Mutations
   const [createMovement, { isLoading: isCreatingMovement }] =
     useCreateLocalInventoryMovementMutation();
+  const [createStockTransfer, { isLoading: isCreatingTransfer }] =
+    useCreateStockTransferMutation();
   const [adjustStock, { isLoading: isAdjusting }] =
     useAdjustLocalStockMutation();
   const [createProduct, { isLoading: isCreatingProduct }] =
@@ -85,7 +96,9 @@ export default function InventoryScreen() {
     if (!inventoryData || !productsData) return [];
 
     return inventoryData.map((inv: any) => {
-      const product = productsData.find((p: any) => p.id === inv.productId);
+      const product = productsData.find(
+        (p: any) => p.id === inv.productId || p.remoteId === inv.productId,
+      );
       const brand = product?.brandId
         ? brands?.find((b: any) => b.id === product.brandId)
         : null;
@@ -180,7 +193,20 @@ export default function InventoryScreen() {
           quantity: payload.quantity,
         };
 
-        if (payload.transferToStoreId) {
+        if (payload.transferToStoreId && (await isOnline())) {
+          await createStockTransfer({
+            fromStoreId: payload.storeId,
+            toStoreId: payload.transferToStoreId,
+            items: [
+              {
+                productId: payload.productId,
+                variantId: payload.variantId,
+                quantity: payload.quantity,
+              },
+            ],
+            notes: payload.reason || "Store transfer",
+          }).unwrap();
+        } else if (payload.transferToStoreId) {
           await createMovement({
             ...base,
             storeId: payload.storeId,
@@ -215,7 +241,13 @@ export default function InventoryScreen() {
         Alert.alert("Error", err?.message ?? "Failed to create movement");
       }
     },
-    [createMovement, refetchInventory, refetchMovements, selectedInventory],
+    [
+      createMovement,
+      createStockTransfer,
+      refetchInventory,
+      refetchMovements,
+      selectedInventory,
+    ],
   );
 
   const handleCreateProduct = useCallback(
@@ -560,7 +592,7 @@ export default function InventoryScreen() {
         visible={showMovementModal}
         inventoryItems={inventoryWithDetails}
         stores={stores}
-        isLoading={isCreatingMovement}
+        isLoading={isCreatingMovement || isCreatingTransfer}
         onClose={() => setShowMovementModal(false)}
         onSubmit={handleCreateMovement}
       />

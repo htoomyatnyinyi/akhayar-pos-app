@@ -118,44 +118,57 @@ function mapMovementType(type: string, referenceType?: string): string {
 export function normalizeProduct(
   product: Product & Record<string, any>,
 ): typeof products.$inferInsert {
+  const raw = product as any;
   return {
-    id: product.id,
-    remoteId: product.remoteId || null,
-    tenantId: product.tenantId,
-    name: product.name || "Unnamed Product",
-    description: product.description,
+    id: raw.id ?? raw._id ?? raw.productId ?? raw.product_id ?? raw.remoteId,
+    remoteId: raw.remoteId ?? raw.remote_id ?? raw.id ?? null,
+    tenantId: raw.tenantId ?? raw.tenant_id,
+    name: raw.name || "Unnamed Product",
+    description: raw.description,
     brandId:
-      product.brandId && product.brandId.trim() !== "" ? product.brandId : null,
+      (raw.brandId ?? raw.brand_id) &&
+      String(raw.brandId ?? raw.brand_id).trim() !== ""
+        ? raw.brandId ?? raw.brand_id
+        : null,
     storeId:
-      product.storeId && product.storeId.trim() !== "" ? product.storeId : null,
+      (raw.storeId ?? raw.store_id) &&
+      String(raw.storeId ?? raw.store_id).trim() !== ""
+        ? raw.storeId ?? raw.store_id
+        : null,
     categoryId:
-      product.categoryId && product.categoryId.trim() !== ""
-        ? product.categoryId
+      (raw.categoryId ?? raw.category_id) &&
+      String(raw.categoryId ?? raw.category_id).trim() !== ""
+        ? raw.categoryId ?? raw.category_id
         : null,
     supplierId:
-      product.supplierId && product.supplierId.trim() !== ""
-        ? product.supplierId
+      (raw.supplierId ?? raw.supplier_id) &&
+      String(raw.supplierId ?? raw.supplier_id).trim() !== ""
+        ? raw.supplierId ?? raw.supplier_id
         : null,
-    sku: product.sku || `SKU-${product.id?.slice(-8) || Date.now()}`,
-    barcode: product.barcode,
-    costPrice: Number(product.costPrice ?? 0),
-    sellingPrice: Number(product.sellingPrice ?? 0),
-    wholesalePrice: Number(product.wholesalePrice ?? 0),
-    promoPrice: product.promoPrice ? Number(product.promoPrice) : null,
-    promoStartAt: product.promoStartAt,
-    promoEndAt: product.promoEndAt,
-    isTaxable: product.isTaxable ?? true,
-    isActive: product.isActive ?? true,
-    isReturnable: product.isReturnable ?? true,
-    expiryDate: product.expiryDate,
-    manufacturingDate: product.manufacturingDate,
-    bestBeforeDate: product.bestBeforeDate,
-    deletedAt: product.deletedAt,
-    version: Number(product.version ?? 0),
+    sku:
+      raw.sku ||
+      `SKU-${String(
+        raw.id ?? raw._id ?? raw.productId ?? raw.remoteId ?? Date.now(),
+      ).slice(-8)}`,
+    barcode: raw.barcode,
+    costPrice: Number(raw.costPrice ?? raw.cost_price ?? 0),
+    sellingPrice: Number(raw.sellingPrice ?? raw.selling_price ?? 0),
+    wholesalePrice: Number(raw.wholesalePrice ?? raw.wholesale_price ?? 0),
+    promoPrice: raw.promoPrice ? Number(raw.promoPrice) : null,
+    promoStartAt: raw.promoStartAt ?? raw.promo_start_at,
+    promoEndAt: raw.promoEndAt ?? raw.promo_end_at,
+    isTaxable: raw.isTaxable ?? raw.is_taxable ?? true,
+    isActive: raw.isActive ?? raw.is_active ?? true,
+    isReturnable: raw.isReturnable ?? raw.is_returnable ?? true,
+    expiryDate: raw.expiryDate ?? raw.expiry_date,
+    manufacturingDate: raw.manufacturingDate ?? raw.manufacturing_date,
+    bestBeforeDate: raw.bestBeforeDate ?? raw.best_before_date,
+    deletedAt: raw.deletedAt ?? raw.deleted_at,
+    version: Number(raw.version ?? 0),
     syncStatus: "synced",
     syncError: null,
-    createdAt: product.createdAt ?? new Date().toISOString(),
-    updatedAt: product.updatedAt ?? new Date().toISOString(),
+    createdAt: raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+    updatedAt: raw.updatedAt ?? raw.updated_at ?? new Date().toISOString(),
     lastSyncedAt: new Date().toISOString(),
   };
 }
@@ -186,16 +199,20 @@ export function normalizeProductVariant(
 }
 
 export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
+  const productId = inv.productId ?? inv.product_id ?? inv.product?.id ?? inv.product?._id;
+  const storeId = inv.storeId ?? inv.store_id ?? inv.store?.id ?? inv.store?._id;
   return {
-    id: inv.id,
-    remoteId: inv.remoteId,
-    tenantId: inv.tenantId,
-    storeId: inv.storeId,
-    productId:
-      inv.productId && inv.productId.trim() !== "" ? inv.productId : null,
+    id: inv.id ?? inv._id ?? inv.remoteId,
+    remoteId: inv.remoteId ?? inv.remote_id ?? inv.id,
+    tenantId: inv.tenantId ?? inv.tenant_id,
+    storeId,
+    productId: productId && String(productId).trim() !== "" ? productId : null,
     variantId:
-      inv.variantId && inv.variantId.trim() !== "" ? inv.variantId : null,
-    quantity: Number(inv.quantity ?? 0),
+      (inv.variantId ?? inv.variant_id) &&
+      String(inv.variantId ?? inv.variant_id).trim() !== ""
+        ? inv.variantId ?? inv.variant_id
+        : null,
+    quantity: Number(inv.quantity ?? inv.availableQuantity ?? inv.available_quantity ?? 0),
     reservedQty: Number(inv.reservedQty ?? 0),
     reorderPoint: Number(inv.reorderPoint ?? 10),
     reorderQty: Number(inv.reorderQty ?? 0),
@@ -2986,6 +3003,7 @@ function parsePaymentBreakdown(value: unknown) {
 function toProduct(product: LocalProduct): Product {
   return {
     id: product.id,
+    remoteId: product.remoteId ?? undefined,
     sku: product.sku,
     barcode: product.barcode ?? undefined,
     name: product.name,

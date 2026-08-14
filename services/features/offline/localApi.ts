@@ -262,37 +262,30 @@ export const localApi = createApi({
         try {
           await refreshIfOnline(["products","inventory"]);
           const db = getOfflineDb();
+          const conditions = [
+            sql`${products.syncStatus} != 'pending_delete'`,
+            ...(storeId
+              ? [
+                  or(
+                    eq(products.storeId, storeId),
+                    sql`${products.storeId} IS NULL`,
+                  ),
+                ]
+              : []),
+            ...(search
+              ? [
+                  sql`${products.name} LIKE ${`%${search}%`} OR ${products.sku} LIKE ${`%${search}%`} OR ${products.barcode} LIKE ${`%${search}%`}`,
+                ]
+              : []),
+            ...(categoryId ? [eq(products.categoryId, categoryId)] : []),
+            ...(isActive !== undefined ? [eq(products.isActive, isActive)] : []),
+          ];
           let query = db
             .select()
             .from(products)
-            .where(
-              and(
-                sql`${products.syncStatus} != 'pending_delete'`,
-                storeId
-                  ? or(
-                      eq(products.storeId, storeId),
-                      sql`${products.storeId} IS NULL`,
-                    )
-                  : undefined,
-              ),
-            )
+            .where(and(...conditions))
             .orderBy(desc(products.createdAt))
             .$dynamic();
-
-          if (search) {
-            query = query.where(
-              sql`${products.name} LIKE ${`%${search}%`} OR ${products.sku} LIKE ${`%${search}%`} OR ${products.barcode} LIKE ${`%${search}%`}`,
-            );
-          }
-          if (categoryId) {
-            query = query.where(eq(products.categoryId, categoryId));
-          }
-          if (storeId) {
-            query = query.where(eq(products.storeId, storeId));
-          }
-          if (isActive !== undefined) {
-            query = query.where(eq(products.isActive, isActive));
-          }
 
           const result = await query;
           return { data: result };

@@ -342,6 +342,23 @@ export async function syncNow(
 // PULL FUNCTIONS
 // ============================================
 
+function extractCollection(value: unknown, preferredKeys: string[]): any[] {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
+
+  const record = value as Record<string, unknown>;
+  for (const key of preferredKeys) {
+    const result = extractCollection(record[key], preferredKeys);
+    if (result.length) return result;
+  }
+
+  for (const child of Object.values(record)) {
+    const result = extractCollection(child, preferredKeys);
+    if (result.length) return result;
+  }
+  return [];
+}
+
 async function pullBrands(dispatch: AppDispatch, tenantId: string) {
   try {
     const state = store.getState();
@@ -544,16 +561,35 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
       console.warn("⚠️ No auth token found, skipping product pull");
       return { synced: 0 };
     }
-    const { data, error } = await store.dispatch(
-      remoteApi.endpoints.getRemoteProducts.initiate(undefined, {
-        forceRefetch: true,
-      }),
-    );
-    if (error) {
-      console.error("❌ Product pull failed:", error);
-      return { synced: 0 };
+    const productsData: any[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= 100; page++) {
+      const { data, error } = await store.dispatch(
+        remoteApi.endpoints.getRemoteProducts.initiate(
+          { page, limit: 100 },
+          { forceRefetch: true },
+        ),
+      );
+      if (error) {
+        console.error("❌ Product pull failed:", error);
+        return { synced: productsData.length };
+      }
+      const pageProducts = extractCollection(data, [
+        "products",
+        "items",
+        "results",
+        "data",
+      ]);
+      if (!pageProducts.length) break;
+      for (const product of pageProducts) {
+        const key = String(product.id ?? product._id ?? product.remoteId);
+        if (!seen.has(key)) {
+          seen.add(key);
+          productsData.push(product);
+        }
+      }
+      if (pageProducts.length < 100) break;
     }
-    const productsData = data?.products || data?.data || data || [];
     if (productsData.length > 0) {
       // Upsert products first
       await upsertProducts(productsData, tenantId);
@@ -594,18 +630,37 @@ async function pullInventory(dispatch: AppDispatch, tenantId: string) {
       console.warn("⚠️ getRemoteInventory endpoint not available");
       return { synced: 0 };
     }
-    const { data, error } = await store.dispatch(
-      remoteApi.endpoints.getRemoteInventory.initiate(undefined, {
-        forceRefetch: true,
-      }),
-    );
-    if (error) {
-      if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
-        return { synced: 0 };
-      console.error("❌ Inventory pull failed:", error);
-      return { synced: 0 };
+    const inventoryItems: any[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= 100; page++) {
+      const { data, error } = await store.dispatch(
+        remoteApi.endpoints.getRemoteInventory.initiate(
+          { page, limit: 100 },
+          { forceRefetch: true },
+        ),
+      );
+      if (error) {
+        if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
+          return { synced: inventoryItems.length };
+        console.error("❌ Inventory pull failed:", error);
+        return { synced: inventoryItems.length };
+      }
+      const pageItems = extractCollection(data, [
+        "inventory",
+        "items",
+        "results",
+        "data",
+      ]);
+      if (!pageItems.length) break;
+      for (const item of pageItems) {
+        const key = String(item.id ?? item._id ?? item.remoteId);
+        if (!seen.has(key)) {
+          seen.add(key);
+          inventoryItems.push(item);
+        }
+      }
+      if (pageItems.length < 100) break;
     }
-    const inventoryItems = data?.inventory || data?.data || data || [];
     if (inventoryItems.length > 0) {
       await upsertInventory(inventoryItems, tenantId);
       return { synced: inventoryItems.length };

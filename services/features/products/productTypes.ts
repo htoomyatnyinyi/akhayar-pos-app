@@ -6,6 +6,7 @@ import { Inventory } from "../inventory/inventoryTypes";
 
 export interface Product {
   id: string;
+  remoteId?: string;
   name: string;
   description?: string;
   brand?: string;

@@ -99,7 +99,9 @@ export default function ManageScreen() {
       { skip: !user?.id },
     );
 
-  const { data: staff = [], refetch: refetchStaff } = useGetLocalStaffQuery({});
+  const scopedStoreId = isAdmin ? undefined : currentStoreId || undefined;
+  const { data: staff = [], refetch: refetchStaff } =
+    useGetLocalStaffQuery({ storeId: scopedStoreId });
   const { data: products = [], refetch: refetchProducts } =
     useGetLocalProductsQuery({
       storeId: isAdmin ? undefined : currentStoreId || undefined,
@@ -107,7 +109,7 @@ export default function ManageScreen() {
   const { data: categories = [], refetch: refetchCategories } =
     useGetLocalCategoriesQuery({});
   const { data: suppliers = [], refetch: refetchSuppliers } =
-    useGetLocalSuppliersQuery({});
+    useGetLocalSuppliersQuery({ storeId: scopedStoreId });
 
   // Mutations
   const [createStaff] = useCreateLocalStaffMutation();
