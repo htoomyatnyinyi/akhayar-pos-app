@@ -1,4 +1,3 @@
-import { store } from "@/services/store/store";
 import type { AppDispatch } from "@/services/store/store";
 import { isOnline } from "./network";
 
@@ -65,10 +64,17 @@ const ENTITY_PULL_MAP: Record<
   },
 };
 
+// Do not import the store value at module load time. The store itself imports
+// localApi, which imports this module; eager access would create a cycle.
+async function getStore() {
+  return (await import("@/services/store/store")).store;
+}
+
 /** Online-first read: pull fresh data from server when online, then read local cache. */
 export async function refreshIfOnline(entities: SyncEntity[]): Promise<void> {
   if (!(await isOnline())) return;
 
+  const store = await getStore();
   const tenantId = store.getState().auth?.user?.tenantId;
   if (!tenantId) return;
 
@@ -86,6 +92,7 @@ export async function refreshIfOnline(entities: SyncEntity[]): Promise<void> {
 export function pushIfOnline(): void {
   void (async () => {
     if (!(await isOnline())) return;
+    const store = await getStore();
     const { syncNow } = await import("./syncManager");
     await syncNow(store.dispatch, store.getState, { silent: true });
   })();
