@@ -759,9 +759,23 @@ export async function upsertOrders(
         .onConflictDoUpdate({
           target: orders.id,
           set: {
+            remoteId: sql`excluded.remote_id`,
+            orderNumber: sql`excluded.order_number`,
+            storeId: sql`excluded.store_id`,
+            registerId: sql`excluded.register_id`,
+            userId: sql`excluded.user_id`,
+            customerId: sql`excluded.customer_id`,
+            sessionId: sql`excluded.session_id`,
             status: sql`excluded.status`,
             paymentStatus: sql`excluded.payment_status`,
+            paymentMethod: sql`excluded.payment_method`,
             grandTotal: sql`excluded.grand_total`,
+            subTotal: sql`excluded.sub_total`,
+            taxAmount: sql`excluded.tax_amount`,
+            discountAmount: sql`excluded.discount_amount`,
+            paidAmount: sql`excluded.paid_amount`,
+            changeAmount: sql`excluded.change_amount`,
+            paymentBreakdown: sql`excluded.payment_breakdown`,
             syncStatus: "synced",
             syncError: null,
             updatedAt: sql`excluded.updated_at`,
@@ -1848,6 +1862,7 @@ export async function createOfflineInventoryMovement(
 
     // Strip null/undefined values and build clean payload
     const cleanPayload: any = {
+      clientMovementId: id,
       storeId: payload.storeId,
       productId: payload.productId,
       quantity: payload.quantity,

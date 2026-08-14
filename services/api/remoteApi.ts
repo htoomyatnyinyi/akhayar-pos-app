@@ -451,6 +451,7 @@ export const remoteApi = createApi({
     createPlatformStoreSetting: builder.mutation<
       unknown,
       {
+        clientMovementId?: string;
         storeId: string;
         settingKey: string;
         settingValue: any;
@@ -1189,6 +1190,9 @@ export const remoteApi = createApi({
         url: "/tenant/inventory/movements/",
         method: "POST",
         body,
+        headers: body.clientMovementId
+          ? { "Idempotency-Key": body.clientMovementId }
+          : undefined,
       }),
       invalidatesTags: ["InventoryMovements", "Inventory"],
     }),

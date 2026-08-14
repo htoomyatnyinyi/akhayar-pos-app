@@ -18,9 +18,10 @@ import {
 } from "@/services/features/offline/offlineSlice";
 import type { AppDispatch, RootState } from "@/services/store/store";
 import { store } from "@/services/store/store";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { useCallback, useEffect, useState } from "react";
 import { getOfflineDb, runMigrations } from "./db";
+import { createLocalId } from "./ids";
 import { isOnline, subscribeToOnlineStatus } from "./network";
 import {
   getDueOutboxItems,
@@ -658,23 +659,44 @@ async function pullOrders(dispatch: AppDispatch, tenantId: string) {
       console.warn("⚠️ getRemoteOrders endpoint not available");
       return { synced: 0 };
     }
-    const { data, error } = await store.dispatch(
-      remoteApi.endpoints.getRemoteOrders.initiate(undefined, {
-        forceRefetch: true,
-      }),
-    );
-    if (error) {
-      if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
-        return { synced: 0 };
-      console.error("❌ Order pull failed:", error);
-      return { synced: 0 };
+    const pageSize = 100;
+    const maxPages = 100;
+    let synced = 0;
+    const seenPages = new Set<string>();
+
+    for (let page = 1; page <= maxPages; page++) {
+      const result = await store.dispatch(
+        remoteApi.endpoints.getRemoteOrders.initiate(
+          { page, limit: pageSize },
+          { forceRefetch: true },
+        ),
+      );
+      const { data, error } = result;
+      if (error) {
+        if (error.originalStatus === 404 || error.status === "PARSING_ERROR")
+          return { synced };
+        console.error("❌ Order pull failed:", error);
+        return { synced };
+      }
+
+      const raw = (data as any)?.orders ?? (data as any)?.data ?? data;
+      const pageOrders = Array.isArray(raw) ? raw : [];
+      if (pageOrders.length === 0) break;
+
+      const pageKey = `${pageOrders[0]?.id ?? ""}:${pageOrders[pageOrders.length - 1]?.id ?? ""}`;
+      if (seenPages.has(pageKey)) break;
+      seenPages.add(pageKey);
+
+      await upsertOrders(pageOrders, tenantId);
+      synced += pageOrders.length;
+
+      const meta = (data as any)?.pagination ?? (data as any)?.meta;
+      const totalPages = Number(meta?.totalPages ?? meta?.total_pages ?? 0);
+      if (totalPages && page >= totalPages) break;
+      if (pageOrders.length < pageSize) break;
     }
-    const ordersData = data?.orders || data?.data || data || [];
-    if (ordersData.length > 0) {
-      await upsertOrders(ordersData, tenantId);
-      return { synced: ordersData.length };
-    }
-    return { synced: 0 };
+
+    return { synced };
   } catch (error) {
     console.error("❌ Failed to pull orders:", error);
     return { synced: 0 };
@@ -734,6 +756,10 @@ export const pullPriceHistoryForRead = pullPriceHistory;
 // ============================================
 
 async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
+  // Older builds incorrectly marked blocked movements as synced in the
+  // outbox. Recreate their queue entries from the authoritative local rows so
+  // upgrading to this build does not lose those movements.
+  await restorePendingMovementOutbox();
   const items = await getDueOutboxItems(maxItems);
   if (items.length === 0) {
     return { synced: 0, failed: 0 };
@@ -780,6 +806,57 @@ async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
   }
 
   return { synced, failed };
+}
+
+async function restorePendingMovementOutbox() {
+  const db = getOfflineDb();
+  const pending = await db
+    .select()
+    .from(inventoryMovements)
+    .where(eq(inventoryMovements.syncStatus, "pending"));
+
+  for (const movement of pending) {
+    const [queued] = await db
+      .select({ id: syncOutbox.id })
+      .from(syncOutbox)
+      .where(
+        and(
+          eq(syncOutbox.entity, "inventory_movements"),
+          eq(syncOutbox.entityId, movement.id),
+        ),
+      )
+      .limit(1);
+
+    if (queued) continue;
+
+    const now = new Date().toISOString();
+    await db.insert(syncOutbox).values({
+      id: createLocalId("outbox"),
+      entity: "inventory_movements",
+      entityId: movement.id,
+      operation: "create",
+      endpoint: "/api/tenant/inventory/movements",
+      method: "POST",
+      payload: {
+        clientMovementId: movement.id,
+        tenantId: movement.tenantId,
+        storeId: movement.storeId,
+        productId: movement.productId,
+        variantId: movement.variantId ?? undefined,
+        quantity: movement.quantity,
+        type: movement.type,
+        referenceId: movement.referenceId,
+        referenceType: movement.referenceType,
+        reason: movement.reason ?? undefined,
+      },
+      status: "pending",
+      attempts: 0,
+      nextAttemptAt: now,
+      lastError: null,
+      createdAt: movement.createdAt,
+      updatedAt: now,
+    });
+  }
 }
 
 // Helper to strip null/undefined values (prevents server validation errors)
@@ -1130,30 +1207,47 @@ async function processOutboxItem(
       try {
         // Only create is supported
         if (item.operation === "create") {
-          // ✅ Ensure the referenced order is synced before sending movement
-          const [order] = await db
-            .select()
-            .from(orders)
-            .where(eq(orders.id, payload.referenceId))
-            .limit(1);
+          let movementPayload = payload;
 
-          if (!order || order.syncStatus !== "synced") {
-            const error = `Order ${payload.referenceId} not synced yet. Skipping movement.`;
-            console.warn(`⚠️ ${error}`);
-            await markOutboxSynced(item.id); // Just clear it
-            return { success: true };
+          // Sales reference a local order while offline. Wait for that order
+          // instead of deleting the movement from the outbox. Non-order
+          // movements (adjustments, purchases, transfers, counts) must sync
+          // independently and must not be blocked by an order lookup.
+          const normalizedReferenceType = String(
+            payload.referenceType ?? "",
+          ).toUpperCase();
+
+          if (normalizedReferenceType === "ORDER") {
+            const [order] = await db
+              .select()
+              .from(orders)
+              .where(eq(orders.id, payload.referenceId))
+              .limit(1);
+
+            if (!order || order.syncStatus !== "synced") {
+              return {
+                success: false,
+                error: `Order ${payload.referenceId} is not synced yet; retrying movement later.`,
+              };
+            }
+
+            movementPayload = {
+              ...payload,
+              referenceId: order.remoteId ?? payload.referenceId,
+            };
           }
 
           // ✅ Map type to server enum
-          let mappedType = payload.type;
+          const sourceType = String(movementPayload.type ?? "").toUpperCase();
+          let mappedType = sourceType;
           // Use the same mapping helper from repository (we'll import it or duplicate)
           // We'll duplicate the logic here to keep syncManager self-contained.
-          const referenceType = payload.referenceType;
+          const referenceType = normalizedReferenceType;
           if (referenceType === "STOCK_ADJUSTMENT") {
             mappedType = "ADJUSTMENT";
           } else if (referenceType === "ORDER") {
-            if (payload.type === "OUT") mappedType = "SALE";
-            else if (payload.type === "IN") mappedType = "RETURN_IN";
+            if (sourceType === "OUT") mappedType = "SALE";
+            else if (sourceType === "IN") mappedType = "RETURN_IN";
           } else if (
             referenceType === "PURCHASE" ||
             referenceType === "PURCHASE_ORDER"
@@ -1163,8 +1257,8 @@ async function processOutboxItem(
             referenceType === "TRANSFER" ||
             referenceType === "STOCK_TRANSFER"
           ) {
-            if (payload.type === "IN") mappedType = "TRANSFER_IN";
-            else if (payload.type === "OUT") mappedType = "TRANSFER_OUT";
+            if (sourceType === "IN") mappedType = "TRANSFER_IN";
+            else if (sourceType === "OUT") mappedType = "TRANSFER_OUT";
           } else if (
             referenceType === "INVENTORY_COUNT" ||
             referenceType === "COUNT"
@@ -1173,12 +1267,12 @@ async function processOutboxItem(
           } else if (referenceType === "OPENING_STOCK") {
             mappedType = "OPENING_STOCK";
           } else {
-            if (payload.type === "IN") mappedType = "PURCHASE";
-            else if (payload.type === "OUT") mappedType = "SALE";
+            if (sourceType === "IN") mappedType = "PURCHASE";
+            else if (sourceType === "OUT") mappedType = "SALE";
           }
 
           const cleanPayload = {
-            ...payload,
+            ...movementPayload,
             type: mappedType,
           };
 
@@ -1195,9 +1289,20 @@ async function processOutboxItem(
               JSON.stringify(error);
             throw new Error(errorMessage);
           }
+          const remoteMovement =
+            (data as any)?.movement ?? (data as any)?.data ?? data;
+          const remoteId = remoteMovement?.id;
+          if (!remoteId) throw new Error("Movement created but no ID returned");
+
           await db
             .update(inventoryMovements)
-            .set({ remoteId: data.id, syncStatus: "synced" })
+            .set({
+              remoteId,
+              syncStatus: "synced",
+              syncError: null,
+              lastSyncedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            })
             .where(eq(inventoryMovements.id, item.entityId));
         } else {
           await markOutboxSynced(item.id);

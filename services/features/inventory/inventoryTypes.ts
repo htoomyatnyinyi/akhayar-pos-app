@@ -90,6 +90,8 @@ export interface InventoryCountItem {
 }
 
 export interface CreateMovementPayload {
+  /** Stable idempotency key for offline retries. */
+  clientMovementId?: string;
   tenantId: string;
   storeId: string;
   productId: string;
