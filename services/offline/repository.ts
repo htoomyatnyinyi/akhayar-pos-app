@@ -77,6 +77,8 @@ async function withForeignKeysOff<T>(
 // MOVEMENT TYPE MAPPING (to backend enum)
 // ============================================
 function mapMovementType(type: string, referenceType?: string): string {
+  type = String(type ?? "").toUpperCase();
+  referenceType = String(referenceType ?? "").toUpperCase();
   // Stock adjustments → ADJUSTMENT
   if (referenceType === "STOCK_ADJUSTMENT") {
     return "ADJUSTMENT";
@@ -1866,6 +1868,7 @@ export async function createOfflineInventoryMovement(
       storeId: payload.storeId,
       productId: payload.productId,
       quantity: payload.quantity,
+      direction: String(payload.type).toUpperCase(),
       type: mappedType,
       referenceId: payload.referenceId,
       referenceType: payload.referenceType,

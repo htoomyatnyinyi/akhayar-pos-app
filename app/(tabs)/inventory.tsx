@@ -22,6 +22,7 @@ import {
   useGetLocalInventoryMovementsQuery,
   useGetLocalInventoryQuery,
   useGetLocalProductsQuery,
+  useGetLocalStoresQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useState } from "react";
@@ -66,6 +67,7 @@ export default function InventoryScreen() {
   const { data: productsData, refetch: refetchProducts } =
     useGetLocalProductsQuery({});
   const { data: categories } = useGetLocalCategoriesQuery({});
+  const { data: stores = [] } = useGetLocalStoresQuery({ isActive: true });
   const { data: brands, refetch: refetchBrands } = useGetLocalBrandsQuery({
     isActive: true,
   });
@@ -160,18 +162,51 @@ export default function InventoryScreen() {
       quantity: number;
       type: "IN" | "OUT";
       reason: string;
+      tenantId: string;
+      storeId: string;
+      transferToStoreId?: string;
     }) => {
       try {
-        await createMovement({
-          storeId: "default", // TODO: Get from context
+        if (!payload.tenantId || !payload.storeId) {
+          throw new Error("Missing tenant or source store for movement");
+        }
+        const referenceId = `transfer-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+        const base = {
+          tenantId: payload.tenantId,
           productId: payload.productId,
           variantId: payload.variantId,
           quantity: payload.quantity,
-          type: payload.type,
-          referenceId: `manual-${Date.now()}`,
-          referenceType: "MANUAL",
-          reason: payload.reason,
-        }).unwrap();
+        };
+
+        if (payload.transferToStoreId) {
+          await createMovement({
+            ...base,
+            storeId: payload.storeId,
+            type: "OUT",
+            referenceId,
+            referenceType: "STOCK_TRANSFER",
+            reason: payload.reason || "Store transfer out",
+          }).unwrap();
+          await createMovement({
+            ...base,
+            storeId: payload.transferToStoreId,
+            type: "IN",
+            referenceId,
+            referenceType: "STOCK_TRANSFER",
+            reason: payload.reason || "Store transfer in",
+          }).unwrap();
+        } else {
+          await createMovement({
+            ...base,
+            storeId: payload.storeId,
+            type: payload.type,
+            referenceId: `manual-${Date.now()}`,
+            referenceType: "STOCK_ADJUSTMENT",
+            reason: payload.reason,
+          }).unwrap();
+        }
         setShowMovementModal(false);
         refetchInventory();
         refetchMovements();
@@ -180,7 +215,7 @@ export default function InventoryScreen() {
         Alert.alert("Error", err?.message ?? "Failed to create movement");
       }
     },
-    [createMovement, refetchInventory, refetchMovements],
+    [createMovement, refetchInventory, refetchMovements, selectedInventory],
   );
 
   const handleCreateProduct = useCallback(
@@ -524,6 +559,7 @@ export default function InventoryScreen() {
       <NewMovementModal
         visible={showMovementModal}
         inventoryItems={inventoryWithDetails}
+        stores={stores}
         isLoading={isCreatingMovement}
         onClose={() => setShowMovementModal(false)}
         onSubmit={handleCreateMovement}
@@ -682,12 +718,14 @@ function AdjustStockModal({
 function NewMovementModal({
   visible,
   inventoryItems,
+  stores,
   isLoading,
   onClose,
   onSubmit,
 }: {
   visible: boolean;
   inventoryItems: any[];
+  stores: any[];
   isLoading: boolean;
   onClose: () => void;
   onSubmit: (payload: {
@@ -696,11 +734,16 @@ function NewMovementModal({
     quantity: number;
     type: "IN" | "OUT";
     reason: string;
+    tenantId: string;
+    storeId: string;
+    transferToStoreId?: string;
   }) => void;
 }) {
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [movementType, setMovementType] = useState<"IN" | "OUT">("IN");
+  const [movementMode, setMovementMode] = useState<"STOCK" | "TRANSFER">("STOCK");
+  const [targetStoreId, setTargetStoreId] = useState("");
   const [reason, setReason] = useState("");
   const [productSearch, setProductSearch] = useState("");
 
@@ -708,6 +751,8 @@ function NewMovementModal({
     setSelectedInventoryId("");
     setQuantity("");
     setMovementType("IN");
+    setMovementMode("STOCK");
+    setTargetStoreId("");
     setReason("");
     setProductSearch("");
   }, []);
@@ -805,6 +850,51 @@ function NewMovementModal({
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              <TouchableOpacity
+                className={`rounded-2xl py-3 items-center border mb-5 ${
+                  movementMode === "TRANSFER"
+                    ? "bg-violet-500/20 border-violet-500/40"
+                    : "bg-white/5 border-white/10"
+                }`}
+                onPress={() => setMovementMode((mode) => mode === "TRANSFER" ? "STOCK" : "TRANSFER")}
+              >
+                <Text className="text-violet-300 font-bold">
+                  {movementMode === "TRANSFER"
+                    ? "Store-to-store transfer enabled"
+                    : "Move product to another store"}
+                </Text>
+              </TouchableOpacity>
+
+              {movementMode === "TRANSFER" && selectedItem && (
+                <View className="mb-5">
+                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                    Destination Store
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {stores
+                      .filter((store: any) => store.id !== selectedItem.storeId)
+                      .map((store: any) => (
+                        <TouchableOpacity
+                          key={store.id}
+                          className={`mr-2 px-4 py-3 rounded-xl border ${
+                            targetStoreId === store.id
+                              ? "bg-violet-500/20 border-violet-400"
+                              : "bg-white/5 border-white/10"
+                          }`}
+                          onPress={() => setTargetStoreId(store.id)}
+                        >
+                          <Text className="text-white font-semibold">
+                            {store.name}
+                          </Text>
+                          <Text className="text-slate-400 text-xs">
+                            {store.code}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                  </ScrollView>
+                </View>
+              )}
 
               {/* Product Selection */}
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
@@ -930,7 +1020,10 @@ function NewMovementModal({
                     ? "bg-emerald-500 border-emerald-400"
                     : "bg-rose-500 border-rose-400"
                 } ${
-                  isLoading || !selectedInventoryId || !quantity
+                  isLoading ||
+                  !selectedInventoryId ||
+                  !quantity ||
+                  (movementMode === "TRANSFER" && !targetStoreId)
                     ? "opacity-50"
                     : ""
                 }`}
@@ -944,9 +1037,18 @@ function NewMovementModal({
                     quantity: Number(quantity),
                     type: movementType,
                     reason,
+                    tenantId: product?.tenantId,
+                    storeId: product?.storeId,
+                    transferToStoreId:
+                      movementMode === "TRANSFER" ? targetStoreId : undefined,
                   });
                 }}
-                disabled={isLoading || !selectedInventoryId || !quantity}
+                disabled={
+                  isLoading ||
+                  !selectedInventoryId ||
+                  !quantity ||
+                  (movementMode === "TRANSFER" && !targetStoreId)
+                }
                 activeOpacity={0.8}
               >
                 {isLoading ? (

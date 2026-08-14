@@ -1682,7 +1682,9 @@ export const localApi = createApi({
 
           const { createLocalId } = await import("@/services/offline/ids");
           const movementId = createLocalId("mov");
-          const movementType = "ADJUSTMENT";
+          const movementType = diff > 0 ? "IN" : "OUT";
+          const movementQuantity = Math.abs(diff);
+          const adjustmentReferenceId = `adj-${movementId}`;
 
           await db.insert(inventoryMovements).values({
             id: movementId,
@@ -1690,9 +1692,9 @@ export const localApi = createApi({
             storeId: payload.storeId,
             productId: payload.productId,
             variantId: payload.variantId || null,
-            quantity: diff,
+            quantity: movementQuantity,
             type: movementType,
-            referenceId: `adj-${Date.now()}`,
+            referenceId: adjustmentReferenceId,
             referenceType: "STOCK_ADJUSTMENT",
             reason:
               payload.reason ??
@@ -1716,12 +1718,14 @@ export const localApi = createApi({
             endpoint: "/api/tenant/inventory/movements",
             method: "POST",
             payload: {
+              clientMovementId: movementId,
               storeId: payload.storeId,
               productId: payload.productId,
               ...(payload.variantId ? { variantId: payload.variantId } : {}),
-              quantity: diff,
+              quantity: movementQuantity,
+              direction: movementType,
               type: movementType,
-              referenceId: `adj-${Date.now()}`,
+              referenceId: adjustmentReferenceId,
               referenceType: "STOCK_ADJUSTMENT",
               reason:
                 payload.reason ??
@@ -1734,6 +1738,8 @@ export const localApi = createApi({
             createdAt: now,
             updatedAt: now,
           });
+
+          pushIfOnline();
 
           return {
             data: updatedInventory,

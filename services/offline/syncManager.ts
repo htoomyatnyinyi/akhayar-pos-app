@@ -1273,6 +1273,7 @@ async function processOutboxItem(
 
           const cleanPayload = {
             ...movementPayload,
+            direction: sourceType,
             type: mappedType,
           };
 
