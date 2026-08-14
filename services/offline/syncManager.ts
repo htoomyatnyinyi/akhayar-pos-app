@@ -926,14 +926,29 @@ async function processOutboxItem(
             payload,
           );
 
-          const remoteId = data?.id || data?.order?.id || data?.data?.id;
+          const remoteOrder = (data as any)?.order ?? (data as any)?.data ?? data;
+          const remoteId =
+            remoteOrder?.id || (data as any)?.id;
           if (!remoteId) {
             throw new Error("Order created but no ID returned");
           }
 
           await db
             .update(orders)
-            .set({ remoteId, syncStatus: "synced" })
+            .set({
+              remoteId,
+              // A successfully submitted POS sale has been paid locally. The
+              // old code only changed syncStatus, leaving the UI at PENDING.
+              status:
+                remoteOrder?.status === "CANCELLED"
+                  ? "CANCELLED"
+                  : "COMPLETED",
+              orderNumber: remoteOrder?.orderNumber ?? payload.orderNumber,
+              syncStatus: "synced",
+              syncError: null,
+              lastSyncedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            })
             .where(eq(orders.id, item.entityId));
 
           await markOutboxSynced(item.id);

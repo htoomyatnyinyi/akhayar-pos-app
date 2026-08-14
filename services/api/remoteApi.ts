@@ -1082,6 +1082,9 @@ export const remoteApi = createApi({
         url: "/tenant/orders/",
         method: "POST",
         body,
+        headers: body.clientOrderId
+          ? { "Idempotency-Key": body.clientOrderId }
+          : undefined,
       }),
       invalidatesTags: ["Orders", "Inventory"],
     }),

@@ -708,19 +708,38 @@ export async function upsertOrders(
   await db.transaction(async (tx) => {
     for (const order of remoteOrders) {
       const tenantId = order.tenantId || defaultTenantId;
+      const remoteId = String(order.remoteId ?? order.id);
+      const orderNumber = order.orderNumber || `ORD-${order.id}`;
+      // A server-created order may have a different primary key from the
+      // local offline row. Reuse the local row when either stable identifier
+      // matches, otherwise pull would create a second local order.
+      const [existing] = await tx
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          or(
+            eq(orders.remoteId, remoteId),
+            and(
+              eq(orders.tenantId, tenantId),
+              eq(orders.orderNumber, orderNumber),
+            ),
+          ),
+        )
+        .limit(1);
+      const localId = existing?.id ?? order.id;
 
       await tx
         .insert(orders)
         .values({
-          id: order.id,
-          remoteId: order.remoteId,
+          id: localId,
+          remoteId,
           tenantId,
           storeId: order.storeId,
           registerId: order.registerId,
           userId: order.userId ?? "",
           customerId: order.customerId,
           sessionId: order.sessionId,
-          orderNumber: order.orderNumber || `ORD-${Date.now()}`,
+          orderNumber,
           status: order.status ?? "COMPLETED",
           paymentStatus: order.paymentStatus ?? "PAID",
           paymentMethod: order.paymentMethod ?? "CASH",
@@ -756,7 +775,7 @@ export async function upsertOrders(
             .insert(orderItems)
             .values({
               id: item.id ?? createLocalId("item"),
-              orderId: order.id,
+              orderId: localId,
               productId: item.productId,
               variantId: item.variantId,
               productName: item.productName ?? item.product?.name ?? null,
@@ -1611,9 +1630,15 @@ export async function createOfflineOrder(
   const sqlite = getSqliteDatabase();
   const now = new Date().toISOString();
   const orderId = createLocalId("ord");
+  // Persist these values in the outbox payload so retries identify the same
+  // order instead of creating a second server order after a timeout.
+  const clientOrderId = payload.clientOrderId ?? orderId;
+  const orderNumber = payload.orderNumber ?? `ORD-${orderId}`;
 
   const cleanPayload = {
     ...payload,
+    clientOrderId,
+    orderNumber,
     subTotal: Number(payload.subTotal) || 0,
     taxAmount: Number(payload.taxAmount) || 0,
     discountAmount: Number(payload.discountAmount) || 0,
@@ -1632,11 +1657,11 @@ export async function createOfflineOrder(
   sqlite.withTransactionSync(() => {
     sqlite.runSync(
       `INSERT INTO orders (
-        id, tenant_id, store_id, register_id, user_id, customer_id, session_id, 
+        id, tenant_id, store_id, register_id, user_id, customer_id, session_id, order_number,
         status, payment_status, payment_method, sub_total, tax_amount, 
         discount_amount, grand_total, paid_amount, change_amount, 
         payment_breakdown, sync_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderId,
         payload.tenantId || null,
@@ -1645,6 +1670,7 @@ export async function createOfflineOrder(
         cleanPayload.userId,
         cleanPayload.customerId ?? null,
         cleanPayload.sessionId ?? null,
+        orderNumber,
         "PENDING",
         cleanPayload.paymentStatus ?? "PAID",
         cleanPayload.paymentMethod,
