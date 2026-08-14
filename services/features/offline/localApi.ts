@@ -21,7 +21,7 @@ import {
 import { refreshIfOnline, pushIfOnline } from "@/services/offline/onlineFirst";
 import type { CloseSessionPayload } from "@/services/features/sessions/sessionTypes";
 import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 
 // ============================================
 // TAG TYPES
@@ -265,7 +265,17 @@ export const localApi = createApi({
           let query = db
             .select()
             .from(products)
-            .where(sql`${products.syncStatus} != 'pending_delete'`)
+            .where(
+              and(
+                sql`${products.syncStatus} != 'pending_delete'`,
+                storeId
+                  ? or(
+                      eq(products.storeId, storeId),
+                      sql`${products.storeId} IS NULL`,
+                    )
+                  : undefined,
+              ),
+            )
             .orderBy(desc(products.createdAt))
             .$dynamic();
 

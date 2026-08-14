@@ -72,6 +72,7 @@ type ModuleKey =
 export default function ManageScreen() {
   const dispatch = useAppDispatch();
   const { user, currentStoreId } = useAppSelector((state) => state.auth);
+  const isAdmin = user?.role === "ADMIN";
   const [moduleKey, setModuleKey] = useState<ModuleKey>("products");
   const [editor, setEditor] = useState<{
     open: boolean;
@@ -100,7 +101,9 @@ export default function ManageScreen() {
 
   const { data: staff = [], refetch: refetchStaff } = useGetLocalStaffQuery({});
   const { data: products = [], refetch: refetchProducts } =
-    useGetLocalProductsQuery({});
+    useGetLocalProductsQuery({
+      storeId: isAdmin ? undefined : currentStoreId || undefined,
+    });
   const { data: categories = [], refetch: refetchCategories } =
     useGetLocalCategoriesQuery({});
   const { data: suppliers = [], refetch: refetchSuppliers } =
@@ -151,7 +154,15 @@ export default function ManageScreen() {
 
   const isPrivileged = user?.role === "ADMIN" || user?.role === "MANAGER";
 
-  const storeOptions = useMemo(() => stores, [stores]);
+  const storeOptions = useMemo(
+    () =>
+      isAdmin
+        ? stores
+        : stores.filter((store: any) =>
+            user?.stores?.some((assigned: any) => assigned.id === store.id),
+          ),
+    [isAdmin, stores, user?.stores],
+  );
 
   if (!isPrivileged) {
     return (
@@ -213,7 +224,12 @@ export default function ManageScreen() {
 
   const handleSave = async (values: Record<string, any>) => {
     try {
-      const nextValues = buildPayload(moduleKey, values, currentStoreId);
+      const nextValues = buildPayload(
+        moduleKey,
+        values,
+        currentStoreId,
+        user?.tenantId,
+      );
 
       if (moduleKey === "staff") {
         if (editor.mode === "create") await createStaff(nextValues).unwrap();
@@ -2024,6 +2040,7 @@ function buildPayload(
   moduleKey: ModuleKey,
   values: Record<string, any>,
   currentStoreId: string | null,
+  tenantId?: string,
 ) {
   if (moduleKey === "staff") {
     const payload: any = {
@@ -2043,7 +2060,7 @@ function buildPayload(
 
   if (moduleKey === "products") {
     const payload: any = {
-      tenantId: "default",
+      tenantId: tenantId || "default",
       sku: String(values.sku ?? "").trim() || undefined,
       barcode: String(values.barcode ?? "").trim() || undefined,
       name: String(values.name ?? "").trim(),

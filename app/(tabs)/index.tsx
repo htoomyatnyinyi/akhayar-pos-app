@@ -40,7 +40,7 @@ const { height } = Dimensions.get("window");
 
 export default function POSScreen() {
   const dispatch = useAppDispatch();
-  const user = useAppSelector((state) => state.auth.user);
+  const { user, currentStoreId } = useAppSelector((state) => state.auth);
 
   // State
   const [searchQuery, setSearchQuery] = useState("");
@@ -66,6 +66,7 @@ export default function POSScreen() {
   } = useGetLocalProductsQuery({
     search: searchQuery,
     categoryId: selectedCategory,
+    storeId: currentStoreId || undefined,
   });
 
   const { data: categoriesData } = useGetLocalCategoriesQuery();
