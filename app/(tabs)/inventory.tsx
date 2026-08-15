@@ -355,6 +355,13 @@ export default function InventoryScreen() {
       item.rows?.[0]?.variantName ||
       item.variantOptions?.length
     ) {
+      const hasVariantRows = item.rows.some((row: any) => row.variantId);
+      const totalStock = hasVariantRows
+        ? item.rows.reduce(
+            (total: number, row: any) => total + Number(row.quantity || 0),
+            0,
+          )
+        : Number(item.rows?.[0]?.quantity || 0);
       return (
         <Card className="mb-3">
           <View className="flex-row items-center mb-3">
@@ -367,6 +374,9 @@ export default function InventoryScreen() {
               </Text>
               <Text className="text-slate-400 text-[10px] mt-1">
                 {item.variantOptions?.length || item.rows.length} variants • tap a row to adjust stock
+              </Text>
+              <Text className="text-emerald-300 text-[10px] font-bold mt-1">
+                Total stock: {totalStock}
               </Text>
               {item.variantOptions?.length > 0 &&
                 !item.rows.some((row: any) => row.variantId) && (
@@ -1214,6 +1224,11 @@ function NewMovementModal({
                       <Text className="text-white font-bold">
                         {selectedItem.name}
                       </Text>
+                      {selectedItem.variantName && (
+                        <Text className="text-amber-300 font-bold text-xs mt-1">
+                          Variant: {selectedItem.variantName}
+                        </Text>
+                      )}
                       <View className="flex-row items-center mt-0.5">
                         <Text className="text-sky-300/60 text-xs">
                           {selectedItem.sku}
@@ -1232,11 +1247,6 @@ function NewMovementModal({
                       <Text className="text-slate-400 text-xs mt-0.5">
                         Stock: {selectedItem.quantity}
                       </Text>
-                      {selectedItem.variantId && (
-                        <Text className="text-slate-500 text-[10px] mt-0.5">
-                          Variant: {selectedItem.variantName || selectedItem.variantId}
-                        </Text>
-                      )}
                     </View>
                     <TouchableOpacity
                       onPress={() => setSelectedInventoryId("")}
@@ -1278,6 +1288,11 @@ function NewMovementModal({
                             <Text className="text-slate-200 font-medium text-sm">
                               {item.name}
                             </Text>
+                            {item.variantName && (
+                              <Text className="text-amber-300/80 text-[10px] mt-0.5">
+                                Variant: {item.variantName}
+                              </Text>
+                            )}
                             {item.brandName && (
                               <Text className="text-purple-300/60 text-[9px]">
                                 {item.brandName}
@@ -1285,7 +1300,7 @@ function NewMovementModal({
                             )}
                           </View>
                           <Text className="text-slate-500 text-xs">
-                            Qty: {item.quantity}
+                            Stock: {item.quantity}
                           </Text>
                         </TouchableOpacity>
                       ))}

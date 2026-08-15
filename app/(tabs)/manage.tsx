@@ -11,11 +11,13 @@ import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { setStore } from "@/services/features/auth/authSlice";
 import { MaterialIcons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
   Pressable,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -23,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
 
 // ✅ Offline-first local APIs
 import {
@@ -101,8 +104,9 @@ export default function ManageScreen() {
     );
 
   const scopedStoreId = isAdmin ? undefined : currentStoreId || undefined;
-  const { data: staff = [], refetch: refetchStaff } =
-    useGetLocalStaffQuery({ storeId: scopedStoreId });
+  const { data: staff = [], refetch: refetchStaff } = useGetLocalStaffQuery({
+    storeId: scopedStoreId,
+  });
   const { data: products = [], refetch: refetchProducts } =
     useGetLocalProductsQuery({
       storeId: isAdmin ? undefined : currentStoreId || undefined,
@@ -460,6 +464,27 @@ export default function ManageScreen() {
                         >
                           {getSubtitle(moduleKey, item)}
                         </Text>
+                        {moduleKey === "products" &&
+                          Array.isArray(item.variants) &&
+                          item.variants.length > 0 && (
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              className="mt-2"
+                            >
+                              {item.variants.map((variant: any) => (
+                                <View
+                                  key={variant.id}
+                                  className="mr-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1"
+                                >
+                                  <Text className="text-[10px] font-semibold text-amber-200">
+                                    {variant.name} • $
+                                    {Number(variant.price ?? 0).toFixed(2)}
+                                  </Text>
+                                </View>
+                              ))}
+                            </ScrollView>
+                          )}
                       </View>
                     </View>
                     <Text className="text-sm font-medium text-slate-300">
@@ -1222,6 +1247,7 @@ function EditorModal({
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   const [createCategory] = useCreateLocalCategoryMutation();
   const [createSupplier] = useCreateLocalSupplierMutation();
@@ -1469,16 +1495,29 @@ function EditorModal({
                   value={fields.barcode ?? ""}
                   onChangeText={(v) => set("barcode", v)}
                 />
+                <View className="flex-row gap-2 mb-4">
+                  <TouchableOpacity
+                    onPress={() => setShowBarcodeScanner(true)}
+                    className="flex-1 rounded-xl border border-sky-400/30 bg-sky-500/15 py-3"
+                  >
+                    <Text className="text-center text-sky-200 font-bold text-xs">
+                      Scan barcode / QR
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => set("barcode", generateBarcode())}
+                    className="flex-1 rounded-xl border border-amber-400/30 bg-amber-500/15 py-3"
+                  >
+                    <Text className="text-center text-amber-200 font-bold text-xs">
+                      Auto-generate
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <Field
                   label="Description"
                   value={fields.description ?? ""}
                   onChangeText={(v) => set("description", v)}
                   multiline
-                />
-                <Field
-                  label="Brand"
-                  value={fields.brand ?? ""}
-                  onChangeText={(v) => set("brand", v)}
                 />
                 <Field
                   label="Cost Price"
@@ -1516,17 +1555,20 @@ function EditorModal({
                   }}
                   keyboardType="numeric"
                 />
-                <Field
-                  label="Manufacturing Date"
-                  value={fields.manufacturingDate ?? ""}
-                  onChangeText={(v) => set("manufacturingDate", v)}
-                  placeholder="YYYY-MM-DD"
+                <VariantEditor
+                  variants={fields.variants ?? []}
+                  editable={mode === "create"}
+                  onChange={(variants) => set("variants", variants)}
                 />
-                <Field
+                <DateField
+                  label="Manufacturing Date"
+                  value={fields.manufacturingDate}
+                  onChange={(value) => set("manufacturingDate", value)}
+                />
+                <DateField
                   label="Expiry Date"
-                  value={fields.expiryDate ?? ""}
-                  onChangeText={(v) => set("expiryDate", v)}
-                  placeholder="YYYY-MM-DD"
+                  value={fields.expiryDate}
+                  onChange={(value) => set("expiryDate", value)}
                 />
 
                 {/* Category Selector */}
@@ -1936,6 +1978,14 @@ function EditorModal({
             ) : null}
           </ScrollView>
         </SafeAreaView>
+        <BarcodeScannerModal
+          visible={showBarcodeScanner}
+          onClose={() => setShowBarcodeScanner(false)}
+          onScan={(value) => {
+            set("barcode", value);
+            setShowBarcodeScanner(false);
+          }}
+        />
       </View>
     </Modal>
   );
@@ -1944,6 +1994,235 @@ function EditorModal({
 // ============================================
 // FIELD COMPONENT
 // ============================================
+
+function generateBarcode() {
+  const digits = `${Date.now()}`.slice(-12).padStart(12, "0");
+  const checksum = digits.split("").reduce((sum, digit, index) => {
+    return sum + Number(digit) * (index % 2 === 0 ? 1 : 3);
+  }, 0);
+  return `${digits}${(10 - (checksum % 10)) % 10}`;
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  onChange: (value?: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const parsed = value ? new Date(value) : new Date();
+  const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+
+  if (open && Platform.OS === "android") {
+    return (
+      <View className="mb-4">
+        <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
+          {label}
+        </Text>
+        <DateTimePicker
+          value={date}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            if (event.type === "set" && selectedDate) {
+              onChange(selectedDate.toISOString());
+            }
+            setOpen(false);
+          }}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View className="mb-4">
+      <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
+        {label}
+      </Text>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        className="flex-row items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
+      >
+        <Text className={value ? "text-white" : "text-slate-500"}>
+          {value ? date.toLocaleDateString() : "Select date"}
+        </Text>
+        <MaterialIcons name="event" size={20} color="#94a3b8" />
+      </TouchableOpacity>
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onDismiss={() => setOpen(false)}
+        onRequestClose={() => setOpen(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/70 px-6">
+          <View className="w-full rounded-3xl bg-slate-900 p-5 border border-white/10">
+            <Text className="text-white font-black text-lg mb-3">{label}</Text>
+            <DateTimePicker
+              value={date}
+              mode="date"
+              display="spinner"
+              onChange={(event, selectedDate) => {
+                if (event.type === "set" && selectedDate) {
+                  onChange(selectedDate.toISOString());
+                }
+              }}
+              themeVariant="dark"
+            />
+            <View className="flex-row gap-3 mt-4">
+              <TouchableOpacity
+                onPress={() => setOpen(false)}
+                className="flex-1 rounded-xl bg-white/10 py-3"
+              >
+                <Text className="text-center text-slate-300 font-bold">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setOpen(false)}
+                className="flex-1 rounded-xl bg-sky-500 py-3"
+              >
+                <Text className="text-center text-white font-bold">Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function VariantEditor({
+  variants,
+  editable,
+  onChange,
+}: {
+  variants: any[];
+  editable: boolean;
+  onChange: (variants: any[]) => void;
+}) {
+  const update = (index: number, key: string, value: any) => {
+    onChange(
+      variants.map((variant, variantIndex) =>
+        variantIndex === index ? { ...variant, [key]: value } : variant,
+      ),
+    );
+  };
+
+  return (
+    <View className="mb-5">
+      <View className="flex-row items-center justify-between mb-2">
+        <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
+          Variants
+        </Text>
+        {editable && (
+          <TouchableOpacity
+            onPress={() =>
+              onChange([
+                ...variants,
+                {
+                  name: "",
+                  sku: "",
+                  price: 0,
+                  costPrice: 0,
+                  color: "",
+                  size: "",
+                  initialStock: 0,
+                },
+              ])
+            }
+            className="rounded-full bg-amber-500/15 border border-amber-400/30 px-3 py-1.5"
+          >
+            <Text className="text-amber-200 text-xs font-bold">
+              + Add variant
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {!variants.length ? (
+        <Text className="text-slate-500 text-xs">
+          No variants. Product stock will be managed at product level.
+        </Text>
+      ) : (
+        variants.map((variant, index) => (
+          <View
+            key={variant.id ?? index}
+            className="rounded-2xl border border-white/10 bg-white/5 p-3 mb-3"
+          >
+            {editable ? (
+              <>
+                <Field
+                  label="Variant name"
+                  value={variant.name ?? ""}
+                  onChangeText={(value) => update(index, "name", value)}
+                />
+                <Field
+                  label="Variant SKU"
+                  value={variant.sku ?? ""}
+                  onChangeText={(value) => update(index, "sku", value)}
+                />
+                <View className="flex-row gap-2">
+                  <View className="flex-1">
+                    <Field
+                      label="Price"
+                      value={String(variant.price ?? 0)}
+                      keyboardType="decimal-pad"
+                      onChangeText={(value) =>
+                        update(index, "price", Number(value) || 0)
+                      }
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Field
+                      label="Cost"
+                      value={String(variant.costPrice ?? 0)}
+                      keyboardType="decimal-pad"
+                      onChangeText={(value) =>
+                        update(index, "costPrice", Number(value) || 0)
+                      }
+                    />
+                  </View>
+                </View>
+                <Field
+                  label="Initial stock"
+                  value={String(variant.initialStock ?? 0)}
+                  keyboardType="numeric"
+                  onChangeText={(value) =>
+                    update(index, "initialStock", Number(value) || 0)
+                  }
+                />
+                <TouchableOpacity
+                  onPress={() =>
+                    onChange(variants.filter((_, i) => i !== index))
+                  }
+                  className="self-end rounded-xl bg-rose-500/15 px-3 py-2"
+                >
+                  <Text className="text-rose-300 text-xs font-bold">
+                    Remove variant
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View>
+                <Text className="text-white font-bold">{variant.name}</Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  SKU: {variant.sku} • ${Number(variant.price ?? 0).toFixed(2)}
+                </Text>
+                <Text className="text-amber-300 text-xs mt-1">
+                  Manage quantity from Inventory
+                </Text>
+              </View>
+            )}
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
 
 function Field({
   label,
@@ -2089,7 +2368,7 @@ function buildPayload(
     const payload: any = {
       tenantId: tenantId || "default",
       sku: String(values.sku ?? "").trim() || undefined,
-      barcode: String(values.barcode ?? "").trim() || undefined,
+      barcode: String(values.barcode ?? "").trim() || generateBarcode(),
       name: String(values.name ?? "").trim(),
       description: String(values.description ?? "").trim() || undefined,
       brand: String(values.brand ?? "").trim() || undefined,
@@ -2107,6 +2386,18 @@ function buildPayload(
       initialStock: values.initialStock
         ? Number(values.initialStock)
         : undefined,
+      variants:
+        Array.isArray(values.variants) && values.variants.length > 0
+          ? values.variants.map((variant: any) => ({
+              name: String(variant.name ?? "").trim(),
+              sku: String(variant.sku ?? "").trim() || undefined,
+              price: Number(variant.price ?? 0),
+              costPrice: Number(variant.costPrice ?? 0),
+              color: String(variant.color ?? "").trim() || undefined,
+              size: String(variant.size ?? "").trim() || undefined,
+              initialStock: Number(variant.initialStock ?? 0),
+            }))
+          : undefined,
     };
     Object.keys(payload).forEach((key) => {
       if (payload[key] === undefined) delete payload[key];
