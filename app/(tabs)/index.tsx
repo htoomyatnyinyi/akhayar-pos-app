@@ -55,6 +55,8 @@ export default function POSScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("CASH");
   const [customerSearch, setCustomerSearch] = useState("");
+  const [selectedProductForVariants, setSelectedProductForVariants] =
+    useState<any>(null);
 
   // Animations
   const slideAnim = useRef(new Animated.Value(height)).current;
@@ -71,26 +73,33 @@ export default function POSScreen() {
   });
   const { data: variantsData } = useGetLocalVariantsQuery(undefined);
 
+  const getProductVariants = React.useCallback(
+    (product: any) =>
+      (variantsData || []).filter(
+        (variant: any) =>
+          variant.productId === product.id ||
+          variant.productId === product.remoteId,
+      ),
+    [variantsData],
+  );
+
   const saleItems = React.useMemo(() => {
     if (!productsData) return [];
     return productsData.flatMap((product: any) => {
-      const variants = (variantsData || []).filter(
-        (variant: any) =>
-          variant.productId === product.id || variant.productId === product.remoteId,
-      );
+      const variants = getProductVariants(product);
       if (!variants.length) return [product];
       return variants.map((variant: any) => ({
         ...product,
         id: `${product.id}::variant::${variant.id}`,
         productId: product.id,
-        variantId: variant.id,
+        variantId: variant.remoteId || variant.id,
         name: `${product.name} — ${variant.name}`,
         sku: variant.sku || product.sku,
         barcode: variant.barcode || product.barcode,
         sellingPrice: variant.price ?? product.sellingPrice,
       }));
     });
-  }, [productsData, variantsData]);
+  }, [productsData, getProductVariants]);
 
   const { data: categoriesData } = useGetLocalCategoriesQuery(undefined);
   const { data: customersData } = useGetLocalCustomersQuery({
@@ -102,6 +111,37 @@ export default function POSScreen() {
   const { data: inventoryData } = useGetLocalInventoryQuery({
     storeId: currentStoreId || undefined,
   });
+
+  const matchesId = (value: any, target: any) =>
+    value != null &&
+    target != null &&
+    (String(value) === String(target) ||
+      String(value) === String(target.id) ||
+      String(value) === String(target.remoteId));
+  const findInventory = (product: any, variant?: any) =>
+    (() => {
+      const rows = inventoryData?.filter((inv: any) =>
+        matchesId(inv.productId, product),
+      ) ?? [];
+      if (!variant) return rows.find((inv: any) => inv.variantId == null);
+      const exact = rows.find((inv: any) => matchesId(inv.variantId, variant));
+      if (exact) return exact;
+      // Backward-compatible mode: the backend has variants but stock is still
+      // stored on the parent product row (variantId = null).
+      const hasSeparatedVariantStock = rows.some(
+        (inv: any) => inv.variantId != null,
+      );
+      return hasSeparatedVariantStock
+        ? undefined
+        : rows.find((inv: any) => inv.variantId == null);
+    })();
+  const hasSeparatedVariantInventory = (product: any, variant: any) =>
+    inventoryData?.some(
+      (inv: any) =>
+        matchesId(inv.productId, product) &&
+        inv.variantId != null &&
+        matchesId(inv.variantId, variant),
+    ) ?? false;
 
   // Mutations
   const [createOrder] = useCreateLocalOrderMutation();
@@ -121,20 +161,15 @@ export default function POSScreen() {
 
   // Check if any items are out of stock
   const hasOutOfStockItems = cartItems.some((item) => {
-    const inventory = inventoryData?.find(
-      (inv: any) =>
-        inv.productId === (item.productId || item.id) &&
-        (inv.variantId || undefined) === (item.variantId || undefined),
-    );
+    const inventory = findInventory(item.productId || item.id, item.variantId);
     return inventory && inventory.quantity < item.qty;
   });
 
   // Handlers
   const handleAddToCart = (product: any) => {
-    const inventory = inventoryData?.find(
-      (inv: any) =>
-        inv.productId === (product.productId || product.id) &&
-        (inv.variantId || undefined) === (product.variantId || undefined),
+    const inventory = findInventory(
+      product.productId || product.id,
+      product.variantId,
     );
     if (inventory && inventory.quantity <= 0) {
       Alert.alert("Out of Stock", `${product.name} is currently out of stock.`);
@@ -153,6 +188,15 @@ export default function POSScreen() {
         stockQuantity: inventory?.quantity || 0,
       }),
     );
+  };
+
+  const handleProductPress = (product: any) => {
+    const variants = getProductVariants(product);
+    if (variants.length > 0) {
+      setSelectedProductForVariants(product);
+      return;
+    }
+    handleAddToCart(product);
   };
 
   const handleUpdateQuantity = (id: string, qty: number) => {
@@ -270,7 +314,15 @@ export default function POSScreen() {
           tenantId: user?.tenantId,
           storeId: activeSession.storeId,
           productId: item.productId || item.id,
-          variantId: item.variantId,
+          // If the backend still stores shared product stock, send the
+          // movement against the product row while keeping variantId on the
+          // order item for reporting.
+          variantId: hasSeparatedVariantInventory(
+            item.productId || item.id,
+            item.variantId,
+          )
+            ? item.variantId
+            : undefined,
           quantity: item.qty,
           type: "OUT",
           referenceId: result.id,
@@ -295,11 +347,7 @@ export default function POSScreen() {
   };
 
   const renderCartItem = ({ item }: { item: any }) => {
-    const inventory = inventoryData?.find(
-      (inv: any) =>
-        inv.productId === (item.productId || item.id) &&
-        (inv.variantId || undefined) === (item.variantId || undefined),
-    );
+    const inventory = findInventory(item.productId || item.id, item.variantId);
     const maxQty = inventory?.quantity || 0;
 
     return (
@@ -354,21 +402,39 @@ export default function POSScreen() {
 
   // ✅ Updated renderProduct to show stock quantity
   const renderProduct = ({ item }: { item: any }) => {
-    const inCart = cartItems.find((i) => i.id === item.id);
-    const inventory = inventoryData?.find(
-      (inv: any) =>
-        inv.productId === (item.productId || item.id) &&
-        (inv.variantId || undefined) === (item.variantId || undefined),
+    const variants = getProductVariants(item);
+    const inCart = cartItems.find(
+      (cartItem) => cartItem.productId === item.id && !cartItem.variantId,
     );
-    const stockQty = inventory?.quantity ?? 0;
-    const isOutOfStock = stockQty === 0;
+    const inventory = findInventory(item.id);
+    const productRows = inventoryData?.filter((inv: any) =>
+      matchesId(inv.productId, item),
+    ) ?? [];
+    const hasSeparatedVariantStock = productRows.some(
+      (inv: any) => inv.variantId != null,
+    );
+    const stockQty = variants.length && hasSeparatedVariantStock
+      ? variants.reduce(
+          (total: number, variant: any) =>
+            total + (findInventory(item, variant)?.quantity || 0),
+          0,
+        )
+      : inventory?.quantity ?? 0;
+    const isOutOfStock = variants.length
+      ? (hasSeparatedVariantStock
+          ? variants.every(
+          (variant: any) =>
+            (findInventory(item, variant)?.quantity || 0) <= 0,
+            )
+          : stockQty <= 0)
+      : stockQty === 0;
 
     return (
       <TouchableOpacity
         className={`flex-1 m-2 active:scale-95 transition-transform ${
           isOutOfStock ? "opacity-50" : ""
         }`}
-        onPress={() => !isOutOfStock && handleAddToCart(item)}
+        onPress={() => !isOutOfStock && handleProductPress(item)}
         disabled={isOutOfStock}
       >
         <Card className="flex-1 p-4 bg-slate-900/80">
@@ -397,16 +463,18 @@ export default function POSScreen() {
             className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mb-3"
             numberOfLines={1}
           >
-            SKU: {item.sku}
+            {variants.length ? `${variants.length} variants` : `SKU: ${item.sku}`}
           </Text>
           <View className="flex-row items-center justify-between mt-auto">
             <View>
               <Text className="text-white font-black text-lg">
-                ${item.sellingPrice?.toFixed(2) ?? "0.00"}
+                {variants.length
+                  ? `From $${Math.min(...variants.map((v: any) => Number(v.price) || 0)).toFixed(2)}`
+                  : `$${item.sellingPrice?.toFixed(2) ?? "0.00"}`}
               </Text>
               {/* ✅ Stock label */}
               <Text className="text-slate-400 text-[10px] mt-0.5">
-                Stock: {stockQty}
+                {variants.length ? `Choose variant • ${stockQty} total` : `Stock: ${stockQty}`}
               </Text>
             </View>
             {!isOutOfStock && (
@@ -503,7 +571,7 @@ export default function POSScreen() {
         </View>
 
         <FlatList
-          data={saleItems}
+          data={productsData || []}
           keyExtractor={(item) => item.id}
           numColumns={2}
           contentContainerStyle={{
@@ -765,6 +833,87 @@ export default function POSScreen() {
                 </View>
               </View>
             </Animated.View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={!!selectedProductForVariants}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setSelectedProductForVariants(null)}
+        >
+          <View className="flex-1 bg-black/70 justify-end">
+            <View className="bg-slate-900 rounded-t-3xl p-5 max-h-[75%]">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="flex-1 mr-3">
+                  <Text className="text-white font-black text-xl">
+                    {selectedProductForVariants?.name}
+                  </Text>
+                  <Text className="text-slate-400 text-sm mt-1">
+                    Choose a variant
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setSelectedProductForVariants(null)}
+                  className="bg-white/10 rounded-full p-2"
+                >
+                  <MaterialIcons name="close" size={20} color="#cbd5e1" />
+                </TouchableOpacity>
+              </View>
+
+              <FlatList
+                data={getProductVariants(selectedProductForVariants || {})}
+                keyExtractor={(variant: any) => variant.id}
+                renderItem={({ item: variant }: { item: any }) => {
+                  const stock =
+                    findInventory(selectedProductForVariants, variant)
+                      ?.quantity || 0;
+                  const saleItem = saleItems.find(
+                    (item: any) =>
+                      item.variantId === (variant.remoteId || variant.id),
+                  );
+                  const unavailable = stock <= 0;
+                  return (
+                    <TouchableOpacity
+                      disabled={unavailable}
+                      onPress={() => {
+                        if (saleItem) handleAddToCart(saleItem);
+                        setSelectedProductForVariants(null);
+                      }}
+                      className={`flex-row items-center p-4 mb-3 rounded-2xl border ${
+                        unavailable
+                          ? "bg-white/5 border-white/5 opacity-50"
+                          : "bg-white/8 border-sky-400/30"
+                      }`}
+                    >
+                      <View className="flex-1">
+                        <Text className="text-white font-bold text-base">
+                          {variant.name}
+                        </Text>
+                        <Text className="text-slate-400 text-xs mt-1">
+                          {variant.color || variant.size
+                            ? [variant.color, variant.size]
+                                .filter(Boolean)
+                                .join(" • ")
+                            : variant.sku}
+                        </Text>
+                        <Text className="text-slate-500 text-[10px] mt-1">
+                          SKU: {variant.sku} • Stock: {stock}
+                        </Text>
+                      </View>
+                      <Text className="text-sky-300 font-black text-lg">
+                        ${Number(variant.price || 0).toFixed(2)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <Text className="text-slate-400 text-center py-8">
+                    No variants available
+                  </Text>
+                }
+              />
+            </View>
           </View>
         </Modal>
 

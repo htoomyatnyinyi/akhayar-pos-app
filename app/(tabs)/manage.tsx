@@ -46,6 +46,7 @@ import {
   useGetLocalCategoriesQuery,
   useGetLocalCustomersQuery,
   useGetLocalProductsQuery,
+  useGetLocalVariantsQuery,
   useGetLocalStaffQuery,
   useGetLocalStoresQuery,
   useGetLocalSuppliersQuery,
@@ -106,6 +107,7 @@ export default function ManageScreen() {
     useGetLocalProductsQuery({
       storeId: isAdmin ? undefined : currentStoreId || undefined,
     });
+  const { data: variants = [] } = useGetLocalVariantsQuery(undefined);
   const { data: categories = [], refetch: refetchCategories } =
     useGetLocalCategoriesQuery({});
   const { data: suppliers = [], refetch: refetchSuppliers } =
@@ -212,10 +214,23 @@ export default function ManageScreen() {
     },
   ];
 
+  const productsWithVariants = useMemo(
+    () =>
+      products.map((product: any) => ({
+        ...product,
+        variants: variants.filter(
+          (variant: any) =>
+            variant.productId === product.id ||
+            variant.productId === product.remoteId,
+        ),
+      })),
+    [products, variants],
+  );
+
   const list = getModuleList({
     moduleKey,
     staff,
-    products,
+    products: productsWithVariants,
     stores,
     categories,
     customers,
@@ -559,8 +574,12 @@ function getModuleList(input: any) {
 function getSubtitle(moduleKey: ModuleKey, item: any) {
   if (moduleKey === "staff")
     return `${item.role} • ${item.email ?? "no email"}`;
-  if (moduleKey === "products")
-    return `${item.sku || "N/A"} • Cost: $${Number(item.costPrice ?? 0).toFixed(2)}`;
+  if (moduleKey === "products") {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    return variants.length
+      ? `${variants.length} variants • ${variants.map((v: any) => v.name).join(", ")}`
+      : `${item.sku || "N/A"} • Cost: $${Number(item.costPrice ?? 0).toFixed(2)}`;
+  }
   if (moduleKey === "stores") return item.address ?? "No address";
   if (moduleKey === "categories") return item.slug ?? "No slug";
   if (moduleKey === "customers") return item.phone ?? item.code;
@@ -574,8 +593,14 @@ function getSubtitle(moduleKey: ModuleKey, item: any) {
 
 function getRightLabel(moduleKey: ModuleKey, item: any) {
   if (moduleKey === "staff") return item.isActive ? "Active" : "Inactive";
-  if (moduleKey === "products")
+  if (moduleKey === "products") {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    if (variants.length) {
+      const prices = variants.map((v: any) => Number(v.price ?? 0));
+      return `From $${Math.min(...prices).toFixed(2)}`;
+    }
     return `$${Number(item.sellingPrice ?? 0).toFixed(2)}`;
+  }
   if (moduleKey === "stores") return item.isActive ? "Open" : "Closed";
   if (moduleKey === "categories") return item.isActive ? "Live" : "Off";
   if (moduleKey === "customers") return item.tier ?? "BRONZE";

@@ -106,6 +106,11 @@ export default function InventoryScreen() {
             (v: any) => v.id === inv.variantId || v.remoteId === inv.variantId,
           )
         : undefined;
+      const variantOptions = variantsData?.filter(
+        (candidate: any) =>
+          candidate.productId === product?.id ||
+          candidate.productId === product?.remoteId,
+      ) ?? [];
       const brand = product?.brandId
         ? brands?.find((b: any) => b.id === product.brandId)
         : null;
@@ -113,6 +118,7 @@ export default function InventoryScreen() {
         ...inv,
         name: product?.name || "Unknown Product",
         variantName: variant?.name || null,
+        variantOptions,
         sku: variant?.sku || product?.sku || "N/A",
         sellingPrice: variant?.price ?? product?.sellingPrice ?? 0,
         costPrice: variant?.costPrice ?? product?.costPrice ?? 0,
@@ -134,6 +140,17 @@ export default function InventoryScreen() {
       item.brandName?.toLowerCase().includes(q)
     );
   });
+
+  const inventoryGroups = React.useMemo(() => {
+    const groups = new Map<string, any>();
+    for (const row of filteredInventory) {
+      const key = row.productId;
+      const group = groups.get(key);
+      if (group) group.rows.push(row);
+      else groups.set(key, { ...row, rows: [row] });
+    }
+    return Array.from(groups.values());
+  }, [filteredInventory]);
 
   const totalProducts = inventoryWithDetails.length;
   const lowStockCount = inventoryWithDetails.filter(
@@ -325,12 +342,76 @@ export default function InventoryScreen() {
   };
 
   const renderStockItem = ({ item }: { item: any }) => {
-    const badge = getStockBadge(item.quantity);
+    if (
+      item.rows?.length > 1 ||
+      item.rows?.[0]?.variantName ||
+      item.variantOptions?.length
+    ) {
+      return (
+        <Card className="mb-3">
+          <View className="flex-row items-center mb-3">
+            <View className="h-11 w-11 rounded-2xl bg-white/8 items-center justify-center mr-3 border border-white/5">
+              <MaterialIcons name="inventory-2" size={21} color="#94a3b8" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-white font-bold text-sm" numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text className="text-slate-400 text-[10px] mt-1">
+                {item.variantOptions?.length || item.rows.length} variants • tap a row to adjust stock
+              </Text>
+              {item.variantOptions?.length > 0 &&
+                !item.rows.some((row: any) => row.variantId) && (
+                  <Text className="text-amber-300/80 text-[10px] mt-1">
+                    {item.variantOptions
+                      .map((variant: any) => variant.name)
+                      .join(" • ")} (shared stock)
+                  </Text>
+                )}
+            </View>
+          </View>
+          {item.rows.map((variantRow: any) => {
+            const badge = getStockBadge(variantRow.quantity);
+            return (
+              <TouchableOpacity
+                key={variantRow.id}
+                className="flex-row items-center py-3 px-3 mb-2 rounded-xl bg-white/5 border border-white/5"
+                onPress={() => {
+                  setSelectedInventory(variantRow);
+                  setShowAdjustModal(true);
+                }}
+              >
+                <View className="flex-1">
+                  <Text className="text-amber-300 font-semibold text-xs">
+                    {variantRow.variantName ||
+                      (item.variantOptions?.length
+                        ? "Shared product stock"
+                        : "Variant")}
+                  </Text>
+                  <Text className="text-slate-400 text-[10px] mt-1">
+                    SKU: {variantRow.sku}
+                  </Text>
+                </View>
+                <View className="items-end">
+                  <Text className="text-white font-black text-base">
+                    {variantRow.quantity}
+                  </Text>
+                  <Pill label={badge.label} tone={badge.tone} />
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </Card>
+      );
+    }
+
+    const row = item.rows?.[0] || item;
+    const badge = getStockBadge(row.quantity);
     return (
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => {
-          setSelectedInventory(item);
+          setSelectedInventory(row);
           setShowAdjustModal(true);
         }}
       >
@@ -341,16 +422,16 @@ export default function InventoryScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-white font-bold text-sm" numberOfLines={1}>
-                {item.name}
+                {row.name}
               </Text>
-              {item.variantName && (
+              {row.variantName && (
                 <Text className="text-amber-300/90 text-[10px] font-semibold mt-0.5" numberOfLines={1}>
-                  Variant: {item.variantName}
+                  Variant: {row.variantName}
                 </Text>
               )}
               <View className="flex-row items-center mt-0.5">
                 <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px]">
-                  {item.sku}
+                  {row.sku}
                 </Text>
                 {item.brandName && (
                   <>
@@ -364,7 +445,7 @@ export default function InventoryScreen() {
             </View>
             <View className="items-end">
               <Text className="text-white font-black text-lg">
-                {item.quantity}
+                {row.quantity}
               </Text>
               <Pill label={badge.label} tone={badge.tone} />
             </View>
@@ -377,6 +458,12 @@ export default function InventoryScreen() {
   const renderMovementItem = ({ item }: { item: any }) => {
     const icon = getMovementIcon(item.type);
     const isIn = ["IN", "TRANSFER_IN"].includes(item.type);
+    const movementVariant = item.variantId
+      ? variantsData?.find(
+          (variant: any) =>
+            variant.id === item.variantId || variant.remoteId === item.variantId,
+        )
+      : undefined;
     return (
       <Card className="mb-3">
         <View className="flex-row items-center">
@@ -395,7 +482,7 @@ export default function InventoryScreen() {
             </Text>
             {item.variantId && (
               <Text className="text-slate-500 text-[9px] mt-0.5">
-                Variant: {item.variantId}
+                Variant: {movementVariant?.name || item.variantId}
               </Text>
             )}
           </View>
@@ -531,8 +618,8 @@ export default function InventoryScreen() {
       {/* Content */}
       {activeTab === "stock" ? (
         <FlatList
-          data={filteredInventory}
-          keyExtractor={(item) => item.id}
+          data={inventoryGroups}
+          keyExtractor={(item) => item.productId}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
           renderItem={renderStockItem}
           ListEmptyComponent={
@@ -700,7 +787,10 @@ function AdjustStockModal({
                 {inventory.variantId && (
                   <>
                     <Divider />
-                    <StatRow label="Variant" value={inventory.variantId} />
+                    <StatRow
+                      label="Variant"
+                      value={inventory.variantName || inventory.variantId}
+                    />
                   </>
                 )}
               </Card>
@@ -968,7 +1058,7 @@ function NewMovementModal({
                       </Text>
                       {selectedItem.variantId && (
                         <Text className="text-slate-500 text-[10px] mt-0.5">
-                          Variant: {selectedItem.variantId}
+                          Variant: {selectedItem.variantName || selectedItem.variantId}
                         </Text>
                       )}
                     </View>

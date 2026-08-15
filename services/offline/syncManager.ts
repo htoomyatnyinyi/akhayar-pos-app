@@ -594,8 +594,30 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
       // Upsert products first
       await upsertProducts(productsData, tenantId);
 
+      // Some product responses include stock under `inventories` (or
+      // `inventory`). Keep those rows as well; the dedicated inventory pull
+      // below can later refresh them with the authoritative values.
+      const nestedInventory = productsData.flatMap((product: any) => {
+        const rows = Array.isArray(product.inventories)
+          ? product.inventories
+          : Array.isArray(product.inventory)
+            ? product.inventory
+            : [];
+        return rows.map((row: any) => ({
+          ...row,
+          productId:
+            row.productId ?? row.product_id ?? product.id ?? product._id,
+          tenantId: row.tenantId ?? row.tenant_id ?? product.tenantId ?? tenantId,
+        }));
+      });
+      if (nestedInventory.length > 0) {
+        await upsertInventory(nestedInventory, tenantId);
+      }
+
       // Extract and upsert variants from product data
-      const allVariants = productsData.flatMap((p: any) => p.variants || []);
+      const allVariants = productsData.flatMap((p: any) =>
+        Array.isArray(p.variants) ? p.variants : [],
+      );
       if (allVariants.length > 0) {
         const variantsWithTenant = allVariants.map((v: any) => ({
           ...v,
@@ -614,9 +636,6 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
     return { synced: 0 };
   }
 }
-
-// We no longer need a separate pullProductVariants – it's now inside pullProducts.
-// But keep it if you want to keep the code; we can remove the call from syncNow.
 
 async function pullInventory(dispatch: AppDispatch, tenantId: string) {
   try {

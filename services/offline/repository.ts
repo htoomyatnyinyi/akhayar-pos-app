@@ -176,47 +176,76 @@ export function normalizeProduct(
 export function normalizeProductVariant(
   variant: any,
 ): typeof productVariants.$inferInsert {
+  const id = variant.id ?? variant._id ?? variant.remoteId ?? variant.remote_id;
+  const productId =
+    variant.productId ??
+    variant.product_id ??
+    variant.product?.id ??
+    variant.product?._id;
   return {
-    id: variant.id,
-    remoteId: variant.remoteId,
-    name: variant.name || "Unnamed Variant",
-    productId: variant.productId,
-    tenantId: variant.tenantId,
-    sku: variant.sku || `VAR-${Date.now()}`,
-    barcode: variant.barcode,
-    price: Number(variant.price ?? 0),
-    costPrice: Number(variant.costPrice ?? 0),
+    id,
+    remoteId: variant.remoteId ?? variant.remote_id ?? variant.id ?? variant._id,
+    name: variant.name ?? variant.variantName ?? variant.variant_name ?? "Unnamed Variant",
+    productId,
+    tenantId: variant.tenantId ?? variant.tenant_id,
+    sku: variant.sku ?? `VAR-${String(id ?? Date.now()).slice(-8)}`,
+    barcode: variant.barcode ?? variant.bar_code,
+    price: Number(variant.price ?? variant.sellingPrice ?? variant.selling_price ?? 0),
+    costPrice: Number(variant.costPrice ?? variant.cost_price ?? 0),
     color: variant.color,
     size: variant.size,
-    weight: variant.weight ? Number(variant.weight) : null,
-    isActive: variant.isActive ?? true,
+    weight: variant.weight != null ? Number(variant.weight) : null,
+    isActive: variant.isActive ?? variant.is_active ?? true,
     syncStatus: "synced",
     syncError: null,
-    createdAt: variant.createdAt ?? new Date().toISOString(),
-    updatedAt: variant.updatedAt ?? new Date().toISOString(),
+    createdAt: variant.createdAt ?? variant.created_at ?? new Date().toISOString(),
+    updatedAt: variant.updatedAt ?? variant.updated_at ?? new Date().toISOString(),
     lastSyncedAt: new Date().toISOString(),
   };
 }
 
 export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
-  const productId = inv.productId ?? inv.product_id ?? inv.product?.id ?? inv.product?._id;
+  const rawProductId =
+    inv.productId ?? inv.product_id ?? inv.product?.id ?? inv.product?._id;
+  const productId =
+    rawProductId && typeof rawProductId === "object"
+      ? rawProductId.id ?? rawProductId._id
+      : rawProductId;
   const storeId = inv.storeId ?? inv.store_id ?? inv.store?.id ?? inv.store?._id;
+  const rawVariantId =
+    inv.variantId ??
+    inv.variant_id ??
+    inv.variant?.id ??
+    inv.variant?._id ??
+    null;
+  const variantId =
+    rawVariantId && typeof rawVariantId === "object"
+      ? rawVariantId.id ?? rawVariantId._id
+      : rawVariantId;
   return {
     id: inv.id ?? inv._id ?? inv.remoteId,
     remoteId: inv.remoteId ?? inv.remote_id ?? inv.id,
     tenantId: inv.tenantId ?? inv.tenant_id,
     storeId,
     productId: productId && String(productId).trim() !== "" ? productId : null,
-    variantId:
-      (inv.variantId ?? inv.variant_id) &&
-      String(inv.variantId ?? inv.variant_id).trim() !== ""
-        ? inv.variantId ?? inv.variant_id
-        : null,
-    quantity: Number(inv.quantity ?? inv.availableQuantity ?? inv.available_quantity ?? 0),
-    reservedQty: Number(inv.reservedQty ?? 0),
-    reorderPoint: Number(inv.reorderPoint ?? 10),
-    reorderQty: Number(inv.reorderQty ?? 0),
-    shelfLocation: inv.shelfLocation,
+    variantId: variantId && String(variantId).trim() !== "" ? variantId : null,
+    quantity: Number(
+      inv.quantity ??
+        inv.availableQuantity ??
+        inv.available_quantity ??
+        inv.stockQuantity ??
+        inv.stock_quantity ??
+        inv.currentStock ??
+        inv.current_stock ??
+        inv.onHand ??
+        inv.on_hand ??
+        inv.stock ??
+        0,
+    ),
+    reservedQty: Number(inv.reservedQty ?? inv.reserved_qty ?? 0),
+    reorderPoint: Number(inv.reorderPoint ?? inv.reorder_point ?? 10),
+    reorderQty: Number(inv.reorderQty ?? inv.reorder_qty ?? 0),
+    shelfLocation: inv.shelfLocation ?? inv.shelf_location,
     version: Number(inv.version ?? 0),
     syncStatus: "synced",
     syncError: null,
@@ -1741,13 +1770,27 @@ export async function createOfflineOrder(
       );
 
       const variantCondition = item.variantId
-        ? `AND variant_id = '${item.variantId}'`
+        ? `AND (variant_id = '${item.variantId}' OR (variant_id IS NULL AND NOT EXISTS (
+             SELECT 1 FROM inventory AS variant_inventory
+             WHERE variant_inventory.product_id = ?
+               AND variant_inventory.store_id = ?
+               AND variant_inventory.variant_id = '${item.variantId}'
+           )))`
         : `AND variant_id IS NULL`;
 
       sqlite.runSync(
         `UPDATE inventory SET quantity = MAX(quantity - ?, 0), updated_at = ? 
          WHERE product_id = ? AND store_id = ? ${variantCondition}`,
-        [item.quantity, now, item.productId, cleanPayload.storeId],
+        item.variantId
+          ? [
+              item.quantity,
+              now,
+              item.productId,
+              cleanPayload.storeId,
+              item.productId,
+              cleanPayload.storeId,
+            ]
+          : [item.quantity, now, item.productId, cleanPayload.storeId],
       );
     }
 
@@ -1867,13 +1910,26 @@ export async function createOfflineInventoryMovement(
         : `MAX(quantity - ${payload.quantity}, 0)`;
 
     const variantCondition = payload.variantId
-      ? `AND variant_id = '${payload.variantId}'`
+      ? `AND (variant_id = '${payload.variantId}' OR (variant_id IS NULL AND NOT EXISTS (
+           SELECT 1 FROM inventory AS variant_inventory
+           WHERE variant_inventory.product_id = ?
+             AND variant_inventory.store_id = ?
+             AND variant_inventory.variant_id = '${payload.variantId}'
+         )))`
       : `AND variant_id IS NULL`;
 
     sqlite.runSync(
       `UPDATE inventory SET quantity = ${newQuantity}, updated_at = ? 
        WHERE product_id = ? AND store_id = ? ${variantCondition}`,
-      [now, payload.productId, payload.storeId],
+      payload.variantId
+        ? [
+            now,
+            payload.productId,
+            payload.storeId,
+            payload.productId,
+            payload.storeId,
+          ]
+        : [now, payload.productId, payload.storeId],
     );
 
     // ✅ Map type to server enum
