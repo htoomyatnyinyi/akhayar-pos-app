@@ -264,6 +264,25 @@ export default function ManageScreen() {
           );
           return;
         }
+        if (Array.isArray(nextValues.variants) && nextValues.variants.length > 0) {
+          const emptyOption = nextValues.variants.find(
+            (variant: any) => !String(variant.name ?? "").trim() || !String(variant.sku ?? "").trim(),
+          );
+          if (emptyOption) {
+            Alert.alert(
+              "Option details required",
+              "Every sellable option needs a name and a unique SKU.",
+            );
+            return;
+          }
+          const optionSkus = nextValues.variants.map((variant: any) =>
+            String(variant.sku).trim().toLowerCase(),
+          );
+          if (new Set(optionSkus).size !== optionSkus.length) {
+            Alert.alert("Duplicate option SKU", "Each option must have a different SKU.");
+            return;
+          }
+        }
       }
       if (moduleKey === "staff") {
         if (!nextValues.email) {
@@ -1346,6 +1365,33 @@ function EditorModal({
     Array.isArray(fields.variants) &&
     fields.variants.length > 0;
 
+  const startVariantProduct = () => {
+    if (hasVariants) return;
+    setFields((current) => ({
+      ...current,
+      // A variant product is sold by its variants.  Clear any values entered
+      // for the simple-product SKU/barcode so users cannot accidentally
+      // create the same identifier in both levels.
+      sku: "",
+      barcode: "",
+      variants: [
+        {
+          name: "",
+          sku: "",
+          price: 0,
+          costPrice: 0,
+          color: "",
+          size: "",
+          initialStock: 0,
+        },
+      ],
+    }));
+  };
+
+  const useSimpleProduct = () => {
+    set("variants", []);
+  };
+
   const [createCategory] = useCreateLocalCategoryMutation();
   const [createSupplier] = useCreateLocalSupplierMutation();
   const [createBrand] = useCreateLocalBrandMutation();
@@ -1582,38 +1628,77 @@ function EditorModal({
             {moduleKey === "products" && (
               <>
                 <Field
-                  label="Name"
+                  label={hasVariants ? "Product name (master)" : "Product name"}
                   value={fields.name ?? ""}
                   onChangeText={(v) => set("name", v)}
                 />
-                <Field
-                  label="SKU"
-                  value={fields.sku ?? ""}
-                  onChangeText={(v) => set("sku", v)}
-                />
-                <Field
-                  label="Barcode"
-                  value={fields.barcode ?? ""}
-                  onChangeText={(v) => set("barcode", v)}
-                />
-                <View className="flex-row gap-2 mb-4">
-                  <TouchableOpacity
-                    onPress={() => setShowBarcodeScanner(true)}
-                    className="flex-1 rounded-xl border border-sky-400/30 bg-sky-500/15 py-3"
-                  >
-                    <Text className="text-center text-sky-200 font-bold text-xs">
-                      Scan barcode / QR
+                {mode === "create" && (
+                  <View className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
+                      How is this item sold?
                     </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => set("barcode", generateBarcode())}
-                    className="flex-1 rounded-xl border border-amber-400/30 bg-amber-500/15 py-3"
-                  >
-                    <Text className="text-center text-amber-200 font-bold text-xs">
-                      Auto-generate
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                    <View className="mt-3 flex-row gap-2">
+                      <TouchableOpacity
+                        onPress={useSimpleProduct}
+                        className={`flex-1 rounded-xl border p-3 ${
+                          !hasVariants
+                            ? "border-sky-400/50 bg-sky-500/15"
+                            : "border-white/10 bg-white/5"
+                        }`}
+                      >
+                        <Text className="text-center text-xs font-bold text-white">Single item</Text>
+                        <Text className="mt-1 text-center text-[10px] text-slate-400">
+                          One SKU, price, and stock
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={startVariantProduct}
+                        className={`flex-1 rounded-xl border p-3 ${
+                          hasVariants
+                            ? "border-amber-400/50 bg-amber-500/15"
+                            : "border-white/10 bg-white/5"
+                        }`}
+                      >
+                        <Text className="text-center text-xs font-bold text-white">Has options</Text>
+                        <Text className="mt-1 text-center text-[10px] text-slate-400">
+                          Size, color, pack, etc.
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+                {!hasVariants && (
+                  <>
+                    <Field
+                      label="SKU"
+                      value={fields.sku ?? ""}
+                      onChangeText={(v) => set("sku", v)}
+                    />
+                    <Field
+                      label="Barcode"
+                      value={fields.barcode ?? ""}
+                      onChangeText={(v) => set("barcode", v)}
+                    />
+                    <View className="flex-row gap-2 mb-4">
+                      <TouchableOpacity
+                        onPress={() => setShowBarcodeScanner(true)}
+                        className="flex-1 rounded-xl border border-sky-400/30 bg-sky-500/15 py-3"
+                      >
+                        <Text className="text-center text-sky-200 font-bold text-xs">
+                          Scan barcode / QR
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => set("barcode", generateBarcode())}
+                        className="flex-1 rounded-xl border border-amber-400/30 bg-amber-500/15 py-3"
+                      >
+                        <Text className="text-center text-amber-200 font-bold text-xs">
+                          Auto-generate
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
                 <Field
                   label="Description"
                   value={fields.description ?? ""}
@@ -1662,7 +1747,7 @@ function EditorModal({
                 )}
                 {hasVariants && (
                   <Text className="mb-4 text-xs text-amber-300">
-                    Prices, cost, and stock are managed for each variant below.
+                    This is a master product. Each sellable option below needs its own name, SKU, price, and stock.
                   </Text>
                 )}
                 <VariantEditor
@@ -2224,7 +2309,7 @@ function VariantEditor({
     <View className="mb-5">
       <View className="flex-row items-center justify-between mb-2">
         <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
-          Variants
+          Sellable options
         </Text>
         {editable && (
           <TouchableOpacity
@@ -2245,7 +2330,7 @@ function VariantEditor({
             className="rounded-full bg-amber-500/15 border border-amber-400/30 px-3 py-1.5"
           >
             <Text className="text-amber-200 text-xs font-bold">
-              + Add variant
+              + Add option
             </Text>
           </TouchableOpacity>
         )}
@@ -2253,7 +2338,7 @@ function VariantEditor({
 
       {!variants.length ? (
         <Text className="text-slate-500 text-xs">
-          No variants. Product stock will be managed at product level.
+          No options. This product is sold as a single item.
         </Text>
       ) : (
         variants.map((variant, index) => (
@@ -2264,12 +2349,12 @@ function VariantEditor({
             {editable ? (
               <>
                 <Field
-                  label="Variant name"
+                  label="Option name"
                   value={variant.name ?? ""}
                   onChangeText={(value) => update(index, "name", value)}
                 />
                 <Field
-                  label="Variant SKU"
+                  label="Option SKU"
                   value={variant.sku ?? ""}
                   onChangeText={(value) => update(index, "sku", value)}
                 />
@@ -2492,8 +2577,12 @@ function buildPayload(
     );
     const payload: any = {
       tenantId: tenantId || "default",
-      sku: String(values.sku ?? "").trim() || undefined,
-      barcode: String(values.barcode ?? "").trim() || generateBarcode(),
+      // A product with options is a catalogue/master record.  Only its
+      // options receive sales identifiers, prices, and stock.
+      sku: variants ? undefined : String(values.sku ?? "").trim() || undefined,
+      barcode: variants
+        ? undefined
+        : String(values.barcode ?? "").trim() || generateBarcode(),
       name: String(values.name ?? "").trim(),
       description: String(values.description ?? "").trim() || undefined,
       brand: String(values.brand ?? "").trim() || undefined,

@@ -496,6 +496,33 @@ export const localApi = createApi({
             updatedAt: now,
           });
 
+          if (payload.storeId) {
+            await db.insert(inventory).values({
+              id: createLocalId("inv"),
+              tenantId: payload.tenantId,
+              storeId: payload.storeId,
+              productId: payload.productId,
+              variantId,
+              quantity: Number(payload.initialStock ?? 0),
+              reservedQty: 0,
+              reorderPoint: 10,
+              reorderQty: 0,
+              version: 0,
+              syncStatus: "pending",
+              syncError: null,
+              createdAt: now,
+              updatedAt: now,
+              lastSyncedAt: null,
+            });
+          }
+
+          await db.insert(syncOutbox).values({
+            id: createLocalId("outbox"), entity: "product_variants", entityId: variantId,
+            operation: "create", endpoint: "/api/tenant/product-variants", method: "POST",
+            payload: { ...payload }, status: "pending", attempts: 0, nextAttemptAt: now,
+            lastError: null, createdAt: now, updatedAt: now,
+          });
+
           pushIfOnline();
           return { data: { id: variantId, ...payload } };
         } catch (error) {
@@ -524,6 +551,13 @@ export const localApi = createApi({
             })
             .where(eq(productVariants.id, id));
 
+          await db.insert(syncOutbox).values({
+            id: createLocalId("outbox"), entity: "product_variants", entityId: id,
+            operation: "update", endpoint: `/api/tenant/product-variants/${id}`, method: "PUT",
+            payload, status: "pending", attempts: 0, nextAttemptAt: now,
+            lastError: null, createdAt: now, updatedAt: now,
+          });
+
           pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
@@ -541,14 +575,22 @@ export const localApi = createApi({
       async queryFn(id: string) {
         try {
           const db = getOfflineDb();
+          const now = new Date().toISOString();
+          const { createLocalId } = await import("@/services/offline/ids");
           await db
             .update(productVariants)
             .set({
               isActive: false,
               syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
+              updatedAt: now,
             })
             .where(eq(productVariants.id, id));
+          await db.insert(syncOutbox).values({
+            id: createLocalId("outbox"), entity: "product_variants", entityId: id,
+            operation: "delete", endpoint: `/api/tenant/product-variants/${id}`, method: "DELETE",
+            payload: {}, status: "pending", attempts: 0, nextAttemptAt: now,
+            lastError: null, createdAt: now, updatedAt: now,
+          });
           pushIfOnline();
           return { data: { success: true } };
         } catch (error) {

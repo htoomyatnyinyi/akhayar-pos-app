@@ -313,7 +313,18 @@ export async function upsertProducts(
     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
 
     const remoteId = String(normalized.id);
-    const existing = normalized.barcode
+    // A locally-created product receives its server ID as `remoteId` as soon
+    // as its create mutation succeeds.  Match that first: master products
+    // with sellable options intentionally have no product-level SKU/barcode.
+    // Falling back to SKU/barcode preserves reconciliation for older records.
+    const existingByRemoteId = (
+      await db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.remoteId, remoteId))
+        .limit(1)
+    )[0];
+    const existing = existingByRemoteId ?? (normalized.barcode
       ? (
           await db
             .select({ id: products.id })
@@ -339,7 +350,7 @@ export async function upsertProducts(
               )
               .limit(1)
           )[0]
-        : undefined;
+        : undefined);
 
     if (existing && existing.id !== normalized.id) {
       remoteToLocalId[remoteId] = existing.id;
@@ -415,11 +426,44 @@ export async function upsertProductVariants(
   if (!remoteVariants.length) return;
   const db = getOfflineDb();
 
-  const variantsToInsert = remoteVariants.map((variant) => {
+  const variantsToInsert: Array<typeof productVariants.$inferInsert> = [];
+  for (const variant of remoteVariants) {
     const normalized = normalizeProductVariant(variant);
     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
-    return normalized;
-  });
+    const remoteId = String(normalized.id);
+
+    // Like products, variants created offline have a local primary key. Once
+    // the parent product is pushed, the next pull returns server variant IDs.
+    // Merge that returned row into its local option by parent + SKU instead of
+    // inserting a duplicate option.
+    const existingByRemoteId = (
+      await db
+        .select({ id: productVariants.id })
+        .from(productVariants)
+        .where(eq(productVariants.remoteId, remoteId))
+        .limit(1)
+    )[0];
+    const existingByProductAndSku = existingByRemoteId
+      ? undefined
+      : (
+          await db
+            .select({ id: productVariants.id })
+            .from(productVariants)
+            .where(
+              and(
+                eq(productVariants.productId, String(normalized.productId)),
+                eq(productVariants.sku, String(normalized.sku)),
+              ),
+            )
+            .limit(1)
+        )[0];
+    const existing = existingByRemoteId ?? existingByProductAndSku;
+    if (existing && existing.id !== normalized.id) {
+      normalized.id = existing.id;
+      normalized.remoteId = remoteId;
+    }
+    variantsToInsert.push(normalized);
+  }
 
   await withForeignKeysOff(db, async () => {
     await db
@@ -453,11 +497,64 @@ export async function upsertInventory(
   if (!remoteInventory.length) return;
   const db = getOfflineDb();
 
-  const inventoryToInsert = remoteInventory.map((inv) => {
+  const inventoryToInsert: Array<typeof inventory.$inferInsert> = [];
+  for (const inv of remoteInventory) {
     const normalized = normalizeInventory(inv);
     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
-    return normalized;
-  });
+    const remoteId = String(normalized.id);
+
+    // Resolve server IDs back to the stable local records created while
+    // offline. Without this, the first server inventory pull after creating
+    // a product with options would add a second inventory row per option.
+    if (normalized.productId) {
+      const [localProduct] = await db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.remoteId, String(normalized.productId)))
+        .limit(1);
+      if (localProduct) normalized.productId = localProduct.id;
+    }
+    if (normalized.variantId) {
+      const [localVariant] = await db
+        .select({ id: productVariants.id })
+        .from(productVariants)
+        .where(eq(productVariants.remoteId, String(normalized.variantId)))
+        .limit(1);
+      if (localVariant) normalized.variantId = localVariant.id;
+    }
+
+    const existingByRemoteId = (
+      await db
+        .select({ id: inventory.id })
+        .from(inventory)
+        .where(eq(inventory.remoteId, remoteId))
+        .limit(1)
+    )[0];
+    const existingByIdentity = existingByRemoteId
+      ? undefined
+      : (
+          await db
+            .select({ id: inventory.id })
+            .from(inventory)
+            .where(
+              and(
+                eq(inventory.tenantId, normalized.tenantId),
+                eq(inventory.storeId, normalized.storeId),
+                eq(inventory.productId, normalized.productId),
+                normalized.variantId
+                  ? eq(inventory.variantId, normalized.variantId)
+                  : sql`${inventory.variantId} IS NULL`,
+              ),
+            )
+            .limit(1)
+        )[0];
+    const existing = existingByRemoteId ?? existingByIdentity;
+    if (existing && existing.id !== normalized.id) {
+      normalized.id = existing.id;
+      normalized.remoteId = remoteId;
+    }
+    inventoryToInsert.push(normalized);
+  }
 
   await withForeignKeysOff(db, async () => {
     await db

@@ -1,7 +1,3 @@
-// ============================================
-// FILE: app/(tabs)/inventory.tsx
-// ============================================
-
 import {
   Card,
   Divider,
@@ -114,11 +110,12 @@ export default function InventoryScreen() {
             (v: any) => v.id === inv.variantId || v.remoteId === inv.variantId,
           )
         : undefined;
-      const variantOptions = variantsData?.filter(
-        (candidate: any) =>
-          candidate.productId === product?.id ||
-          candidate.productId === product?.remoteId,
-      ) ?? [];
+      const variantOptions =
+        variantsData?.filter(
+          (candidate: any) =>
+            candidate.productId === product?.id ||
+            candidate.productId === product?.remoteId,
+        ) ?? [];
       const brand = product?.brandId
         ? brands?.find((b: any) => b.id === product.brandId)
         : null;
@@ -373,7 +370,8 @@ export default function InventoryScreen() {
                 {item.name}
               </Text>
               <Text className="text-slate-400 text-[10px] mt-1">
-                {item.variantOptions?.length || item.rows.length} variants • tap a row to adjust stock
+                {item.variantOptions?.length || item.rows.length} variants • tap
+                a row to adjust stock
               </Text>
               <Text className="text-emerald-300 text-[10px] font-bold mt-1">
                 Total stock: {totalStock}
@@ -383,7 +381,8 @@ export default function InventoryScreen() {
                   <Text className="text-amber-300/80 text-[10px] mt-1">
                     {item.variantOptions
                       .map((variant: any) => variant.name)
-                      .join(" • ")} (shared stock)
+                      .join(" • ")}{" "}
+                    (shared stock)
                   </Text>
                 )}
             </View>
@@ -457,7 +456,10 @@ export default function InventoryScreen() {
                 {row.name}
               </Text>
               {row.variantName && (
-                <Text className="text-amber-300/90 text-[10px] font-semibold mt-0.5" numberOfLines={1}>
+                <Text
+                  className="text-amber-300/90 text-[10px] font-semibold mt-0.5"
+                  numberOfLines={1}
+                >
                   Variant: {row.variantName}
                 </Text>
               )}
@@ -493,7 +495,8 @@ export default function InventoryScreen() {
     const movementVariant = item.variantId
       ? variantsData?.find(
           (variant: any) =>
-            variant.id === item.variantId || variant.remoteId === item.variantId,
+            variant.id === item.variantId ||
+            variant.remoteId === item.variantId,
         )
       : undefined;
     return (
@@ -750,7 +753,9 @@ export default function InventoryScreen() {
           } catch (error: any) {
             Alert.alert(
               "Allocation failed",
-              error?.data?.message || error?.message || "Unable to allocate stock",
+              error?.data?.message ||
+                error?.message ||
+                "Unable to allocate stock",
             );
           }
         }}
@@ -796,14 +801,15 @@ function StockAllocationModal({
   storeId: string;
   isLoading: boolean;
   onClose: () => void;
-  onSubmit: (allocations: Array<{ variantId: string; quantity: number }>) => void;
+  onSubmit: (
+    allocations: Array<{ variantId: string; quantity: number }>,
+  ) => void;
 }) {
   const variants = product?.variantOptions || [];
   const totalStock = Number(product?.rows?.[0]?.quantity ?? 0);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const allocatedTotal = variants.reduce(
-    (sum: number, variant: any) =>
-      sum + Number(quantities[variant.id] || 0),
+    (sum: number, variant: any) => sum + Number(quantities[variant.id] || 0),
     0,
   );
 
@@ -852,7 +858,10 @@ function StockAllocationModal({
                   {product?.name} • Total: {totalStock}
                 </Text>
               </View>
-              <TouchableOpacity onPress={onClose} className="bg-white/10 p-2 rounded-full">
+              <TouchableOpacity
+                onPress={onClose}
+                className="bg-white/10 p-2 rounded-full"
+              >
                 <MaterialIcons name="close" size={18} color="#94a3b8" />
               </TouchableOpacity>
             </View>
@@ -882,7 +891,9 @@ function StockAllocationModal({
 
             <Text
               className={`text-center text-xs font-bold my-3 ${
-                allocatedTotal === totalStock ? "text-emerald-400" : "text-amber-400"
+                allocatedTotal === totalStock
+                  ? "text-emerald-400"
+                  : "text-amber-400"
               }`}
             >
               Allocated {allocatedTotal} / {totalStock}
@@ -1059,7 +1070,9 @@ function NewMovementModal({
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [movementType, setMovementType] = useState<"IN" | "OUT">("IN");
-  const [movementMode, setMovementMode] = useState<"STOCK" | "TRANSFER">("STOCK");
+  const [movementMode, setMovementMode] = useState<"STOCK" | "TRANSFER">(
+    "STOCK",
+  );
   const [targetStoreId, setTargetStoreId] = useState("");
   const [reason, setReason] = useState("");
   const [productSearch, setProductSearch] = useState("");
@@ -1174,7 +1187,11 @@ function NewMovementModal({
                     ? "bg-violet-500/20 border-violet-500/40"
                     : "bg-white/5 border-white/10"
                 }`}
-                onPress={() => setMovementMode((mode) => mode === "TRANSFER" ? "STOCK" : "TRANSFER")}
+                onPress={() =>
+                  setMovementMode((mode) =>
+                    mode === "TRANSFER" ? "STOCK" : "TRANSFER",
+                  )
+                }
               >
                 <Text className="text-violet-300 font-bold">
                   {movementMode === "TRANSFER"

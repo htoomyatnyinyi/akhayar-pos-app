@@ -52,6 +52,7 @@ import {
 import {
   brands,
   categories,
+  customers,
   inventory,
   inventoryCounts,
   inventoryMovements,
@@ -60,6 +61,8 @@ import {
   products,
   productVariants,
   sessions,
+  stores,
+  suppliers,
   syncOutbox,
 } from "./schema";
 
@@ -153,7 +156,9 @@ export async function syncNow(
     return { skipped: true, message: "Cooldown active" };
   }
 
-  if (syncInFlight && !force) {
+  // A forced/manual sync must not overlap an automatic sync. Overlapping
+  // pulls and pushes can create duplicate outbox attempts and stale caches.
+  if (syncInFlight) {
     if (!silent) console.log("⏳ Sync already in progress, skipping...");
     return { skipped: true, message: "Sync already in progress" };
   }
@@ -262,7 +267,6 @@ export async function syncNow(
     // --- PULL Orders --- //byme
     dispatch(setSyncPhase("Pulling orders"));
     const orderResult = await pullOrders(dispatch, tenantId);
-    console.log("byme order result: ", orderResult);
     syncedItems += orderResult.synced;
     dispatch(setSyncProgress(70));
     if (!silent) console.log(`✅ Synced ${orderResult.synced} orders`);
@@ -287,6 +291,26 @@ export async function syncNow(
       console.log(
         `✅ Pushed ${pushResult.synced} items, ${pushResult.failed} failed`,
       );
+
+    // Pull once more after pushing. The server may assign IDs, update stock,
+    // create variants, or change order status during the push. This makes one
+    // sync cycle converge the local cache instead of waiting for the next run.
+    dispatch(setSyncPhase("Refreshing server data"));
+    const refreshed = [
+      await pullStores(dispatch, tenantId),
+      await pullBrands(dispatch, tenantId),
+      await pullCategories(dispatch, tenantId),
+      await pullCustomers(dispatch, tenantId),
+      await pullStaff(dispatch, tenantId),
+      await pullSuppliers(dispatch, tenantId),
+      await pullProducts(dispatch, tenantId),
+      await pullInventory(dispatch, tenantId),
+      await pullSessions(dispatch, tenantId),
+      await pullOrders(dispatch, tenantId),
+      await pullPriceHistory(dispatch, tenantId),
+    ];
+    syncedItems += refreshed.reduce((total, result) => total + result.synced, 0);
+    dispatch(setSyncProgress(95));
 
     const remainingCount = await getQueuedCount();
     dispatch(setQueuedCount(remainingCount));
@@ -652,7 +676,6 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
           tenantId: v.tenantId || tenantId,
         }));
         await upsertProductVariants(variantsWithTenant, tenantId);
-        console.log(`✅ Synced ${allVariants.length} variants from products`);
       }
 
       return { synced: productsData.length };
@@ -862,6 +885,24 @@ async function pushOutboxItems(dispatch: AppDispatch, maxItems: number) {
   // upgrading to this build does not lose those movements.
   await restorePendingMovementOutbox();
   const items = await getDueOutboxItems(maxItems);
+  const syncPriority: Record<string, number> = {
+    stores: 10,
+    brands: 20,
+    categories: 30,
+    suppliers: 40,
+    staff: 50,
+    products: 60,
+    product_variants: 70,
+    inventory: 80,
+    inventory_movements: 90,
+    sessions: 100,
+    orders: 110,
+  };
+  items.sort(
+    (a, b) =>
+      (syncPriority[a.entity] ?? 500) - (syncPriority[b.entity] ?? 500) ||
+      a.createdAt.localeCompare(b.createdAt),
+  );
   if (items.length === 0) {
     return { synced: 0, failed: 0 };
   }
@@ -992,6 +1033,121 @@ async function resolveProductReferences(payload: any) {
       resolved.categoryName = category.name;
     }
   }
+  for (const [field, table] of [
+    ["brandId", brands],
+    ["supplierId", suppliers],
+  ] as const) {
+    if (!resolved[field]) continue;
+    const [row] = await getOfflineDb()
+      .select()
+      .from(table)
+      .where(eq(table.id, String(resolved[field])))
+      .limit(1);
+    if (row?.remoteId) resolved[field] = row.remoteId;
+    else if (row) delete resolved[field];
+  }
+  return resolved;
+}
+
+async function resolveRemoteTransactionReferences(payload: any) {
+  const db = getOfflineDb();
+  const resolved = { ...payload };
+
+  if (resolved.storeId) {
+    const [storeRow] = await db
+      .select({ id: stores.id, remoteId: stores.remoteId })
+      .from(stores)
+      .where(eq(stores.id, String(resolved.storeId)))
+      .limit(1);
+    if (storeRow?.remoteId) resolved.storeId = storeRow.remoteId;
+  }
+
+  if (resolved.sessionId) {
+    const [sessionRow] = await db
+      .select({ id: sessions.id, remoteId: sessions.remoteId, status: sessions.status })
+      .from(sessions)
+      .where(eq(sessions.id, String(resolved.sessionId)))
+      .limit(1);
+    if (sessionRow?.remoteId) resolved.sessionId = sessionRow.remoteId;
+  }
+
+  if (resolved.customerId) {
+    const [customerRow] = await db
+      .select({ id: customers.id, remoteId: customers.remoteId })
+      .from(customers)
+      .where(eq(customers.id, String(resolved.customerId)))
+      .limit(1);
+    if (customerRow?.remoteId) resolved.customerId = customerRow.remoteId;
+  }
+
+  resolved.items = await Promise.all(
+    (resolved.items ?? []).map(async (item: any) => {
+      const [productRow] = await db
+        .select({ id: products.id, remoteId: products.remoteId })
+        .from(products)
+        .where(eq(products.id, String(item.productId)))
+        .limit(1);
+      if (!productRow) throw new Error(`Product ${item.productId} is not cached locally.`);
+      if (productRow.remoteId) item = { ...item, productId: productRow.remoteId };
+
+      if (item.variantId) {
+        const [variantRow] = await db
+          .select({ id: productVariants.id, remoteId: productVariants.remoteId })
+          .from(productVariants)
+          .where(eq(productVariants.id, String(item.variantId)))
+          .limit(1);
+        if (!variantRow) throw new Error(`Variant ${item.variantId} is not cached locally.`);
+        if (variantRow.remoteId) item = { ...item, variantId: variantRow.remoteId };
+      }
+      return item;
+    }),
+  );
+
+  return resolved;
+}
+
+async function resolveRemoteMovementReferences(payload: any) {
+  const db = getOfflineDb();
+  const resolved = { ...payload };
+  const [productRow] = await db
+    .select({ id: products.id, remoteId: products.remoteId })
+    .from(products)
+    .where(eq(products.id, String(payload.productId)))
+    .limit(1);
+  if (!productRow) throw new Error(`Product ${payload.productId} is not cached locally.`);
+  if (productRow.remoteId) resolved.productId = productRow.remoteId;
+
+  if (payload.variantId) {
+    const [variantRow] = await db
+      .select({ id: productVariants.id, remoteId: productVariants.remoteId })
+      .from(productVariants)
+      .where(eq(productVariants.id, String(payload.variantId)))
+      .limit(1);
+    if (!variantRow) throw new Error(`Variant ${payload.variantId} is not cached locally.`);
+    if (variantRow.remoteId) resolved.variantId = variantRow.remoteId;
+  }
+
+  const [storeRow] = await db
+    .select({ id: stores.id, remoteId: stores.remoteId })
+    .from(stores)
+    .where(eq(stores.id, String(payload.storeId)))
+    .limit(1);
+  if (storeRow?.remoteId) resolved.storeId = storeRow.remoteId;
+  return resolved;
+}
+
+async function resolveRemoteVariantReferences(payload: any) {
+  const db = getOfflineDb();
+  const resolved = { ...payload };
+  const [product] = await db
+    .select({ remoteId: products.remoteId })
+    .from(products)
+    .where(eq(products.id, String(payload.productId)))
+    .limit(1);
+  if (!product?.remoteId) {
+    throw new Error("Product is waiting for server sync; option will retry automatically.");
+  }
+  resolved.productId = product.remoteId;
   return resolved;
 }
 
@@ -1018,7 +1174,7 @@ async function processOutboxItem(
           if (error) throw new Error(JSON.stringify(error));
           await db
             .update(brands)
-            .set({ remoteId: data.id, syncStatus: "synced" })
+            .set({ remoteId: (data as any)?.id ?? null, syncStatus: "synced" })
             .where(eq(brands.id, item.entityId));
         } else if (item.operation === "update") {
           const { error } = await store.dispatch(
@@ -1105,10 +1261,17 @@ async function processOutboxItem(
             await markOutboxDead(item.id); // Stop retrying
             return { success: false, error };
           }
+          if (!session.remoteId) {
+            return {
+              success: false,
+              error: `Session ${payload.sessionId} is waiting for server sync; retrying order later.`,
+            };
+          }
 
           // Session open – proceed
-          const remoteOrderPayload = {
+          const remoteOrderPayload = await resolveRemoteTransactionReferences({
             ...payload,
+            sessionId: session.remoteId ?? session.id,
             items: await Promise.all(
               (payload.items ?? []).map(async (orderItem: any) => {
                 if (!orderItem.variantId) return orderItem;
@@ -1129,15 +1292,16 @@ async function processOutboxItem(
                   : { ...orderItem, variantId: undefined };
               }),
             ),
-          };
+          });
           const { data, error } = await store.dispatch(
             remoteApi.endpoints.createRemoteOrder.initiate(remoteOrderPayload),
           );
           if (error) {
+            const rawError = error as any;
             const errorMessage =
-              error?.data?.message ||
-              error?.data ||
-              error?.error ||
+              rawError?.data?.message ||
+              rawError?.data ||
+              rawError?.error ||
               JSON.stringify(error);
             throw new Error(errorMessage);
           }
@@ -1230,9 +1394,12 @@ async function processOutboxItem(
         }
         const { data, error } = result;
         if (error) throw new Error(JSON.stringify(error));
+        const remoteSession = (data as any)?.session ?? (data as any);
+        const remoteSessionId = remoteSession?.id;
+        if (!remoteSessionId) throw new Error("Session synced without a server ID");
         await db
           .update(sessions)
-          .set({ remoteId: data.id, syncStatus: "synced" })
+          .set({ remoteId: remoteSessionId, syncStatus: "synced" })
           .where(eq(sessions.id, item.entityId));
         await markOutboxSynced(item.id);
         return { success: true };
@@ -1288,19 +1455,26 @@ async function processOutboxItem(
     // ---- Product Variants ----
     case "product_variants": {
       try {
+        const [localVariant] = await db
+          .select({ remoteId: productVariants.remoteId })
+          .from(productVariants)
+          .where(eq(productVariants.id, item.entityId))
+          .limit(1);
         if (item.operation === "create") {
+          const variantPayload = await resolveRemoteVariantReferences(payload);
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.createRemoteProductVariant.initiate(payload),
+            remoteApi.endpoints.createRemoteProductVariant.initiate(variantPayload),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db
             .update(productVariants)
-            .set({ remoteId: data.id, syncStatus: "synced" })
+            .set({ remoteId: (data as any)?.variant?.id ?? (data as any)?.id ?? null, syncStatus: "synced" })
             .where(eq(productVariants.id, item.entityId));
         } else if (item.operation === "update") {
+          if (!localVariant?.remoteId) throw new Error("Option is waiting for server sync; update will retry automatically.");
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteProductVariant.initiate({
-              id: item.entityId,
+              id: localVariant.remoteId,
               ...payload,
             }),
           );
@@ -1310,9 +1484,15 @@ async function processOutboxItem(
             .set({ syncStatus: "synced" })
             .where(eq(productVariants.id, item.entityId));
         } else if (item.operation === "delete") {
+          if (!localVariant?.remoteId) {
+            // The option never reached the server, so its local deletion is final.
+            await db.delete(productVariants).where(eq(productVariants.id, item.entityId));
+            await markOutboxSynced(item.id);
+            return { success: true };
+          }
           const { error } = await store.dispatch(
             remoteApi.endpoints.deleteRemoteProductVariant.initiate(
-              item.entityId,
+              localVariant.remoteId,
             ),
           );
           if (error) throw new Error(JSON.stringify(error));
@@ -1330,18 +1510,43 @@ async function processOutboxItem(
     // ---- Inventory (now sends update) ----
     case "inventory": {
       try {
-        // This handles stock adjustments via the PUT endpoint
+        // Inventory has no PUT endpoint. Legacy inventory outbox rows are
+        // converted into the authoritative stock-movement API.
         if (item.operation === "update") {
+          const delta = Number(
+            payload.quantityDelta ??
+              payload.delta ??
+              payload.quantity ??
+              (payload.newQuantity != null && payload.currentQuantity != null
+                ? payload.newQuantity - payload.currentQuantity
+                : 0),
+          );
+          if (!delta) {
+            await markOutboxSynced(item.id);
+            return { success: true };
+          }
+          const movementPayload = await resolveRemoteMovementReferences({
+            ...payload,
+            quantity: delta,
+            type: "ADJUSTMENT",
+            referenceId: payload.referenceId ?? item.entityId,
+            referenceType: "STOCK_ADJUSTMENT",
+          });
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.updateRemoteInventory.initiate({
-              id: item.entityId,
-              ...payload,
-            }),
+            remoteApi.endpoints.createRemoteInventoryMovement.initiate(
+              movementPayload,
+            ),
           );
           if (error) throw new Error(JSON.stringify(error));
+          const remoteMovement =
+            (data as any)?.movement ?? (data as any)?.data ?? data;
           await db
             .update(inventory)
-            .set({ remoteId: data.id, syncStatus: "synced" })
+            .set({
+              remoteId: remoteMovement?.id ?? null,
+              syncStatus: "synced",
+              syncError: null,
+            })
             .where(eq(inventory.id, item.entityId));
         } else {
           // If not an update, treat as synced to clear it
@@ -1422,9 +1627,17 @@ async function processOutboxItem(
             else if (sourceType === "OUT") mappedType = "SALE";
           }
 
+          const remoteMovementPayload = await resolveRemoteMovementReferences(
+            movementPayload,
+          );
+          const isOutbound = ["OUT", "SALE", "TRANSFER_OUT"].includes(
+            sourceType,
+          ) || ["SALE", "TRANSFER_OUT"].includes(mappedType);
           const cleanPayload = {
-            ...movementPayload,
-            direction: sourceType,
+            ...remoteMovementPayload,
+            // The backend receives a signed quantityDelta through `quantity`.
+            quantity: Math.abs(Number(movementPayload.quantity ?? 0)) *
+              (isOutbound ? -1 : 1),
             type: mappedType,
           };
 
