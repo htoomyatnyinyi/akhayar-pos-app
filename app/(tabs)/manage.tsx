@@ -265,6 +265,16 @@ export default function ManageScreen() {
           return;
         }
       }
+      if (moduleKey === "staff") {
+        if (!nextValues.email) {
+          Alert.alert("Email required", "Enter an email address for the staff account.");
+          return;
+        }
+        if (editor.mode === "create" && String(nextValues.password ?? "").length < 6) {
+          Alert.alert("Password too short", "Password must contain at least 6 characters.");
+          return;
+        }
+      }
 
       if (moduleKey === "staff") {
         if (editor.mode === "create") await createStaff(nextValues).unwrap();
@@ -317,6 +327,7 @@ export default function ManageScreen() {
         await deleteSupplier(item.id).unwrap();
       else if (moduleKey === "brands") await deleteBrand(item.id).unwrap();
       await refetchers[moduleKey]();
+      setEditor({ open: false, mode: "create" });
     } catch (error: any) {
       Alert.alert(
         "Delete failed",
@@ -421,12 +432,14 @@ export default function ManageScreen() {
           </View>
 
           <View className="mb-4 flex-row gap-3">
-            <ActionButton
-              title="Add New"
-              icon="add"
-              accent="emerald"
-              onPress={() => openEditor("create")}
-            />
+            {moduleKey !== "sessions" && (
+              <ActionButton
+                title="Add New"
+                icon="add"
+                accent="emerald"
+                onPress={() => openEditor("create")}
+              />
+            )}
             {moduleKey === "sessions" ? (
               <ActionButton
                 title={activeSession ? "Close Session" : "Open Session"}
@@ -749,27 +762,93 @@ function RoleSelector({
 }
 
 function getDefaultPermissions(role: string): string[] {
+  const all = [
+    "VIEW_REPORTS",
+    "EDIT_PRICES",
+    "VOID_ORDERS",
+    "MANAGE_STAFF",
+    "MANAGE_INVENTORY",
+    "REFUND_ORDERS",
+    "VIEW_AUDIT_LOGS",
+    "MANAGE_PROMOTIONS",
+    "VIEW_ANALYTICS",
+    "MANAGE_API_KEYS",
+    "MANAGE_WEBHOOKS",
+  ];
   const permissions = {
-    ADMIN: [
-      "VIEW_REPORTS",
-      "EDIT_PRICES",
-      "MANAGE_STAFF",
-      "MANAGE_PRODUCTS",
-      "VIEW_SALES",
-      "MANAGE_CUSTOMERS",
-      "EDIT_INVENTORY",
-    ],
+    ADMIN: all,
     MANAGER: [
       "VIEW_REPORTS",
       "EDIT_PRICES",
-      "MANAGE_PRODUCTS",
-      "VIEW_SALES",
-      "MANAGE_CUSTOMERS",
+      "VOID_ORDERS",
+      "MANAGE_INVENTORY",
+      "REFUND_ORDERS",
+      "MANAGE_PROMOTIONS",
+      "VIEW_ANALYTICS",
     ],
-    CASHIER: ["VIEW_REPORTS", "VIEW_SALES"],
-    ACCOUNTANT: ["VIEW_REPORTS", "VIEW_SALES", "MANAGE_CUSTOMERS"],
+    CASHIER: ["VIEW_REPORTS"],
+    ACCOUNTANT: ["VIEW_REPORTS", "VIEW_ANALYTICS"],
   };
   return permissions[role as keyof typeof permissions] || [];
+}
+
+const STAFF_PERMISSIONS = [
+  ["VIEW_REPORTS", "View reports"],
+  ["EDIT_PRICES", "Edit prices"],
+  ["VOID_ORDERS", "Void orders"],
+  ["MANAGE_STAFF", "Manage staff"],
+  ["MANAGE_INVENTORY", "Manage inventory"],
+  ["REFUND_ORDERS", "Refund orders"],
+  ["VIEW_AUDIT_LOGS", "View audit logs"],
+  ["MANAGE_PROMOTIONS", "Manage promotions"],
+  ["VIEW_ANALYTICS", "View analytics"],
+  ["MANAGE_API_KEYS", "Manage API keys"],
+  ["MANAGE_WEBHOOKS", "Manage webhooks"],
+] as const;
+
+function PermissionSelector({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (permissions: string[]) => void;
+}) {
+  const toggle = (permission: string) => {
+    onChange(
+      value.includes(permission)
+        ? value.filter((item) => item !== permission)
+        : [...value, permission],
+    );
+  };
+
+  return (
+    <View className="mb-4">
+      <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
+        Permissions
+      </Text>
+      <View className="rounded-2xl border border-white/10 bg-white/5 p-2">
+        {STAFF_PERMISSIONS.map(([permission, label]) => {
+          const selected = value.includes(permission);
+          return (
+            <Pressable
+              key={permission}
+              onPress={() => toggle(permission)}
+              className="flex-row items-center rounded-xl px-2 py-2.5"
+            >
+              <MaterialIcons
+                name={selected ? "check-box" : "check-box-outline-blank"}
+                size={22}
+                color={selected ? "#34d399" : "#64748b"}
+              />
+              <Text className="ml-3 flex-1 text-sm text-slate-200">
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 // ============================================
@@ -1493,6 +1572,10 @@ function EditorModal({
                     set("permissions", getDefaultPermissions(role));
                   }}
                 />
+                <PermissionSelector
+                  value={Array.isArray(fields.permissions) ? fields.permissions : []}
+                  onChange={(permissions) => set("permissions", permissions)}
+                />
               </>
             )}
             {/* PRODUCTS FORM */}
@@ -2053,12 +2136,11 @@ function DateField({
           value={date}
           mode="date"
           display="default"
-          onChange={(event, selectedDate) => {
-            if (event.type === "set" && selectedDate) {
-              onChange(selectedDate.toISOString());
-            }
+          onValueChange={(event, selectedDate) => {
+            if (selectedDate) onChange(selectedDate.toISOString());
             setOpen(false);
           }}
+          onDismiss={() => setOpen(false)}
         />
       </View>
     );
@@ -2092,11 +2174,10 @@ function DateField({
               value={date}
               mode="date"
               display="spinner"
-              onChange={(event, selectedDate) => {
-                if (event.type === "set" && selectedDate) {
-                  onChange(selectedDate.toISOString());
-                }
+              onValueChange={(_event, selectedDate) => {
+                if (selectedDate) onChange(selectedDate.toISOString());
               }}
+              onDismiss={() => setOpen(false)}
               themeVariant="dark"
             />
             <View className="flex-row gap-3 mt-4">
@@ -2307,7 +2388,7 @@ function getDefaultFields(moduleKey: ModuleKey) {
       email: "",
       password: "",
       role: "CASHIER",
-      permissions: [],
+      permissions: getDefaultPermissions("CASHIER"),
       storeId: "",
     };
   if (moduleKey === "products")
@@ -2377,6 +2458,7 @@ function buildPayload(
 ) {
   if (moduleKey === "staff") {
     const payload: any = {
+      tenantId: tenantId || "default",
       username: String(values.username ?? "").trim(),
       email: String(values.email ?? "").trim() || undefined,
       name: String(values.name ?? "").trim(),
@@ -2448,7 +2530,7 @@ function buildPayload(
       address: String(values.address ?? "").trim() || undefined,
       phone: String(values.phone ?? "").trim() || undefined,
       email: String(values.email ?? "").trim() || undefined,
-      taxNumber: String(values.taxNumber ?? "").trim() || undefined,
+      taxId: String(values.taxNumber ?? "").trim() || undefined,
       isActive: values.isActive ?? true,
     };
   }

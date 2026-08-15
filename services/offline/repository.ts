@@ -2852,6 +2852,32 @@ export async function markEntitySynced(
         ...(remote.name && { name: remote.name }),
       })
       .where(eq(stores.id, localId));
+  } else if (entity === "staff") {
+    await getOfflineDb()
+      .update(staff)
+      .set({
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: now,
+        lastSyncedAt: now,
+        ...(remote.id || remote.remoteId
+          ? { remoteId: remote.id ?? remote.remoteId }
+          : {}),
+      })
+      .where(eq(staff.id, localId));
+  } else if (entity === "suppliers") {
+    await getOfflineDb()
+      .update(suppliers)
+      .set({
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: now,
+        lastSyncedAt: now,
+        ...(remote.id || remote.remoteId
+          ? { remoteId: remote.id ?? remote.remoteId }
+          : {}),
+      })
+      .where(eq(suppliers.id, localId));
   } else if (entity === "sessions") {
     await getOfflineDb()
       .update(sessions)

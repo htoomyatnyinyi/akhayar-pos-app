@@ -1548,9 +1548,17 @@ async function processOutboxItem(
           }
 
           const data = await response.json().catch(() => ({}));
-          if (data && data.id) {
+          const remoteEntity =
+            data?.staff ??
+            data?.supplier ??
+            data?.store ??
+            data?.category ??
+            data?.customer ??
+            data;
+          if (remoteEntity && remoteEntity.id) {
             await markEntitySynced(item.entity, item.entityId, {
-              remoteId: data.id,
+              ...remoteEntity,
+              remoteId: remoteEntity.id,
             });
           } else {
             await markEntitySynced(item.entity, item.entityId, {});

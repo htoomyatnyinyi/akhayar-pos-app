@@ -956,6 +956,18 @@ export const localApi = createApi({
             lastSyncedAt: null,
           });
 
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "staff",
+              entityId: staffId,
+              operation: "create",
+              endpoint: "/api/tenant/staff/",
+              method: "POST",
+              payload,
+            },
+          ]);
+
           pushIfOnline();
           return { data: { id: staffId, ...payload } };
         } catch (error) {
@@ -979,6 +991,18 @@ export const localApi = createApi({
               syncStatus: "pending",
             })
             .where(eq(staff.id, id));
+
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "staff",
+              entityId: id,
+              operation: "update",
+              endpoint: `/api/tenant/staff/${id}`,
+              method: "PUT",
+              payload,
+            },
+          ]);
 
           pushIfOnline();
           return { data: { success: true } };
@@ -1004,6 +1028,17 @@ export const localApi = createApi({
               updatedAt: new Date().toISOString(),
             })
             .where(eq(staff.id, id));
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "staff",
+              entityId: id,
+              operation: "delete",
+              endpoint: `/api/tenant/staff/${id}`,
+              method: "DELETE",
+              payload: {},
+            },
+          ]);
           pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
@@ -1085,7 +1120,7 @@ export const localApi = createApi({
             phone: payload.phone,
             email: payload.email,
             address: payload.address,
-            taxNumber: payload.taxNumber,
+            taxNumber: payload.taxNumber ?? payload.taxId,
             paymentTerms: payload.paymentTerms,
             creditLimit: payload.creditLimit,
             currentBalance: payload.currentBalance || 0,
@@ -1095,6 +1130,18 @@ export const localApi = createApi({
             updatedAt: now,
             lastSyncedAt: null,
           });
+
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "suppliers",
+              entityId: supplierId,
+              operation: "create",
+              endpoint: "/api/tenant/suppliers/",
+              method: "POST",
+              payload,
+            },
+          ]);
 
           pushIfOnline();
           return { data: { id: supplierId, ...payload } };
@@ -1110,15 +1157,29 @@ export const localApi = createApi({
         try {
           const db = getOfflineDb();
           const now = new Date().toISOString();
+          const { taxId, ...supplierPayload } = payload;
 
           await db
             .update(suppliers)
             .set({
-              ...payload,
+              ...supplierPayload,
+              ...(taxId !== undefined ? { taxNumber: taxId } : {}),
               updatedAt: now,
               syncStatus: "pending",
             })
             .where(eq(suppliers.id, id));
+
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "suppliers",
+              entityId: id,
+              operation: "update",
+              endpoint: `/api/tenant/suppliers/${id}`,
+              method: "PUT",
+              payload: { ...supplierPayload, ...(taxId !== undefined ? { taxId } : {}) },
+            },
+          ]);
 
           pushIfOnline();
           return { data: { success: true } };
@@ -1144,6 +1205,17 @@ export const localApi = createApi({
               updatedAt: new Date().toISOString(),
             })
             .where(eq(suppliers.id, id));
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "suppliers",
+              entityId: id,
+              operation: "delete",
+              endpoint: `/api/tenant/suppliers/${id}`,
+              method: "DELETE",
+              payload: {},
+            },
+          ]);
           pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
