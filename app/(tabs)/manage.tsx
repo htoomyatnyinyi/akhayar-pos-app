@@ -254,7 +254,10 @@ export default function ManageScreen() {
 
       if (moduleKey === "products") {
         if (!String(nextValues.name ?? "").trim()) {
-          Alert.alert("Product name required", "Enter a product name before saving.");
+          Alert.alert(
+            "Product name required",
+            "Enter a product name before saving.",
+          );
           return;
         }
         if (!nextValues.categoryId && !nextValues.categoryName) {
@@ -264,9 +267,14 @@ export default function ManageScreen() {
           );
           return;
         }
-        if (Array.isArray(nextValues.variants) && nextValues.variants.length > 0) {
+        if (
+          Array.isArray(nextValues.variants) &&
+          nextValues.variants.length > 0
+        ) {
           const emptyOption = nextValues.variants.find(
-            (variant: any) => !String(variant.name ?? "").trim() || !String(variant.sku ?? "").trim(),
+            (variant: any) =>
+              !String(variant.name ?? "").trim() ||
+              !String(variant.sku ?? "").trim(),
           );
           if (emptyOption) {
             Alert.alert(
@@ -279,18 +287,30 @@ export default function ManageScreen() {
             String(variant.sku).trim().toLowerCase(),
           );
           if (new Set(optionSkus).size !== optionSkus.length) {
-            Alert.alert("Duplicate option SKU", "Each option must have a different SKU.");
+            Alert.alert(
+              "Duplicate option SKU",
+              "Each option must have a different SKU.",
+            );
             return;
           }
         }
       }
       if (moduleKey === "staff") {
         if (!nextValues.email) {
-          Alert.alert("Email required", "Enter an email address for the staff account.");
+          Alert.alert(
+            "Email required",
+            "Enter an email address for the staff account.",
+          );
           return;
         }
-        if (editor.mode === "create" && String(nextValues.password ?? "").length < 6) {
-          Alert.alert("Password too short", "Password must contain at least 6 characters.");
+        if (
+          editor.mode === "create" &&
+          String(nextValues.password ?? "").length < 6
+        ) {
+          Alert.alert(
+            "Password too short",
+            "Password must contain at least 6 characters.",
+          );
           return;
         }
       }
@@ -1359,7 +1379,7 @@ function EditorModal({
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
-  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [scannerTarget, setScannerTarget] = useState<"master" | number | null>(null);
   const hasVariants =
     moduleKey === "products" &&
     Array.isArray(fields.variants) &&
@@ -1619,7 +1639,9 @@ function EditorModal({
                   }}
                 />
                 <PermissionSelector
-                  value={Array.isArray(fields.permissions) ? fields.permissions : []}
+                  value={
+                    Array.isArray(fields.permissions) ? fields.permissions : []
+                  }
                   onChange={(permissions) => set("permissions", permissions)}
                 />
               </>
@@ -1646,7 +1668,9 @@ function EditorModal({
                             : "border-white/10 bg-white/5"
                         }`}
                       >
-                        <Text className="text-center text-xs font-bold text-white">Single item</Text>
+                        <Text className="text-center text-xs font-bold text-white">
+                          Single item
+                        </Text>
                         <Text className="mt-1 text-center text-[10px] text-slate-400">
                           One SKU, price, and stock
                         </Text>
@@ -1659,7 +1683,9 @@ function EditorModal({
                             : "border-white/10 bg-white/5"
                         }`}
                       >
-                        <Text className="text-center text-xs font-bold text-white">Has options</Text>
+                        <Text className="text-center text-xs font-bold text-white">
+                          Has options
+                        </Text>
                         <Text className="mt-1 text-center text-[10px] text-slate-400">
                           Size, color, pack, etc.
                         </Text>
@@ -1681,7 +1707,7 @@ function EditorModal({
                     />
                     <View className="flex-row gap-2 mb-4">
                       <TouchableOpacity
-                        onPress={() => setShowBarcodeScanner(true)}
+                        onPress={() => setScannerTarget("master")}
                         className="flex-1 rounded-xl border border-sky-400/30 bg-sky-500/15 py-3"
                       >
                         <Text className="text-center text-sky-200 font-bold text-xs">
@@ -1699,6 +1725,13 @@ function EditorModal({
                     </View>
                   </>
                 )}
+
+                {/* <Field
+                  label="Barcode"
+                  value={fields.barcode ?? ""}
+                  onChangeText={(v) => set("barcode", v)}
+                /> */}
+
                 <Field
                   label="Description"
                   value={fields.description ?? ""}
@@ -1747,13 +1780,17 @@ function EditorModal({
                 )}
                 {hasVariants && (
                   <Text className="mb-4 text-xs text-amber-300">
-                    This is a master product. Each sellable option below needs its own name, SKU, price, and stock.
+                    This is a master product. Each sellable option below needs
+                    its own name, SKU, price, and stock.
                   </Text>
                 )}
                 <VariantEditor
-                  variants={fields.variants ?? []}
-                  editable={mode === "create"}
-                  onChange={(variants) => set("variants", variants)}
+                  variants={
+                    Array.isArray(fields.variants) ? fields.variants : []
+                  }
+                  editable={mode !== "view"}
+                  onChange={(v) => set("variants", v)}
+                  onScanBarcode={(index) => setScannerTarget(index)}
                 />
                 <DateField
                   label="Manufacturing Date"
@@ -2174,11 +2211,19 @@ function EditorModal({
           </ScrollView>
         </SafeAreaView>
         <BarcodeScannerModal
-          visible={showBarcodeScanner}
-          onClose={() => setShowBarcodeScanner(false)}
+          visible={scannerTarget !== null}
+          onClose={() => setScannerTarget(null)}
           onScan={(value) => {
-            set("barcode", value);
-            setShowBarcodeScanner(false);
+            if (scannerTarget === "master") {
+              set("barcode", value);
+            } else if (typeof scannerTarget === "number") {
+              const currentVariants = fields.variants || [];
+              const nextVariants = currentVariants.map((v: any, i: number) =>
+                i === scannerTarget ? { ...v, barcode: value } : v
+              );
+              set("variants", nextVariants);
+            }
+            setScannerTarget(null);
           }}
         />
       </View>
@@ -2292,10 +2337,12 @@ function VariantEditor({
   variants,
   editable,
   onChange,
+  onScanBarcode,
 }: {
   variants: any[];
   editable: boolean;
   onChange: (variants: any[]) => void;
+  onScanBarcode?: (index: number) => void;
 }) {
   const update = (index: number, key: string, value: any) => {
     onChange(
@@ -2319,6 +2366,7 @@ function VariantEditor({
                 {
                   name: "",
                   sku: "",
+                  barcode: "",
                   price: 0,
                   costPrice: 0,
                   color: "",
@@ -2358,6 +2406,29 @@ function VariantEditor({
                   value={variant.sku ?? ""}
                   onChangeText={(value) => update(index, "sku", value)}
                 />
+                <Field
+                  label="Option Barcode"
+                  value={variant.barcode ?? ""}
+                  onChangeText={(value) => update(index, "barcode", value)}
+                />
+                <View className="flex-row gap-2 mb-3">
+                  <TouchableOpacity
+                    onPress={() => onScanBarcode?.(index)}
+                    className="flex-1 rounded-xl border border-sky-400/30 bg-sky-500/15 py-3"
+                  >
+                    <Text className="text-center text-sky-200 font-bold text-xs">
+                      Scan barcode / QR
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => update(index, "barcode", generateBarcode())}
+                    className="flex-1 rounded-xl border border-amber-400/30 bg-amber-500/15 py-3"
+                  >
+                    <Text className="text-center text-amber-200 font-bold text-xs">
+                      Auto-generate
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <View className="flex-row gap-2">
                   <View className="flex-1">
                     <Field
@@ -2562,8 +2633,11 @@ function buildPayload(
     const variants =
       Array.isArray(values.variants) && values.variants.length > 0
         ? values.variants.map((variant: any) => ({
+            id: variant.id || undefined,
+            remoteId: variant.remoteId || undefined,
             name: String(variant.name ?? "").trim(),
             sku: String(variant.sku ?? "").trim() || undefined,
+            barcode: String(variant.barcode ?? "").trim() || undefined,
             price: Number(variant.price ?? 0),
             costPrice: Number(variant.costPrice ?? 0),
             color: String(variant.color ?? "").trim() || undefined,

@@ -56,6 +56,8 @@ export default function POSScreen() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedProductForVariants, setSelectedProductForVariants] =
     useState<any>(null);
+  const [scannerMode, setScannerMode] = useState<"single" | "continuous">("single");
+  const [scannedPreviewItems, setScannedPreviewItems] = useState<any[]>([]);
 
   // Animations
   const slideAnim = useRef(new Animated.Value(height)).current;
@@ -219,7 +221,7 @@ export default function POSScreen() {
   };
 
   const handleScan = (data: string) => {
-    setShowScannerModal(false);
+    let scannedItem = null;
     const variant = variantsData?.find(
       (v: any) =>
         v.barcode === data ||
@@ -228,23 +230,40 @@ export default function POSScreen() {
         v.remoteId === data,
     );
     if (variant) {
-      const saleItem = saleItems.find(
-        (item: any) => item.variantId === variant.id,
+      scannedItem = saleItems.find((item: any) => item.variantId === variant.id);
+    } else {
+      const product = productsData?.find(
+        (p: any) => p.barcode === data || p.sku === data || p.id === data,
       );
-      if (saleItem) {
-        handleAddToCart(saleItem);
-        return;
+      if (product) {
+        scannedItem = saleItems.find((item: any) => item.id === product.id) || product;
       }
     }
-    const product = productsData?.find(
-      (p: any) => p.barcode === data || p.sku === data || p.id === data,
-    );
-    if (product) {
-      handleAddToCart(
-        saleItems.find((item: any) => item.id === product.id) || product,
-      );
+
+    if (scannedItem) {
+      if (scannerMode === "single") {
+        setShowScannerModal(false);
+        handleAddToCart(scannedItem);
+      } else {
+        setScannedPreviewItems((prev) => {
+          const existing = prev.find((item) => item.id === scannedItem.id);
+          if (existing) {
+            return prev.map((item) =>
+              item.id === scannedItem.id
+                ? { ...item, previewQty: (item.previewQty || 1) + 1 }
+                : item
+            );
+          }
+          return [...prev, { ...scannedItem, previewQty: 1 }];
+        });
+      }
     } else {
-      setSearchQuery(data);
+      if (scannerMode === "single") {
+        setShowScannerModal(false);
+        setSearchQuery(data);
+      } else {
+        Alert.alert("Not Found", `Barcode ${data} not found in catalog.`);
+      }
     }
   };
 
@@ -958,8 +977,59 @@ export default function POSScreen() {
 
         <BarcodeScannerModal
           visible={showScannerModal}
-          onClose={() => setShowScannerModal(false)}
+          onClose={() => {
+            setShowScannerModal(false);
+            setScannedPreviewItems([]);
+          }}
           onScan={handleScan}
+          allowModeToggle
+          mode={scannerMode}
+          onModeChange={setScannerMode}
+          bottomContent={
+            scannerMode === "continuous" && scannedPreviewItems.length > 0 ? (
+              <View className="bg-black/90 p-4 border-t border-white/20 rounded-t-3xl h-full pb-8">
+                <View className="flex-row justify-between items-center mb-4">
+                  <Text className="text-white font-bold text-lg">
+                    Scanned Items ({scannedPreviewItems.reduce((acc, i) => acc + (i.previewQty || 1), 0)})
+                  </Text>
+                  <TouchableOpacity
+                    className="bg-sky-500 px-6 py-2 rounded-full"
+                    onPress={() => {
+                      scannedPreviewItems.forEach(item => {
+                        for (let i = 0; i < (item.previewQty || 1); i++) {
+                          handleAddToCart(item);
+                        }
+                      });
+                      setScannedPreviewItems([]);
+                      setShowScannerModal(false);
+                    }}
+                  >
+                    <Text className="text-white font-bold">Add to Cart</Text>
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={scannedPreviewItems}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <View className="flex-row justify-between items-center py-3 border-b border-white/10">
+                      <View className="flex-1 pr-2">
+                        <Text className="text-white font-bold">{item.name}</Text>
+                        <Text className="text-white/60 text-xs mt-1">SKU: {item.sku || "N/A"}</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <Text className="text-white font-bold mr-4">
+                          ${(item.sellingPrice || 0).toFixed(2)}
+                        </Text>
+                        <View className="bg-white/20 px-3 py-1 rounded-full">
+                          <Text className="text-white font-bold">x{item.previewQty || 1}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                />
+              </View>
+            ) : null
+          }
         />
       </Screen>
     </SafeAreaView>

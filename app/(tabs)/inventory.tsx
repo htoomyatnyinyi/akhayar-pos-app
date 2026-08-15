@@ -57,6 +57,8 @@ export default function InventoryScreen() {
   const [selectedAllocationProduct, setSelectedAllocationProduct] =
     useState<any>(null);
   const [selectedInventory, setSelectedInventory] = useState<any>(null);
+  const [scannerMode, setScannerMode] = useState<"single" | "continuous">("single");
+  const [scannedPreviewItems, setScannedPreviewItems] = useState<any[]>([]);
 
   // ✅ Queries
   const {
@@ -125,6 +127,7 @@ export default function InventoryScreen() {
         variantName: variant?.name || null,
         variantOptions,
         sku: variant?.sku || product?.sku || "N/A",
+        barcode: variant?.barcode || product?.barcode || null,
         sellingPrice: variant?.price ?? product?.sellingPrice ?? 0,
         costPrice: variant?.costPrice ?? product?.costPrice ?? 0,
         categoryId: product?.categoryId,
@@ -300,23 +303,59 @@ export default function InventoryScreen() {
     [createProduct, refetchInventory, refetchProducts, refetchBrands],
   );
 
-  const handleScan = useCallback(
+  const resolveScannedInventory = useCallback(
     (data: string) => {
-      setShowScannerModal(false);
-      const inventory = inventoryWithDetails.find(
-        (p: any) => p.barcode === data || p.sku === data || p.id === data,
+      // Also check variant barcodes directly
+      const variant = variantsData?.find(
+        (v: any) => v.barcode === data || v.sku === data,
       );
-      if (inventory) {
-        setSelectedInventory(inventory);
-        setShowAdjustModal(true);
-      } else {
-        Alert.alert(
-          "Not Found",
-          `No local product found for barcode/SKU:\n${data}`,
+      if (variant) {
+        return inventoryWithDetails.find(
+          (inv: any) => inv.variantId === variant.id || inv.variantId === variant.remoteId,
         );
       }
+      return inventoryWithDetails.find(
+        (p: any) => p.barcode === data || p.sku === data || p.id === data,
+      );
     },
-    [inventoryWithDetails],
+    [inventoryWithDetails, variantsData],
+  );
+
+  const handleScan = useCallback(
+    (data: string) => {
+      const inventory = resolveScannedInventory(data);
+
+      if (scannerMode === "single") {
+        setShowScannerModal(false);
+        if (inventory) {
+          setSelectedInventory(inventory);
+          setShowAdjustModal(true);
+        } else {
+          Alert.alert(
+            "Not Found",
+            `No local product found for barcode/SKU:\n${data}`,
+          );
+        }
+      } else {
+        // Continuous mode — stage items in preview list
+        if (inventory) {
+          setScannedPreviewItems((prev) => {
+            const existing = prev.find((item) => item.id === inventory.id);
+            if (existing) {
+              return prev.map((item) =>
+                item.id === inventory.id
+                  ? { ...item, scanCount: (item.scanCount || 1) + 1 }
+                  : item,
+              );
+            }
+            return [...prev, { ...inventory, scanCount: 1 }];
+          });
+        } else {
+          Alert.alert("Not Found", `Barcode ${data} not found in inventory.`);
+        }
+      }
+    },
+    [resolveScannedInventory, scannerMode],
   );
 
   // ============================================
@@ -779,8 +818,61 @@ export default function InventoryScreen() {
       {/* ============================================ */}
       <BarcodeScannerModal
         visible={showScannerModal}
-        onClose={() => setShowScannerModal(false)}
+        onClose={() => {
+          setShowScannerModal(false);
+          setScannedPreviewItems([]);
+        }}
         onScan={handleScan}
+        allowModeToggle
+        mode={scannerMode}
+        onModeChange={setScannerMode}
+        bottomContent={
+          scannerMode === "continuous" && scannedPreviewItems.length > 0 ? (
+            <View className="bg-black/90 p-4 border-t border-white/20 rounded-t-3xl h-full pb-8">
+              <View className="flex-row justify-between items-center mb-3">
+                <Text className="text-white font-bold text-lg">
+                  Scanned ({scannedPreviewItems.length})
+                </Text>
+                <TouchableOpacity
+                  className="bg-red-500/80 px-4 py-1.5 rounded-full"
+                  onPress={() => setScannedPreviewItems([])}
+                >
+                  <Text className="text-white font-bold text-xs">Clear All</Text>
+                </TouchableOpacity>
+              </View>
+              <FlatList
+                data={scannedPreviewItems}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    className="flex-row justify-between items-center py-3 border-b border-white/10"
+                    onPress={() => {
+                      setShowScannerModal(false);
+                      setScannedPreviewItems([]);
+                      setSelectedInventory(item);
+                      setShowAdjustModal(true);
+                    }}
+                  >
+                    <View className="flex-1 pr-2">
+                      <Text className="text-white font-bold">
+                        {item.name}{item.variantName ? ` — ${item.variantName}` : ""}
+                      </Text>
+                      <Text className="text-white/60 text-xs mt-1">
+                        SKU: {item.sku} • Stock: {item.quantity}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center">
+                      <View className="bg-white/20 px-3 py-1 rounded-full mr-2">
+                        <Text className="text-white font-bold">x{item.scanCount || 1}</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color="#94a3b8" />
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          ) : null
+        }
       />
     </Screen>
   );

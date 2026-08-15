@@ -2268,17 +2268,87 @@ export async function createOfflineGenericRecord<T extends Record<string, any>>(
 
 export async function updateOfflineProduct(
   id: string,
-  data: Partial<Product> & { categoryName?: string },
+  data: Partial<Product> & { categoryName?: string; variants?: any[] },
 ) {
   const now = new Date().toISOString();
-  await getOfflineDb()
+  const db = getOfflineDb();
+
+  // Strip the variants array from the product-level update (it's not a product column)
+  const { variants: variantsPayload, ...productData } = data as any;
+
+  await db
     .update(products)
     .set({
-      ...data,
+      ...productData,
       updatedAt: now,
       syncStatus: "pending",
     } as Partial<typeof products.$inferInsert>)
     .where(eq(products.id, id));
+
+  // ── Sync variants locally if provided ──
+  if (Array.isArray(variantsPayload) && variantsPayload.length > 0) {
+    // Get existing local variants for this product
+    const existingVariants = await db
+      .select()
+      .from(productVariants)
+      .where(eq(productVariants.productId, id));
+
+    const existingIds = new Set(existingVariants.map((v) => v.id));
+    const keptIds = new Set<string>();
+
+    for (const v of variantsPayload) {
+      if (v.id && existingIds.has(v.id)) {
+        // Update existing variant
+        keptIds.add(v.id);
+        await db
+          .update(productVariants)
+          .set({
+            name: v.name,
+            sku: v.sku,
+            barcode: v.barcode || null,
+            price: Number(v.price ?? 0),
+            costPrice: Number(v.costPrice ?? 0),
+            color: v.color,
+            size: v.size,
+            isActive: v.isActive ?? true,
+            updatedAt: now,
+            syncStatus: "pending",
+          } as Partial<typeof productVariants.$inferInsert>)
+          .where(eq(productVariants.id, v.id));
+      } else {
+        // Create new variant locally
+        const newId = v.id || createLocalId();
+        keptIds.add(newId);
+        await db.insert(productVariants).values({
+          id: newId,
+          remoteId: v.id || null,
+          productId: id,
+          tenantId: (productData as any).tenantId ?? "default",
+          name: v.name,
+          sku: v.sku || `VAR-${newId.slice(-8)}`,
+          barcode: v.barcode || null,
+          price: Number(v.price ?? 0),
+          costPrice: Number(v.costPrice ?? 0),
+          color: v.color,
+          size: v.size,
+          isActive: v.isActive ?? true,
+          syncStatus: "pending",
+          createdAt: now,
+          updatedAt: now,
+        } as typeof productVariants.$inferInsert);
+      }
+    }
+
+    // Deactivate variants that were removed from the list
+    for (const existing of existingVariants) {
+      if (!keptIds.has(existing.id)) {
+        await db
+          .update(productVariants)
+          .set({ isActive: false, updatedAt: now, syncStatus: "pending" } as Partial<typeof productVariants.$inferInsert>)
+          .where(eq(productVariants.id, existing.id));
+      }
+    }
+  }
 
   await enqueueMutation(
     "products",
@@ -2288,7 +2358,7 @@ export async function updateOfflineProduct(
     "PUT",
     data,
   );
-  const [row] = await getOfflineDb()
+  const [row] = await db
     .select()
     .from(products)
     .where(eq(products.id, id))
