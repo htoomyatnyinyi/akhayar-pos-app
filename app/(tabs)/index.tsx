@@ -304,6 +304,22 @@ export default function POSScreen() {
           subTotal: item.price * item.qty,
           discountAmount: 0,
         })),
+        // The local order keeps variantId for history. If the backend only
+        // has product-level inventory, its stock validation must receive the
+        // product row instead of a non-existent variant stock row.
+        syncItems: cartItems.map((item) => ({
+          productId: item.productId || item.id,
+          variantId: hasSeparatedVariantInventory(
+            item.productId || item.id,
+            item.variantId,
+          )
+            ? item.variantId
+            : undefined,
+          quantity: item.qty,
+          unitPrice: item.price,
+          subTotal: item.price * item.qty,
+          discountAmount: 0,
+        })),
       };
 
       const result = await createOrder(orderPayload).unwrap();

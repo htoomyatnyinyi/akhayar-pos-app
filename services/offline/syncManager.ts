@@ -1059,8 +1059,31 @@ async function processOutboxItem(
           }
 
           // Session open – proceed
+          const remoteOrderPayload = {
+            ...payload,
+            items: await Promise.all(
+              (payload.items ?? []).map(async (orderItem: any) => {
+                if (!orderItem.variantId) return orderItem;
+                const stockRows = await db
+                  .select({ variantId: inventory.variantId })
+                  .from(inventory)
+                  .where(
+                    and(
+                      eq(inventory.productId, orderItem.productId),
+                      eq(inventory.storeId, payload.storeId),
+                    ),
+                  );
+                const hasSeparatedVariantStock = stockRows.some(
+                  (row) => row.variantId != null,
+                );
+                return hasSeparatedVariantStock
+                  ? orderItem
+                  : { ...orderItem, variantId: undefined };
+              }),
+            ),
+          };
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.createRemoteOrder.initiate(payload),
+            remoteApi.endpoints.createRemoteOrder.initiate(remoteOrderPayload),
           );
           if (error) {
             const errorMessage =
@@ -1074,7 +1097,7 @@ async function processOutboxItem(
             "data orders from createRemoteOrder",
             data,
             "payload",
-            payload,
+            remoteOrderPayload,
           );
 
           const remoteOrder = (data as any)?.order ?? (data as any)?.data ?? data;

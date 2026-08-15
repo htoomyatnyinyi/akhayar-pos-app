@@ -1697,8 +1697,11 @@ export async function createOfflineOrder(
   const clientOrderId = payload.clientOrderId ?? orderId;
   const orderNumber = payload.orderNumber ?? `ORD-${orderId}`;
 
+  const { syncItems, ...orderPayload } = payload as CreateOrderPayload & {
+    syncItems?: any[];
+  };
   const cleanPayload = {
-    ...payload,
+    ...orderPayload,
     clientOrderId,
     orderNumber,
     subTotal: Number(payload.subTotal) || 0,
@@ -1708,6 +1711,16 @@ export async function createOfflineOrder(
     paidAmount: Number(payload.paidAmount) || 0,
     changeAmount: Number(payload.changeAmount) || 0,
     items: payload.items.map((item: any) => ({
+      ...item,
+      quantity: Number(item.quantity) || 0,
+      unitPrice: Number(item.unitPrice) || 0,
+      subTotal: Number(item.subTotal) || 0,
+      discountAmount: Number(item.discountAmount) || 0,
+    })),
+  };
+  const remotePayload = {
+    ...cleanPayload,
+    items: (syncItems ?? cleanPayload.items).map((item: any) => ({
       ...item,
       quantity: Number(item.quantity) || 0,
       unitPrice: Number(item.unitPrice) || 0,
@@ -1806,7 +1819,7 @@ export async function createOfflineOrder(
         "create",
         "/api/tenant/orders",
         "POST",
-        JSON.stringify(cleanPayload),
+        JSON.stringify(remotePayload),
         "pending",
         0,
         now,
