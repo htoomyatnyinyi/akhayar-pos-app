@@ -29,7 +29,10 @@ import { MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useState } from "react";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { isOnline } from "@/services/offline/network";
-import { useCreateStockTransferMutation } from "@/services/api/remoteApi";
+import {
+  useAllocateProductStockMutation,
+  useCreateStockTransferMutation,
+} from "@/services/api/remoteApi";
 import {
   ActivityIndicator,
   Alert,
@@ -54,6 +57,9 @@ export default function InventoryScreen() {
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [showAllocationModal, setShowAllocationModal] = useState(false);
+  const [selectedAllocationProduct, setSelectedAllocationProduct] =
+    useState<any>(null);
   const [selectedInventory, setSelectedInventory] = useState<any>(null);
 
   // ✅ Queries
@@ -88,6 +94,8 @@ export default function InventoryScreen() {
     useCreateLocalInventoryMovementMutation();
   const [createStockTransfer, { isLoading: isCreatingTransfer }] =
     useCreateStockTransferMutation();
+  const [allocateProductStock, { isLoading: isAllocating }] =
+    useAllocateProductStockMutation();
   const [adjustStock, { isLoading: isAdjusting }] =
     useAdjustLocalStockMutation();
   const [createProduct, { isLoading: isCreatingProduct }] =
@@ -370,6 +378,20 @@ export default function InventoryScreen() {
                 )}
             </View>
           </View>
+          {item.variantOptions?.length > 0 &&
+            !item.rows.some((row: any) => row.variantId) && (
+              <TouchableOpacity
+                className="mb-3 rounded-xl bg-amber-500/15 border border-amber-400/30 px-3 py-2"
+                onPress={() => {
+                  setSelectedAllocationProduct(item);
+                  setShowAllocationModal(true);
+                }}
+              >
+                <Text className="text-amber-200 text-center text-xs font-bold">
+                  Allocate shared stock to variants
+                </Text>
+              </TouchableOpacity>
+            )}
           {item.rows.map((variantRow: any) => {
             const badge = getStockBadge(variantRow.quantity);
             return (
@@ -693,6 +715,37 @@ export default function InventoryScreen() {
         onSubmit={handleCreateMovement}
       />
 
+      <StockAllocationModal
+        visible={showAllocationModal}
+        product={selectedAllocationProduct}
+        storeId={currentStoreId || ""}
+        isLoading={isAllocating}
+        onClose={() => {
+          setShowAllocationModal(false);
+          setSelectedAllocationProduct(null);
+        }}
+        onSubmit={async (allocations) => {
+          if (!selectedAllocationProduct || !currentStoreId) return;
+          try {
+            await allocateProductStock({
+              productId: selectedAllocationProduct.productId,
+              storeId: currentStoreId,
+              allocations,
+            }).unwrap();
+            setShowAllocationModal(false);
+            setSelectedAllocationProduct(null);
+            await refetchInventory();
+            await refetchMovements();
+            Alert.alert("Success", "Variant stock allocated successfully");
+          } catch (error: any) {
+            Alert.alert(
+              "Allocation failed",
+              error?.data?.message || error?.message || "Unable to allocate stock",
+            );
+          }
+        }}
+      />
+
       {/* ============================================ */}
       {/* NEW PRODUCT MODAL (with Brand support) */}
       {/* ============================================ */}
@@ -721,6 +774,129 @@ export default function InventoryScreen() {
 // ============================================
 // ADJUST STOCK MODAL COMPONENT
 // ============================================
+function StockAllocationModal({
+  visible,
+  product,
+  isLoading,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean;
+  product: any;
+  storeId: string;
+  isLoading: boolean;
+  onClose: () => void;
+  onSubmit: (allocations: Array<{ variantId: string; quantity: number }>) => void;
+}) {
+  const variants = product?.variantOptions || [];
+  const totalStock = Number(product?.rows?.[0]?.quantity ?? 0);
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const allocatedTotal = variants.reduce(
+    (sum: number, variant: any) =>
+      sum + Number(quantities[variant.id] || 0),
+    0,
+  );
+
+  const reset = useCallback(() => {
+    setQuantities(
+      Object.fromEntries(variants.map((variant: any) => [variant.id, "0"])),
+    );
+  }, [product]);
+
+  const submit = () => {
+    if (allocatedTotal !== totalStock) {
+      Alert.alert(
+        "Total mismatch",
+        `Allocate exactly ${totalStock} units across all variants.`,
+      );
+      return;
+    }
+    onSubmit(
+      variants.map((variant: any) => ({
+        variantId: variant.remoteId || variant.id,
+        quantity: Number(quantities[variant.id] || 0),
+      })),
+    );
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onShow={reset}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1 justify-end"
+      >
+        <View className="bg-black/60 flex-1 justify-end">
+          <View className="bg-slate-900 rounded-t-4xl p-6 border-t border-white/10">
+            <View className="flex-row items-center justify-between mb-4">
+              <View>
+                <Text className="text-white font-black text-xl">
+                  Allocate Variant Stock
+                </Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  {product?.name} • Total: {totalStock}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={onClose} className="bg-white/10 p-2 rounded-full">
+                <MaterialIcons name="close" size={18} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {variants.map((variant: any) => (
+                <View key={variant.id} className="mb-3">
+                  <Text className="text-white font-semibold text-sm mb-2">
+                    {variant.name}
+                  </Text>
+                  <TextInput
+                    value={quantities[variant.id] ?? "0"}
+                    onChangeText={(value) =>
+                      setQuantities((current) => ({
+                        ...current,
+                        [variant.id]: value.replace(/[^0-9]/g, ""),
+                      }))
+                    }
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor="#64748b"
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  />
+                </View>
+              ))}
+            </ScrollView>
+
+            <Text
+              className={`text-center text-xs font-bold my-3 ${
+                allocatedTotal === totalStock ? "text-emerald-400" : "text-amber-400"
+              }`}
+            >
+              Allocated {allocatedTotal} / {totalStock}
+            </Text>
+            <TouchableOpacity
+              disabled={isLoading}
+              onPress={submit}
+              className="rounded-2xl bg-emerald-500 py-4"
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-white text-center font-black">
+                  Save Allocation
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 function AdjustStockModal({
   visible,
   inventory,

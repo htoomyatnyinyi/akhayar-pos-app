@@ -1184,6 +1184,7 @@ export const remoteApi = createApi({
         referenceId: string;
         referenceType: string;
         reason?: string;
+        clientMovementId?: string;
       }
     >({
       query: (body) => ({
@@ -1195,6 +1196,22 @@ export const remoteApi = createApi({
           : undefined,
       }),
       invalidatesTags: ["InventoryMovements", "Inventory"],
+    }),
+
+    allocateProductStock: builder.mutation<
+      unknown,
+      {
+        productId: string;
+        storeId: string;
+        allocations: Array<{ variantId: string; quantity: number }>;
+      }
+    >({
+      query: ({ productId, ...body }) => ({
+        url: `/tenant/products/${productId}/stock-allocation`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Products", "Inventory", "InventoryMovements"],
     }),
 
     // ---------- Inventory Counts ----------
@@ -2679,6 +2696,7 @@ export const {
   // Inventory Movements
   useGetRemoteInventoryMovementsQuery,
   useCreateRemoteInventoryMovementMutation,
+  useAllocateProductStockMutation,
 
   // Inventory Counts
   useGetRemoteInventoryCountsQuery,
