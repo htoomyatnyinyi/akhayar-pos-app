@@ -44,8 +44,6 @@ import {
   upsertStores,
   upsertStaff,
   upsertSuppliers,
-  markOrderSyncFailed,
-  markOutboxDead,
   upsertOrders,
 } from "./repository";
 
@@ -309,7 +307,10 @@ export async function syncNow(
       await pullOrders(dispatch, tenantId),
       await pullPriceHistory(dispatch, tenantId),
     ];
-    syncedItems += refreshed.reduce((total, result) => total + result.synced, 0);
+    syncedItems += refreshed.reduce(
+      (total, result) => total + result.synced,
+      0,
+    );
     dispatch(setSyncProgress(95));
 
     const remainingCount = await getQueuedCount();
@@ -644,10 +645,17 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
         return rows.map((row: any) => ({
           ...row,
           productId:
-            productIdMap[String(
-              row.productId ?? row.product_id ?? product.id ?? product._id,
-            )] ?? row.productId ?? row.product_id ?? product.id ?? product._id,
-          tenantId: row.tenantId ?? row.tenant_id ?? product.tenantId ?? tenantId,
+            productIdMap[
+              String(
+                row.productId ?? row.product_id ?? product.id ?? product._id,
+              )
+            ] ??
+            row.productId ??
+            row.product_id ??
+            product.id ??
+            product._id,
+          tenantId:
+            row.tenantId ?? row.tenant_id ?? product.tenantId ?? tenantId,
         }));
       });
       if (nestedInventory.length > 0) {
@@ -660,10 +668,7 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
           ? p.variants.map((variant: any) => ({
               ...variant,
               productId:
-                variant.productId ??
-                variant.product_id ??
-                p.id ??
-                p._id,
+                variant.productId ?? variant.product_id ?? p.id ?? p._id,
             }))
           : [],
       );
@@ -1064,7 +1069,11 @@ async function resolveRemoteTransactionReferences(payload: any) {
 
   if (resolved.sessionId) {
     const [sessionRow] = await db
-      .select({ id: sessions.id, remoteId: sessions.remoteId, status: sessions.status })
+      .select({
+        id: sessions.id,
+        remoteId: sessions.remoteId,
+        status: sessions.status,
+      })
       .from(sessions)
       .where(eq(sessions.id, String(resolved.sessionId)))
       .limit(1);
@@ -1087,17 +1096,24 @@ async function resolveRemoteTransactionReferences(payload: any) {
         .from(products)
         .where(eq(products.id, String(item.productId)))
         .limit(1);
-      if (!productRow) throw new Error(`Product ${item.productId} is not cached locally.`);
-      if (productRow.remoteId) item = { ...item, productId: productRow.remoteId };
+      if (!productRow)
+        throw new Error(`Product ${item.productId} is not cached locally.`);
+      if (productRow.remoteId)
+        item = { ...item, productId: productRow.remoteId };
 
       if (item.variantId) {
         const [variantRow] = await db
-          .select({ id: productVariants.id, remoteId: productVariants.remoteId })
+          .select({
+            id: productVariants.id,
+            remoteId: productVariants.remoteId,
+          })
           .from(productVariants)
           .where(eq(productVariants.id, String(item.variantId)))
           .limit(1);
-        if (!variantRow) throw new Error(`Variant ${item.variantId} is not cached locally.`);
-        if (variantRow.remoteId) item = { ...item, variantId: variantRow.remoteId };
+        if (!variantRow)
+          throw new Error(`Variant ${item.variantId} is not cached locally.`);
+        if (variantRow.remoteId)
+          item = { ...item, variantId: variantRow.remoteId };
       }
       return item;
     }),
@@ -1114,7 +1130,8 @@ async function resolveRemoteMovementReferences(payload: any) {
     .from(products)
     .where(eq(products.id, String(payload.productId)))
     .limit(1);
-  if (!productRow) throw new Error(`Product ${payload.productId} is not cached locally.`);
+  if (!productRow)
+    throw new Error(`Product ${payload.productId} is not cached locally.`);
   if (productRow.remoteId) resolved.productId = productRow.remoteId;
 
   if (payload.variantId) {
@@ -1123,7 +1140,8 @@ async function resolveRemoteMovementReferences(payload: any) {
       .from(productVariants)
       .where(eq(productVariants.id, String(payload.variantId)))
       .limit(1);
-    if (!variantRow) throw new Error(`Variant ${payload.variantId} is not cached locally.`);
+    if (!variantRow)
+      throw new Error(`Variant ${payload.variantId} is not cached locally.`);
     if (variantRow.remoteId) resolved.variantId = variantRow.remoteId;
   }
 
@@ -1145,7 +1163,9 @@ async function resolveRemoteVariantReferences(payload: any) {
     .where(eq(products.id, String(payload.productId)))
     .limit(1);
   if (!product?.remoteId) {
-    throw new Error("Product is waiting for server sync; option will retry automatically.");
+    throw new Error(
+      "Product is waiting for server sync; option will retry automatically.",
+    );
   }
   resolved.productId = product.remoteId;
   return resolved;
@@ -1247,21 +1267,18 @@ async function processOutboxItem(
       try {
         // Only handle create
         if (item.operation === "create") {
-          // ✅ Check if session is still open locally
-          const [session] = await db
-            .select()
-            .from(sessions)
-            .where(eq(sessions.id, payload.sessionId))
-            .limit(1);
-
-          if (!session || session.status !== "OPEN") {
-            const error = `Session ${payload.sessionId} is closed. Please reopen a session and retry.`;
-            console.warn(`⚠️ ${error}`);
-            await markOrderSyncFailed(item.entityId, error);
-            await markOutboxDead(item.id); // Stop retrying
-            return { success: false, error };
-          }
-          if (!session.remoteId) {
+          // A sale made before an offline session closes is still valid. Use
+          // the session only when it has already reached the server and is
+          // still open; otherwise submit the sale without a session instead
+          // of permanently dead-lettering the order.
+          const [session] = payload.sessionId
+            ? await db
+                .select()
+                .from(sessions)
+                .where(eq(sessions.id, payload.sessionId))
+                .limit(1)
+            : [];
+          if (session?.status === "OPEN" && !session.remoteId) {
             return {
               success: false,
               error: `Session ${payload.sessionId} is waiting for server sync; retrying order later.`,
@@ -1271,27 +1288,11 @@ async function processOutboxItem(
           // Session open – proceed
           const remoteOrderPayload = await resolveRemoteTransactionReferences({
             ...payload,
-            sessionId: session.remoteId ?? session.id,
-            items: await Promise.all(
-              (payload.items ?? []).map(async (orderItem: any) => {
-                if (!orderItem.variantId) return orderItem;
-                const stockRows = await db
-                  .select({ variantId: inventory.variantId })
-                  .from(inventory)
-                  .where(
-                    and(
-                      eq(inventory.productId, orderItem.productId),
-                      eq(inventory.storeId, payload.storeId),
-                    ),
-                  );
-                const hasSeparatedVariantStock = stockRows.some(
-                  (row) => row.variantId != null,
-                );
-                return hasSeparatedVariantStock
-                  ? orderItem
-                  : { ...orderItem, variantId: undefined };
-              }),
-            ),
+            sessionId:
+              session?.status === "OPEN" && session.remoteId
+                ? session.remoteId
+                : undefined,
+            items: payload.items,
           });
           const { data, error } = await store.dispatch(
             remoteApi.endpoints.createRemoteOrder.initiate(remoteOrderPayload),
@@ -1312,9 +1313,9 @@ async function processOutboxItem(
             remoteOrderPayload,
           );
 
-          const remoteOrder = (data as any)?.order ?? (data as any)?.data ?? data;
-          const remoteId =
-            remoteOrder?.id || (data as any)?.id;
+          const remoteOrder =
+            (data as any)?.order ?? (data as any)?.data ?? data;
+          const remoteId = remoteOrder?.id || (data as any)?.id;
           if (!remoteId) {
             throw new Error("Order created but no ID returned");
           }
@@ -1326,9 +1327,7 @@ async function processOutboxItem(
               // A successfully submitted POS sale has been paid locally. The
               // old code only changed syncStatus, leaving the UI at PENDING.
               status:
-                remoteOrder?.status === "CANCELLED"
-                  ? "CANCELLED"
-                  : "COMPLETED",
+                remoteOrder?.status === "CANCELLED" ? "CANCELLED" : "COMPLETED",
               orderNumber: remoteOrder?.orderNumber ?? payload.orderNumber,
               syncStatus: "synced",
               syncError: null,
@@ -1396,7 +1395,8 @@ async function processOutboxItem(
         if (error) throw new Error(JSON.stringify(error));
         const remoteSession = (data as any)?.session ?? (data as any);
         const remoteSessionId = remoteSession?.id;
-        if (!remoteSessionId) throw new Error("Session synced without a server ID");
+        if (!remoteSessionId)
+          throw new Error("Session synced without a server ID");
         await db
           .update(sessions)
           .set({ remoteId: remoteSessionId, syncStatus: "synced" })
@@ -1463,15 +1463,23 @@ async function processOutboxItem(
         if (item.operation === "create") {
           const variantPayload = await resolveRemoteVariantReferences(payload);
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.createRemoteProductVariant.initiate(variantPayload),
+            remoteApi.endpoints.createRemoteProductVariant.initiate(
+              variantPayload,
+            ),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db
             .update(productVariants)
-            .set({ remoteId: (data as any)?.variant?.id ?? (data as any)?.id ?? null, syncStatus: "synced" })
+            .set({
+              remoteId: (data as any)?.variant?.id ?? (data as any)?.id ?? null,
+              syncStatus: "synced",
+            })
             .where(eq(productVariants.id, item.entityId));
         } else if (item.operation === "update") {
-          if (!localVariant?.remoteId) throw new Error("Option is waiting for server sync; update will retry automatically.");
+          if (!localVariant?.remoteId)
+            throw new Error(
+              "Option is waiting for server sync; update will retry automatically.",
+            );
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteProductVariant.initiate({
               id: localVariant.remoteId,
@@ -1486,7 +1494,9 @@ async function processOutboxItem(
         } else if (item.operation === "delete") {
           if (!localVariant?.remoteId) {
             // The option never reached the server, so its local deletion is final.
-            await db.delete(productVariants).where(eq(productVariants.id, item.entityId));
+            await db
+              .delete(productVariants)
+              .where(eq(productVariants.id, item.entityId));
             await markOutboxSynced(item.id);
             return { success: true };
           }
@@ -1587,10 +1597,21 @@ async function processOutboxItem(
               };
             }
 
-            movementPayload = {
-              ...payload,
-              referenceId: order.remoteId ?? payload.referenceId,
-            };
+            // Server order creation already writes the SALE/RETURN stock
+            // movement atomically. Older mobile builds queued a duplicate
+            // movement after checkout; retire it rather than applying the
+            // stock delta twice.
+            await db
+              .update(inventoryMovements)
+              .set({
+                syncStatus: "synced",
+                syncError: null,
+                lastSyncedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              })
+              .where(eq(inventoryMovements.id, item.entityId));
+            await markOutboxSynced(item.id);
+            return { success: true };
           }
 
           // ✅ Map type to server enum
@@ -1627,16 +1648,16 @@ async function processOutboxItem(
             else if (sourceType === "OUT") mappedType = "SALE";
           }
 
-          const remoteMovementPayload = await resolveRemoteMovementReferences(
-            movementPayload,
-          );
-          const isOutbound = ["OUT", "SALE", "TRANSFER_OUT"].includes(
-            sourceType,
-          ) || ["SALE", "TRANSFER_OUT"].includes(mappedType);
+          const remoteMovementPayload =
+            await resolveRemoteMovementReferences(movementPayload);
+          const isOutbound =
+            ["OUT", "SALE", "TRANSFER_OUT"].includes(sourceType) ||
+            ["SALE", "TRANSFER_OUT"].includes(mappedType);
           const cleanPayload = {
             ...remoteMovementPayload,
             // The backend receives a signed quantityDelta through `quantity`.
-            quantity: Math.abs(Number(movementPayload.quantity ?? 0)) *
+            quantity:
+              Math.abs(Number(movementPayload.quantity ?? 0)) *
               (isOutbound ? -1 : 1),
             type: mappedType,
           };

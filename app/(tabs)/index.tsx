@@ -10,7 +10,6 @@ import {
   updateQuantity,
 } from "@/services/features/cart/cartSlice";
 import {
-  useCreateLocalInventoryMovementMutation,
   useCreateLocalOrderMutation,
   useGetActiveSessionQuery,
   useGetLocalCategoriesQuery,
@@ -120,9 +119,10 @@ export default function POSScreen() {
       String(value) === String(target.remoteId));
   const findInventory = (product: any, variant?: any) =>
     (() => {
-      const rows = inventoryData?.filter((inv: any) =>
-        matchesId(inv.productId, product),
-      ) ?? [];
+      const rows =
+        inventoryData?.filter((inv: any) =>
+          matchesId(inv.productId, product),
+        ) ?? [];
       if (!variant) return rows.find((inv: any) => inv.variantId == null);
       const exact = rows.find((inv: any) => matchesId(inv.variantId, variant));
       if (exact) return exact;
@@ -145,7 +145,6 @@ export default function POSScreen() {
 
   // Mutations
   const [createOrder] = useCreateLocalOrderMutation();
-  const [createInventoryMovement] = useCreateLocalInventoryMovementMutation();
 
   // Cart state
   const cartItems = useAppSelector((state) => state.cart.items);
@@ -159,11 +158,19 @@ export default function POSScreen() {
   const discountAmount = 0;
   const grandTotal = cartSubtotal + taxAmount - discountAmount;
 
-  // Check if any items are out of stock
+  // // Check if any items are out of stock
   const hasOutOfStockItems = cartItems.some((item) => {
     const inventory = findInventory(item.productId || item.id, item.variantId);
     return inventory && inventory.quantity < item.qty;
   });
+
+
+  const hasUnallocatedVariantStock = cartItems.some(
+    (item) =>
+      !!item.variantId &&
+      !hasSeparatedVariantInventory(item.productId || item.id, item.variantId),
+  );
+
 
   // Handlers
   const handleAddToCart = (product: any) => {
@@ -215,10 +222,15 @@ export default function POSScreen() {
     setShowScannerModal(false);
     const variant = variantsData?.find(
       (v: any) =>
-        v.barcode === data || v.sku === data || v.id === data || v.remoteId === data,
+        v.barcode === data ||
+        v.sku === data ||
+        v.id === data ||
+        v.remoteId === data,
     );
     if (variant) {
-      const saleItem = saleItems.find((item: any) => item.variantId === variant.id);
+      const saleItem = saleItems.find(
+        (item: any) => item.variantId === variant.id,
+      );
       if (saleItem) {
         handleAddToCart(saleItem);
         return;
@@ -228,7 +240,9 @@ export default function POSScreen() {
       (p: any) => p.barcode === data || p.sku === data || p.id === data,
     );
     if (product) {
-      handleAddToCart(saleItems.find((item: any) => item.id === product.id) || product);
+      handleAddToCart(
+        saleItems.find((item: any) => item.id === product.id) || product,
+      );
     } else {
       setSearchQuery(data);
     }
@@ -267,6 +281,15 @@ export default function POSScreen() {
       );
       return;
     }
+
+    if (hasUnallocatedVariantStock) {
+      Alert.alert(
+        "Allocate option stock first",
+        "This product has options, but its stock is still stored on the master product. Allocate the stock to each option before selling it.",
+      );
+      return;
+    }
+
     if (!activeSession) {
       Alert.alert(
         "No Active Session",
@@ -304,17 +327,9 @@ export default function POSScreen() {
           subTotal: item.price * item.qty,
           discountAmount: 0,
         })),
-        // The local order keeps variantId for history. If the backend only
-        // has product-level inventory, its stock validation must receive the
-        // product row instead of a non-existent variant stock row.
         syncItems: cartItems.map((item) => ({
           productId: item.productId || item.id,
-          variantId: hasSeparatedVariantInventory(
-            item.productId || item.id,
-            item.variantId,
-          )
-            ? item.variantId
-            : undefined,
+          variantId: item.variantId,
           quantity: item.qty,
           unitPrice: item.price,
           subTotal: item.price * item.qty,
@@ -325,27 +340,31 @@ export default function POSScreen() {
       const result = await createOrder(orderPayload).unwrap();
       if (!result) throw new Error("Order was not created");
 
-      for (const item of cartItems) {
-        await createInventoryMovement({
-          tenantId: user?.tenantId,
-          storeId: activeSession.storeId,
-          productId: item.productId || item.id,
-          // If the backend still stores shared product stock, send the
-          // movement against the product row while keeping variantId on the
-          // order item for reporting.
-          variantId: hasSeparatedVariantInventory(
-            item.productId || item.id,
-            item.variantId,
-          )
-            ? item.variantId
-            : undefined,
-          quantity: item.qty,
-          type: "OUT",
-          referenceId: result.id,
-          referenceType: "ORDER",
-          reason: `Order #${result.orderNumber || result.id}`,
-        }).unwrap();
-      }
+      // for (const item of cartItems) {
+      //   await createInventoryMovement({
+      //     tenantId: user?.tenantId,
+      //     storeId: activeSession.storeId,
+      //     productId: item.productId || item.id,
+      //     // If the backend still stores shared product stock, send the
+      //     // movement against the product row while keeping variantId on the
+      //     // order item for reporting.
+      //     variantId: hasSeparatedVariantInventory(
+      //       item.productId || item.id,
+      //       item.variantId,
+      //     )
+      //       ? item.variantId
+      //       : undefined,
+      //     quantity: item.qty,
+      //     type: "OUT",
+      //     referenceId: result.id,
+      //     referenceType: "ORDER",
+      //     reason: `Order #${result.orderNumber || result.id}`,
+      //   }).unwrap();
+      // }
+
+      // The order sync endpoint deducts stock and writes the authoritative
+      // SALE movement on the server. Do not enqueue a second movement here:
+      // it would deduct the same quantity twice when the device reconnects.
 
       dispatch(clearCart());
       setSelectedCustomer(null);
@@ -423,26 +442,26 @@ export default function POSScreen() {
       (cartItem) => cartItem.productId === item.id && !cartItem.variantId,
     );
     const inventory = findInventory(item.id);
-    const productRows = inventoryData?.filter((inv: any) =>
-      matchesId(inv.productId, item),
-    ) ?? [];
+    const productRows =
+      inventoryData?.filter((inv: any) => matchesId(inv.productId, item)) ?? [];
     const hasSeparatedVariantStock = productRows.some(
       (inv: any) => inv.variantId != null,
     );
-    const stockQty = variants.length && hasSeparatedVariantStock
-      ? variants.reduce(
-          (total: number, variant: any) =>
-            total + (findInventory(item, variant)?.quantity || 0),
-          0,
-        )
-      : inventory?.quantity ?? 0;
+    const stockQty =
+      variants.length && hasSeparatedVariantStock
+        ? variants.reduce(
+            (total: number, variant: any) =>
+              total + (findInventory(item, variant)?.quantity || 0),
+            0,
+          )
+        : (inventory?.quantity ?? 0);
     const isOutOfStock = variants.length
-      ? (hasSeparatedVariantStock
-          ? variants.every(
-          (variant: any) =>
-            (findInventory(item, variant)?.quantity || 0) <= 0,
-            )
-          : stockQty <= 0)
+      ? hasSeparatedVariantStock
+        ? variants.every(
+            (variant: any) =>
+              (findInventory(item, variant)?.quantity || 0) <= 0,
+          )
+        : stockQty <= 0
       : stockQty === 0;
 
     return (
@@ -479,7 +498,9 @@ export default function POSScreen() {
             className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mb-3"
             numberOfLines={1}
           >
-            {variants.length ? `${variants.length} variants` : `SKU: ${item.sku}`}
+            {variants.length
+              ? `${variants.length} variants`
+              : `SKU: ${item.sku}`}
           </Text>
           <View className="flex-row items-center justify-between mt-auto">
             <View>
@@ -490,7 +511,9 @@ export default function POSScreen() {
               </Text>
               {/* ✅ Stock label */}
               <Text className="text-slate-400 text-[10px] mt-0.5">
-                {variants.length ? `Choose variant • ${stockQty} total` : `Stock: ${stockQty}`}
+                {variants.length
+                  ? `Choose variant • ${stockQty} total`
+                  : `Stock: ${stockQty}`}
               </Text>
             </View>
             {!isOutOfStock && (
