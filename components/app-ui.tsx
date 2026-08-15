@@ -251,9 +251,11 @@ export function RowItem({
 export function SectionTitle({
   title,
   action,
+  onAction,
 }: {
   title: string;
   action?: string;
+  onAction?: () => void;
 }) {
   return (
     <View className="mb-3 flex-row items-center justify-between">
@@ -261,7 +263,9 @@ export function SectionTitle({
         {title}
       </Text>
       {action ? (
-        <Text className="text-xs font-semibold text-sky-300">{action}</Text>
+        <Pressable onPress={onAction} disabled={!onAction}>
+          <Text className="text-xs font-semibold text-sky-300">{action}</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -325,11 +329,24 @@ export function Divider() {
   return <View className="my-4 h-px bg-white/8" />;
 }
 
-export function StatRow({ label, value }: { label: string; value: string }) {
+export function StatRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
   return (
     <View className="flex-row items-center justify-between py-2">
       <Text className="text-sm text-slate-300">{label}</Text>
-      <Text className="text-sm font-semibold text-white">{value}</Text>
+      <Text
+        className="text-sm font-semibold"
+        style={{ color: valueColor ?? "#fff" }}
+      >
+        {value}
+      </Text>
     </View>
   );
 }

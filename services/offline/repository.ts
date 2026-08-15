@@ -304,11 +304,69 @@ export async function upsertProducts(
   if (!remoteProducts.length) return;
   const db = getOfflineDb();
 
-  const productsToInsert = remoteProducts.map((product) => {
+  const remoteToLocalId: Record<string, string> = {};
+  const productsToInsert: Array<typeof products.$inferInsert> = [];
+  const seenIds = new Set<string>();
+
+  for (const product of remoteProducts) {
     const normalized = normalizeProduct(product);
     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
-    return normalized;
-  });
+
+    const remoteId = String(normalized.id);
+    const existing = normalized.barcode
+      ? (
+          await db
+            .select({ id: products.id })
+            .from(products)
+            .where(
+              and(
+                eq(products.tenantId, normalized.tenantId),
+                eq(products.barcode, normalized.barcode),
+              ),
+            )
+            .limit(1)
+        )[0]
+      : normalized.sku
+        ? (
+            await db
+              .select({ id: products.id })
+              .from(products)
+              .where(
+                and(
+                  eq(products.tenantId, normalized.tenantId),
+                  eq(products.sku, normalized.sku),
+                ),
+              )
+              .limit(1)
+          )[0]
+        : undefined;
+
+    if (existing && existing.id !== normalized.id) {
+      remoteToLocalId[remoteId] = existing.id;
+      normalized.id = existing.id;
+      normalized.remoteId = remoteId;
+
+      // The server accepted this product earlier; prevent the old local
+      // create mutation from retrying and creating a duplicate.
+      await db
+        .update(syncOutbox)
+        .set({ status: "synced", lastError: null, updatedAt: new Date().toISOString() })
+        .where(
+          and(
+            eq(syncOutbox.entity, "products"),
+            eq(syncOutbox.entityId, existing.id),
+            eq(syncOutbox.operation, "create"),
+          ),
+        );
+    }
+
+    remoteToLocalId[remoteId] = normalized.id;
+
+    if (!seenIds.has(String(normalized.id))) {
+      seenIds.add(String(normalized.id));
+      productsToInsert.push(normalized);
+    }
+  }
 
   await withForeignKeysOff(db, async () => {
     await db
@@ -346,6 +404,8 @@ export async function upsertProducts(
         },
       });
   });
+
+  return remoteToLocalId;
 }
 
 export async function upsertProductVariants(
@@ -1376,7 +1436,7 @@ export async function createOfflineProduct(
         payload.description || null,
         payload.brandId || null,
         payload.storeId || null,
-        payload.categoryId || "default-category",
+        payload.categoryId || null,
         payload.supplierId || null,
         Number(payload.costPrice ?? 0),
         Number(payload.sellingPrice ?? 0),

@@ -252,6 +252,20 @@ export default function ManageScreen() {
         user?.tenantId,
       );
 
+      if (moduleKey === "products") {
+        if (!String(nextValues.name ?? "").trim()) {
+          Alert.alert("Product name required", "Enter a product name before saving.");
+          return;
+        }
+        if (!nextValues.categoryId && !nextValues.categoryName) {
+          Alert.alert(
+            "Category required",
+            "Select a category before saving the product.",
+          );
+          return;
+        }
+      }
+
       if (moduleKey === "staff") {
         if (editor.mode === "create") await createStaff(nextValues).unwrap();
         else
@@ -1248,6 +1262,10 @@ function EditorModal({
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const hasVariants =
+    moduleKey === "products" &&
+    Array.isArray(fields.variants) &&
+    fields.variants.length > 0;
 
   const [createCategory] = useCreateLocalCategoryMutation();
   const [createSupplier] = useCreateLocalSupplierMutation();
@@ -1519,42 +1537,51 @@ function EditorModal({
                   onChangeText={(v) => set("description", v)}
                   multiline
                 />
-                <Field
-                  label="Cost Price"
-                  value={fields.costPrice?.toString() ?? ""}
-                  onChangeText={(v) => {
-                    const num = parseFloat(v);
-                    set("costPrice", isNaN(num) ? 0 : num);
-                  }}
-                  keyboardType="decimal-pad"
-                />
-                <Field
-                  label="Selling Price"
-                  value={fields.sellingPrice?.toString() ?? ""}
-                  onChangeText={(v) => {
-                    const num = parseFloat(v);
-                    set("sellingPrice", isNaN(num) ? 0 : num);
-                  }}
-                  keyboardType="decimal-pad"
-                />
-                <Field
-                  label="Wholesale Price"
-                  value={fields.wholesalePrice?.toString() ?? ""}
-                  onChangeText={(v) => {
-                    const num = parseFloat(v);
-                    set("wholesalePrice", isNaN(num) ? 0 : num);
-                  }}
-                  keyboardType="decimal-pad"
-                />
-                <Field
-                  label="Initial Stock"
-                  value={fields.initialStock?.toString() ?? ""}
-                  onChangeText={(v) => {
-                    const num = parseInt(v, 10);
-                    set("initialStock", isNaN(num) ? 0 : num);
-                  }}
-                  keyboardType="numeric"
-                />
+                {!hasVariants && (
+                  <>
+                    <Field
+                      label="Cost Price"
+                      value={fields.costPrice?.toString() ?? ""}
+                      onChangeText={(v) => {
+                        const num = parseFloat(v);
+                        set("costPrice", isNaN(num) ? 0 : num);
+                      }}
+                      keyboardType="decimal-pad"
+                    />
+                    <Field
+                      label="Selling Price"
+                      value={fields.sellingPrice?.toString() ?? ""}
+                      onChangeText={(v) => {
+                        const num = parseFloat(v);
+                        set("sellingPrice", isNaN(num) ? 0 : num);
+                      }}
+                      keyboardType="decimal-pad"
+                    />
+                    <Field
+                      label="Wholesale Price"
+                      value={fields.wholesalePrice?.toString() ?? ""}
+                      onChangeText={(v) => {
+                        const num = parseFloat(v);
+                        set("wholesalePrice", isNaN(num) ? 0 : num);
+                      }}
+                      keyboardType="decimal-pad"
+                    />
+                    <Field
+                      label="Initial Stock"
+                      value={fields.initialStock?.toString() ?? ""}
+                      onChangeText={(v) => {
+                        const num = parseInt(v, 10);
+                        set("initialStock", isNaN(num) ? 0 : num);
+                      }}
+                      keyboardType="numeric"
+                    />
+                  </>
+                )}
+                {hasVariants && (
+                  <Text className="mb-4 text-xs text-amber-300">
+                    Prices, cost, and stock are managed for each variant below.
+                  </Text>
+                )}
                 <VariantEditor
                   variants={fields.variants ?? []}
                   editable={mode === "create"}
@@ -2365,6 +2392,22 @@ function buildPayload(
   }
 
   if (moduleKey === "products") {
+    const variants =
+      Array.isArray(values.variants) && values.variants.length > 0
+        ? values.variants.map((variant: any) => ({
+            name: String(variant.name ?? "").trim(),
+            sku: String(variant.sku ?? "").trim() || undefined,
+            price: Number(variant.price ?? 0),
+            costPrice: Number(variant.costPrice ?? 0),
+            color: String(variant.color ?? "").trim() || undefined,
+            size: String(variant.size ?? "").trim() || undefined,
+            initialStock: Number(variant.initialStock ?? 0),
+          }))
+        : undefined;
+    const variantStockTotal = variants?.reduce(
+      (total: number, variant: any) => total + variant.initialStock,
+      0,
+    );
     const payload: any = {
       tenantId: tenantId || "default",
       sku: String(values.sku ?? "").trim() || undefined,
@@ -2383,21 +2426,13 @@ function buildPayload(
       expiryDate: String(values.expiryDate ?? "").trim() || undefined,
       supplierId: String(values.supplierId ?? "").trim() || undefined,
       storeId: currentStoreId || undefined,
-      initialStock: values.initialStock
-        ? Number(values.initialStock)
-        : undefined,
-      variants:
-        Array.isArray(values.variants) && values.variants.length > 0
-          ? values.variants.map((variant: any) => ({
-              name: String(variant.name ?? "").trim(),
-              sku: String(variant.sku ?? "").trim() || undefined,
-              price: Number(variant.price ?? 0),
-              costPrice: Number(variant.costPrice ?? 0),
-              color: String(variant.color ?? "").trim() || undefined,
-              size: String(variant.size ?? "").trim() || undefined,
-              initialStock: Number(variant.initialStock ?? 0),
-            }))
-          : undefined,
+      initialStock:
+        variants && variants.length > 0
+          ? variantStockTotal
+          : values.initialStock
+            ? Number(values.initialStock)
+            : undefined,
+      variants,
     };
     Object.keys(payload).forEach((key) => {
       if (payload[key] === undefined) delete payload[key];

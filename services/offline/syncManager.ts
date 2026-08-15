@@ -13,6 +13,7 @@ import {
   setSyncComplete,
   setSyncDuration,
   setSyncError,
+  setSyncPhase,
   setSyncing,
   setSyncProgress,
 } from "@/services/features/offline/offlineSlice";
@@ -50,6 +51,7 @@ import {
 
 import {
   brands,
+  categories,
   inventory,
   inventoryCounts,
   inventoryMovements,
@@ -184,6 +186,7 @@ export async function syncNow(
     }
 
     // --- PULL Stores ---
+    dispatch(setSyncPhase("Pulling stores"));
     // if (!silent) console.log("📥 Pulling stores...");
     const storeResult = await pullStores(dispatch, tenantId);
     syncedItems += storeResult.synced;
@@ -191,6 +194,7 @@ export async function syncNow(
     // if (!silent) console.log(`✅ Synced ${storeResult.synced} stores`);
 
     // --- PULL Brands ---
+    dispatch(setSyncPhase("Pulling brands"));
     // if (!silent) console.log("📥 Pulling brands...");
     const brandResult = await pullBrands(dispatch, tenantId);
     syncedItems += brandResult.synced;
@@ -198,6 +202,7 @@ export async function syncNow(
     // if (!silent) console.log(`✅ Synced ${brandResult.synced} brands`);
 
     // --- PULL Categories ---
+    dispatch(setSyncPhase("Pulling categories"));
     // if (!silent) console.log("📥 Pulling categories...");
     const categoryResult = await pullCategories(dispatch, tenantId);
     syncedItems += categoryResult.synced;
@@ -205,6 +210,7 @@ export async function syncNow(
     // if (!silent) console.log(`✅ Synced ${categoryResult.synced} categories`);
 
     // --- PULL Customers ---
+    dispatch(setSyncPhase("Pulling customers"));
     // if (!silent) console.log("📥 Pulling customers...");
     const customerResult = await pullCustomers(dispatch, tenantId);
     syncedItems += customerResult.synced;
@@ -212,6 +218,7 @@ export async function syncNow(
     // if (!silent) console.log(`✅ Synced ${customerResult.synced} customers`);
 
     // --- PULL Staff --- (NEW)
+    dispatch(setSyncPhase("Pulling staff"));
     // if (!silent) console.log("📥 Pulling staff...");
     const staffResult = await pullStaff(dispatch, tenantId);
     syncedItems += staffResult.synced;
@@ -219,6 +226,7 @@ export async function syncNow(
     // if (!silent) console.log(`✅ Synced ${staffResult.synced} staff`);
 
     // --- PULL Suppliers --- (NEW)
+    dispatch(setSyncPhase("Pulling suppliers"));
     // if (!silent) console.log("📥 Pulling suppliers...");
     const supplierResult = await pullSuppliers(dispatch, tenantId);
     syncedItems += supplierResult.synced;
@@ -226,6 +234,7 @@ export async function syncNow(
     // if (!silent) console.log(`✅ Synced ${supplierResult.synced} suppliers`);
 
     // --- PULL Products --- (includes variants)
+    dispatch(setSyncPhase("Pulling products and variants"));
     // if (!silent) console.log("📥 Pulling products...");
     const productResult = await pullProducts(dispatch, tenantId);
     syncedItems += productResult.synced;
@@ -234,6 +243,7 @@ export async function syncNow(
       console.log(`✅ Synced ${productResult.synced} products (with variants)`);
 
     // --- PULL Inventory ---
+    dispatch(setSyncPhase("Pulling inventory and movements"));
     // if (!silent) console.log("📥 Pulling inventory...");
     const inventoryResult = await pullInventory(dispatch, tenantId);
     syncedItems += inventoryResult.synced;
@@ -242,6 +252,7 @@ export async function syncNow(
       console.log(`✅ Synced ${inventoryResult.synced} inventory items`);
 
     // --- PULL Sessions ---
+    dispatch(setSyncPhase("Pulling sessions"));
     // if (!silent) console.log("📥 Pulling sessions...");
     const sessionResult = await pullSessions(dispatch, tenantId);
     syncedItems += sessionResult.synced;
@@ -249,6 +260,7 @@ export async function syncNow(
     if (!silent) console.log(`✅ Synced ${sessionResult.synced} sessions`);
 
     // --- PULL Orders --- //byme
+    dispatch(setSyncPhase("Pulling orders"));
     const orderResult = await pullOrders(dispatch, tenantId);
     console.log("byme order result: ", orderResult);
     syncedItems += orderResult.synced;
@@ -256,6 +268,7 @@ export async function syncNow(
     if (!silent) console.log(`✅ Synced ${orderResult.synced} orders`);
 
     // --- PULL Price History ---
+    dispatch(setSyncPhase("Pulling price history"));
     // if (!silent) console.log("📥 Pulling price history...");
     const priceHistoryResult = await pullPriceHistory(dispatch, tenantId);
     syncedItems += priceHistoryResult.synced;
@@ -264,6 +277,7 @@ export async function syncNow(
       console.log(`✅ Synced ${priceHistoryResult.synced} price history items`);
 
     // --- PUSH Outbox ---
+    dispatch(setSyncPhase("Pushing pending changes"));
     if (!silent) console.log("📤 Pushing outbox items...");
     const pushResult = await pushOutboxItems(dispatch, maxItems);
     syncedItems += pushResult.synced;
@@ -592,7 +606,7 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
     }
     if (productsData.length > 0) {
       // Upsert products first
-      await upsertProducts(productsData, tenantId);
+      const productIdMap = (await upsertProducts(productsData, tenantId)) ?? {};
 
       // Some product responses include stock under `inventories` (or
       // `inventory`). Keep those rows as well; the dedicated inventory pull
@@ -606,7 +620,9 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
         return rows.map((row: any) => ({
           ...row,
           productId:
-            row.productId ?? row.product_id ?? product.id ?? product._id,
+            productIdMap[String(
+              row.productId ?? row.product_id ?? product.id ?? product._id,
+            )] ?? row.productId ?? row.product_id ?? product.id ?? product._id,
           tenantId: row.tenantId ?? row.tenant_id ?? product.tenantId ?? tenantId,
         }));
       });
@@ -616,12 +632,23 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
 
       // Extract and upsert variants from product data
       const allVariants = productsData.flatMap((p: any) =>
-        Array.isArray(p.variants) ? p.variants : [],
+        Array.isArray(p.variants)
+          ? p.variants.map((variant: any) => ({
+              ...variant,
+              productId:
+                variant.productId ??
+                variant.product_id ??
+                p.id ??
+                p._id,
+            }))
+          : [],
       );
       if (allVariants.length > 0) {
         const variantsWithTenant = allVariants.map((v: any) => ({
           ...v,
-          productId: v.productId || v.product_id,
+          productId:
+            productIdMap[String(v.productId || v.product_id)] ??
+            (v.productId || v.product_id),
           tenantId: v.tenantId || tenantId,
         }));
         await upsertProductVariants(variantsWithTenant, tenantId);
@@ -947,6 +974,27 @@ function stripNulls(obj: any): any {
   return obj;
 }
 
+async function resolveProductReferences(payload: any) {
+  const resolved = { ...payload };
+  if (resolved.categoryId) {
+    const [category] = await getOfflineDb()
+      .select()
+      .from(categories)
+      .where(eq(categories.id, String(resolved.categoryId)))
+      .limit(1);
+
+    if (category?.remoteId) {
+      resolved.categoryId = category.remoteId;
+    } else if (category?.name) {
+      // A locally-created category may not have synced yet. The backend can
+      // create it from categoryName, so do not send the local SQLite id.
+      delete resolved.categoryId;
+      resolved.categoryName = category.name;
+    }
+  }
+  return resolved;
+}
+
 // ============================================
 // PROCESS OUTBOX ITEM (FIXED)
 // ============================================
@@ -1197,13 +1245,19 @@ async function processOutboxItem(
     case "products": {
       try {
         if (item.operation === "create") {
+          const productPayload = await resolveProductReferences(payload);
           const { data, error } = await store.dispatch(
-            remoteApi.endpoints.createRemoteProduct.initiate(payload),
+            remoteApi.endpoints.createRemoteProduct.initiate(productPayload),
           );
           if (error) throw new Error(JSON.stringify(error));
+          const remoteProduct = (data as any)?.product ?? (data as any);
           await db
             .update(products)
-            .set({ remoteId: data.id, syncStatus: "synced" })
+            .set({
+              remoteId: remoteProduct?.id ?? null,
+              syncStatus: "synced",
+              syncError: null,
+            })
             .where(eq(products.id, item.entityId));
         } else if (item.operation === "update") {
           const { error } = await store.dispatch(
@@ -1608,6 +1662,7 @@ export function useSync() {
   const isOnline = useAppSelector((state) => state.offline.isOnline);
   const isSyncing = useAppSelector((state) => state.offline.isSyncing);
   const syncStatus = useAppSelector((state) => state.offline.syncStatus);
+  const syncPhase = useAppSelector((state) => state.offline.syncPhase);
   const syncError = useAppSelector((state) => state.offline.syncError);
   const queueCount = useAppSelector((state) => state.offline.queuedCount);
   const failedCount = useAppSelector((state) => state.offline.failedCount);
@@ -1679,6 +1734,7 @@ export function useSync() {
     isSyncing,
     isLoading,
     syncStatus,
+    syncPhase,
     syncError,
     queueCount,
     failedCount,

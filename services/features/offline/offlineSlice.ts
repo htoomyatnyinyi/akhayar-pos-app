@@ -8,6 +8,7 @@ export interface OfflineState {
   // Sync status
   isSyncing: boolean;
   syncStatus: "idle" | "syncing" | "complete" | "error";
+  syncPhase: string;
   syncProgress: number; // 0-100
   syncError: string | null;
 
@@ -37,6 +38,7 @@ const initialState: OfflineState = {
   // Sync
   isSyncing: false,
   syncStatus: "idle",
+  syncPhase: "Ready",
   syncProgress: 0,
   syncError: null,
 
@@ -80,11 +82,17 @@ const offlineSlice = createSlice({
     // ============================================
     setSyncing: (state, action: PayloadAction<boolean>) => {
       state.isSyncing = action.payload;
-      state.syncStatus = action.payload ? "syncing" : "idle";
+      if (action.payload) state.syncStatus = "syncing";
+      else if (state.syncStatus === "syncing") state.syncStatus = "idle";
       if (action.payload) {
         state.syncError = null;
         state.syncProgress = 0;
+        state.syncPhase = "Starting sync";
       }
+    },
+
+    setSyncPhase: (state, action: PayloadAction<string>) => {
+      state.syncPhase = action.payload;
     },
 
     setSyncProgress: (state, action: PayloadAction<number>) => {
@@ -96,6 +104,7 @@ const offlineSlice = createSlice({
       state.syncStatus = "complete";
       state.syncError = null;
       state.syncProgress = 100;
+      state.syncPhase = "Completed";
       state.lastSyncAt = new Date().toISOString();
       if (state.syncStats) {
         state.syncStats.totalSynced += 1;
@@ -106,6 +115,7 @@ const offlineSlice = createSlice({
       state.isSyncing = false;
       state.syncStatus = "error";
       state.syncError = action.payload;
+      state.syncPhase = "Failed";
       state.lastErrorAt = new Date().toISOString();
       if (state.syncStats) {
         state.syncStats.totalFailed += 1;
@@ -122,6 +132,7 @@ const offlineSlice = createSlice({
       state.syncStatus = "idle";
       state.syncProgress = 0;
       state.syncError = null;
+      state.syncPhase = "Ready";
     },
 
     // ============================================
@@ -209,6 +220,7 @@ export const {
 
   // Sync
   setSyncing,
+  setSyncPhase,
   setSyncProgress,
   setSyncComplete,
   setSyncError,
@@ -245,6 +257,8 @@ export const selectSyncStatus = (state: { offline: OfflineState }) =>
   state.offline.syncStatus;
 export const selectSyncProgress = (state: { offline: OfflineState }) =>
   state.offline.syncProgress;
+export const selectSyncPhase = (state: { offline: OfflineState }) =>
+  state.offline.syncPhase;
 export const selectSyncError = (state: { offline: OfflineState }) =>
   state.offline.syncError;
 export const selectQueuedCount = (state: { offline: OfflineState }) =>
