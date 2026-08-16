@@ -73,7 +73,11 @@ export default function SessionsScreen() {
         openingBalance: Number(openingBalance) || 0,
         notes: notes.trim() || undefined,
         storeId: currentStoreId || undefined,
-        registerId: "Default Register", // ✅ hardcoded bypass register-id create api. because i did not implement yet.
+        // Dynamically ID ယူသုံးသည့် ပုံစံ
+        registerId: "default-register",
+        // registerId: currentRegister?.id || "default-register",
+        // registerId: "Default Register", // ✅ hardcoded bypass register-id create api. because i did not implement yet.
+        // registerId: "Default Register", // ✅ hardcoded bypass register-id create api. because i did not implement yet.
         // registerId: "default", // ✅ hardcoded bypass register-id create api. because i did not implement yet.
       }).unwrap();
       setShowOpenModal(false);

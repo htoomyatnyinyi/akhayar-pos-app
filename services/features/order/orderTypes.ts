@@ -57,6 +57,9 @@ export interface PaymentBreakdown {
 }
 
 export interface CreateOrderPayload {
+  /** Stable key used to make offline retries idempotent. */
+  clientOrderId?: string;
+  orderNumber?: string;
   tenantId: string;
   storeId?: string;
   registerId?: string;

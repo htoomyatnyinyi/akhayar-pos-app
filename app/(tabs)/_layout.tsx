@@ -84,6 +84,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="manage"
           options={{
+            href: showManagement ? "/(tabs)/manage" : null,
             title: "Manage",
             tabBarIcon: ({ color, focused }) => (
               <MaterialIcons

@@ -1,11 +1,13 @@
 import type { AuthApiUser, User } from "./authTypes";
 
 export function normalizeAuthUser(apiUser: AuthApiUser, token: string): User {
-  const stores = (apiUser.stores ?? []).map((entry) => ({
-    id: entry.store?.id ?? entry.storeId,
-    name: entry.store?.name ?? "Store",
-    code: entry.store?.code,
-  }));
+  const stores = (apiUser.stores ?? [])
+    .map((entry) => ({
+      id: entry.store?.id ?? entry.storeId ?? "",
+      name: entry.store?.name ?? "Store",
+      code: entry.store?.code,
+    }))
+    .filter((entry) => entry.id.length > 0);
 
   const primaryEntry = (apiUser.stores ?? []).find((entry) => entry.isPrimary);
   const primaryId = primaryEntry?.store?.id ?? primaryEntry?.storeId;
@@ -25,7 +27,10 @@ export function normalizeAuthUser(apiUser: AuthApiUser, token: string): User {
     tenantId: apiUser.tenantId,
     tenant: apiUser.tenant,
     emailVerified: apiUser.emailVerified,
-    permissions: (apiUser.userPermissions ?? []).map((entry) => entry.permission),
+    permissions:
+      apiUser.userPermissions?.map((entry) => entry.permission) ??
+      apiUser.permissions ??
+      [],
     stores: orderedStores,
   };
 }

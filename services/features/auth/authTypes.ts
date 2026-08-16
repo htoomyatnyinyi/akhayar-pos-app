@@ -15,9 +15,52 @@ export interface User {
   stores: Array<{
     id: string;
     name: string;
-    code: string;
+    code?: string;
   }>;
+  permissions: string[];
+  emailVerified?: boolean;
   currentStoreId?: string;
+}
+
+export interface Tenant {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface AuthStore {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+export interface AuthApiUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  tenantId: string;
+  emailVerified?: boolean;
+  userPermissions?: Array<{ permission: string }>;
+  permissions?: string[];
+  stores?: Array<{
+    storeId?: string;
+    isPrimary?: boolean;
+    store?: AuthStore;
+  }>;
+  tenant?: Tenant;
+}
+
+export interface AuthSuccessResponse {
+  success: boolean;
+  user: AuthApiUser;
+  token: string;
+  message?: string;
+}
+
+export interface AuthMeResponse {
+  success: boolean;
+  user: AuthApiUser;
 }
 
 export interface LoginPayload {
@@ -49,12 +92,12 @@ export interface ResetPasswordPayload {
 }
 
 export interface AuthSuccessResponse {
-  user: User;
+  user: AuthApiUser;
   token: string;
 }
 
 export interface AuthMeResponse {
-  user: User;
+  user: AuthApiUser;
 }
 
 // // services/features/auth/authTypes.ts

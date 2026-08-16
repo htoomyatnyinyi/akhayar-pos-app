@@ -10,13 +10,13 @@ import {
   updateQuantity,
 } from "@/services/features/cart/cartSlice";
 import {
-  useCreateLocalInventoryMovementMutation,
   useCreateLocalOrderMutation,
   useGetActiveSessionQuery,
   useGetLocalCategoriesQuery,
   useGetLocalCustomersQuery,
   useGetLocalInventoryQuery,
   useGetLocalProductsQuery,
+  useGetLocalVariantsQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -40,7 +40,7 @@ const { height } = Dimensions.get("window");
 
 export default function POSScreen() {
   const dispatch = useAppDispatch();
-  const user = useAppSelector((state) => state.auth.user);
+  const { user, currentStoreId } = useAppSelector((state) => state.auth);
 
   // State
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,6 +54,10 @@ export default function POSScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("CASH");
   const [customerSearch, setCustomerSearch] = useState("");
+  const [selectedProductForVariants, setSelectedProductForVariants] =
+    useState<any>(null);
+  const [scannerMode, setScannerMode] = useState<"single" | "continuous">("single");
+  const [scannedPreviewItems, setScannedPreviewItems] = useState<any[]>([]);
 
   // Animations
   const slideAnim = useRef(new Animated.Value(height)).current;
@@ -66,20 +70,83 @@ export default function POSScreen() {
   } = useGetLocalProductsQuery({
     search: searchQuery,
     categoryId: selectedCategory,
+    storeId: currentStoreId || undefined,
   });
+  const { data: variantsData } = useGetLocalVariantsQuery(undefined);
 
-  const { data: categoriesData } = useGetLocalCategoriesQuery();
+  const getProductVariants = React.useCallback(
+    (product: any) =>
+      (variantsData || []).filter(
+        (variant: any) =>
+          variant.productId === product.id ||
+          variant.productId === product.remoteId,
+      ),
+    [variantsData],
+  );
+
+  const saleItems = React.useMemo(() => {
+    if (!productsData) return [];
+    return productsData.flatMap((product: any) => {
+      const variants = getProductVariants(product);
+      if (!variants.length) return [product];
+      return variants.map((variant: any) => ({
+        ...product,
+        id: `${product.id}::variant::${variant.id}`,
+        productId: product.id,
+        variantId: variant.remoteId || variant.id,
+        name: `${product.name} — ${variant.name}`,
+        sku: variant.sku || product.sku,
+        barcode: variant.barcode || product.barcode,
+        sellingPrice: variant.price ?? product.sellingPrice,
+      }));
+    });
+  }, [productsData, getProductVariants]);
+
+  const { data: categoriesData } = useGetLocalCategoriesQuery(undefined);
   const { data: customersData } = useGetLocalCustomersQuery({
     search: customerSearch || undefined,
   });
   const { data: activeSession } = useGetActiveSessionQuery({
     userId: user?.id || "",
   });
-  const { data: inventoryData } = useGetLocalInventoryQuery({});
+  const { data: inventoryData } = useGetLocalInventoryQuery({
+    storeId: currentStoreId || undefined,
+  });
+
+  const matchesId = (value: any, target: any) =>
+    value != null &&
+    target != null &&
+    (String(value) === String(target) ||
+      String(value) === String(target.id) ||
+      String(value) === String(target.remoteId));
+  const findInventory = (product: any, variant?: any) =>
+    (() => {
+      const rows =
+        inventoryData?.filter((inv: any) =>
+          matchesId(inv.productId, product),
+        ) ?? [];
+      if (!variant) return rows.find((inv: any) => inv.variantId == null);
+      const exact = rows.find((inv: any) => matchesId(inv.variantId, variant));
+      if (exact) return exact;
+      // Backward-compatible mode: the backend has variants but stock is still
+      // stored on the parent product row (variantId = null).
+      const hasSeparatedVariantStock = rows.some(
+        (inv: any) => inv.variantId != null,
+      );
+      return hasSeparatedVariantStock
+        ? undefined
+        : rows.find((inv: any) => inv.variantId == null);
+    })();
+  const hasSeparatedVariantInventory = (product: any, variant: any) =>
+    inventoryData?.some(
+      (inv: any) =>
+        matchesId(inv.productId, product) &&
+        inv.variantId != null &&
+        matchesId(inv.variantId, variant),
+    ) ?? false;
 
   // Mutations
   const [createOrder] = useCreateLocalOrderMutation();
-  const [createInventoryMovement] = useCreateLocalInventoryMovementMutation();
 
   // Cart state
   const cartItems = useAppSelector((state) => state.cart.items);
@@ -93,18 +160,25 @@ export default function POSScreen() {
   const discountAmount = 0;
   const grandTotal = cartSubtotal + taxAmount - discountAmount;
 
-  // Check if any items are out of stock
+  // // Check if any items are out of stock
   const hasOutOfStockItems = cartItems.some((item) => {
-    const inventory = inventoryData?.find(
-      (inv: any) => inv.productId === item.id && inv.quantity < item.qty,
-    );
+    const inventory = findInventory(item.productId || item.id, item.variantId);
     return inventory && inventory.quantity < item.qty;
   });
 
+
+  const hasUnallocatedVariantStock = cartItems.some(
+    (item) =>
+      !!item.variantId &&
+      !hasSeparatedVariantInventory(item.productId || item.id, item.variantId),
+  );
+
+
   // Handlers
   const handleAddToCart = (product: any) => {
-    const inventory = inventoryData?.find(
-      (inv: any) => inv.productId === product.id,
+    const inventory = findInventory(
+      product.productId || product.id,
+      product.variantId,
     );
     if (inventory && inventory.quantity <= 0) {
       Alert.alert("Out of Stock", `${product.name} is currently out of stock.`);
@@ -113,6 +187,8 @@ export default function POSScreen() {
     dispatch(
       addToCart({
         id: product.id,
+        productId: product.productId || product.id,
+        variantId: product.variantId,
         name: product.name,
         price: product.sellingPrice,
         qty: 1,
@@ -121,6 +197,15 @@ export default function POSScreen() {
         stockQuantity: inventory?.quantity || 0,
       }),
     );
+  };
+
+  const handleProductPress = (product: any) => {
+    const variants = getProductVariants(product);
+    if (variants.length > 0) {
+      setSelectedProductForVariants(product);
+      return;
+    }
+    handleAddToCart(product);
   };
 
   const handleUpdateQuantity = (id: string, qty: number) => {
@@ -136,14 +221,49 @@ export default function POSScreen() {
   };
 
   const handleScan = (data: string) => {
-    setShowScannerModal(false);
-    const product = productsData?.find(
-      (p: any) => p.barcode === data || p.sku === data || p.id === data,
+    let scannedItem = null;
+    const variant = variantsData?.find(
+      (v: any) =>
+        v.barcode === data ||
+        v.sku === data ||
+        v.id === data ||
+        v.remoteId === data,
     );
-    if (product) {
-      handleAddToCart(product);
+    if (variant) {
+      scannedItem = saleItems.find((item: any) => item.variantId === variant.id);
     } else {
-      setSearchQuery(data);
+      const product = productsData?.find(
+        (p: any) => p.barcode === data || p.sku === data || p.id === data,
+      );
+      if (product) {
+        scannedItem = saleItems.find((item: any) => item.id === product.id) || product;
+      }
+    }
+
+    if (scannedItem) {
+      if (scannerMode === "single") {
+        setShowScannerModal(false);
+        handleAddToCart(scannedItem);
+      } else {
+        setScannedPreviewItems((prev) => {
+          const existing = prev.find((item) => item.id === scannedItem.id);
+          if (existing) {
+            return prev.map((item) =>
+              item.id === scannedItem.id
+                ? { ...item, previewQty: (item.previewQty || 1) + 1 }
+                : item
+            );
+          }
+          return [...prev, { ...scannedItem, previewQty: 1 }];
+        });
+      }
+    } else {
+      if (scannerMode === "single") {
+        setShowScannerModal(false);
+        setSearchQuery(data);
+      } else {
+        Alert.alert("Not Found", `Barcode ${data} not found in catalog.`);
+      }
     }
   };
 
@@ -180,6 +300,15 @@ export default function POSScreen() {
       );
       return;
     }
+
+    if (hasUnallocatedVariantStock) {
+      Alert.alert(
+        "Allocate option stock first",
+        "This product has options, but its stock is still stored on the master product. Allocate the stock to each option before selling it.",
+      );
+      return;
+    }
+
     if (!activeSession) {
       Alert.alert(
         "No Active Session",
@@ -210,7 +339,16 @@ export default function POSScreen() {
         paidAmount: grandTotal,
         changeAmount: 0,
         items: cartItems.map((item) => ({
-          productId: item.id,
+          productId: item.productId || item.id,
+          variantId: item.variantId,
+          quantity: item.qty,
+          unitPrice: item.price,
+          subTotal: item.price * item.qty,
+          discountAmount: 0,
+        })),
+        syncItems: cartItems.map((item) => ({
+          productId: item.productId || item.id,
+          variantId: item.variantId,
           quantity: item.qty,
           unitPrice: item.price,
           subTotal: item.price * item.qty,
@@ -219,19 +357,33 @@ export default function POSScreen() {
       };
 
       const result = await createOrder(orderPayload).unwrap();
+      if (!result) throw new Error("Order was not created");
 
-      for (const item of cartItems) {
-        await createInventoryMovement({
-          tenantId: user?.tenantId,
-          storeId: activeSession.storeId,
-          productId: item.id,
-          quantity: item.qty,
-          type: "OUT",
-          referenceId: result.id,
-          referenceType: "ORDER",
-          reason: `Order #${result.orderNumber || result.id}`,
-        }).unwrap();
-      }
+      // for (const item of cartItems) {
+      //   await createInventoryMovement({
+      //     tenantId: user?.tenantId,
+      //     storeId: activeSession.storeId,
+      //     productId: item.productId || item.id,
+      //     // If the backend still stores shared product stock, send the
+      //     // movement against the product row while keeping variantId on the
+      //     // order item for reporting.
+      //     variantId: hasSeparatedVariantInventory(
+      //       item.productId || item.id,
+      //       item.variantId,
+      //     )
+      //       ? item.variantId
+      //       : undefined,
+      //     quantity: item.qty,
+      //     type: "OUT",
+      //     referenceId: result.id,
+      //     referenceType: "ORDER",
+      //     reason: `Order #${result.orderNumber || result.id}`,
+      //   }).unwrap();
+      // }
+
+      // The order sync endpoint deducts stock and writes the authoritative
+      // SALE movement on the server. Do not enqueue a second movement here:
+      // it would deduct the same quantity twice when the device reconnects.
 
       dispatch(clearCart());
       setSelectedCustomer(null);
@@ -249,9 +401,7 @@ export default function POSScreen() {
   };
 
   const renderCartItem = ({ item }: { item: any }) => {
-    const inventory = inventoryData?.find(
-      (inv: any) => inv.productId === item.id,
-    );
+    const inventory = findInventory(item.productId || item.id, item.variantId);
     const maxQty = inventory?.quantity || 0;
 
     return (
@@ -306,19 +456,39 @@ export default function POSScreen() {
 
   // ✅ Updated renderProduct to show stock quantity
   const renderProduct = ({ item }: { item: any }) => {
-    const inCart = cartItems.find((i) => i.id === item.id);
-    const inventory = inventoryData?.find(
-      (inv: any) => inv.productId === item.id,
+    const variants = getProductVariants(item);
+    const inCart = cartItems.find(
+      (cartItem) => cartItem.productId === item.id && !cartItem.variantId,
     );
-    const stockQty = inventory?.quantity ?? 0;
-    const isOutOfStock = stockQty === 0;
+    const inventory = findInventory(item.id);
+    const productRows =
+      inventoryData?.filter((inv: any) => matchesId(inv.productId, item)) ?? [];
+    const hasSeparatedVariantStock = productRows.some(
+      (inv: any) => inv.variantId != null,
+    );
+    const stockQty =
+      variants.length && hasSeparatedVariantStock
+        ? variants.reduce(
+            (total: number, variant: any) =>
+              total + (findInventory(item, variant)?.quantity || 0),
+            0,
+          )
+        : (inventory?.quantity ?? 0);
+    const isOutOfStock = variants.length
+      ? hasSeparatedVariantStock
+        ? variants.every(
+            (variant: any) =>
+              (findInventory(item, variant)?.quantity || 0) <= 0,
+          )
+        : stockQty <= 0
+      : stockQty === 0;
 
     return (
       <TouchableOpacity
         className={`flex-1 m-2 active:scale-95 transition-transform ${
           isOutOfStock ? "opacity-50" : ""
         }`}
-        onPress={() => !isOutOfStock && handleAddToCart(item)}
+        onPress={() => !isOutOfStock && handleProductPress(item)}
         disabled={isOutOfStock}
       >
         <Card className="flex-1 p-4 bg-slate-900/80">
@@ -347,16 +517,22 @@ export default function POSScreen() {
             className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px] mb-3"
             numberOfLines={1}
           >
-            SKU: {item.sku}
+            {variants.length
+              ? `${variants.length} variants`
+              : `SKU: ${item.sku}`}
           </Text>
           <View className="flex-row items-center justify-between mt-auto">
             <View>
               <Text className="text-white font-black text-lg">
-                ${item.sellingPrice?.toFixed(2) ?? "0.00"}
+                {variants.length
+                  ? `From $${Math.min(...variants.map((v: any) => Number(v.price) || 0)).toFixed(2)}`
+                  : `$${item.sellingPrice?.toFixed(2) ?? "0.00"}`}
               </Text>
               {/* ✅ Stock label */}
               <Text className="text-slate-400 text-[10px] mt-0.5">
-                Stock: {stockQty}
+                {variants.length
+                  ? `Choose variant • ${stockQty} total`
+                  : `Stock: ${stockQty}`}
               </Text>
             </View>
             {!isOutOfStock && (
@@ -718,10 +894,142 @@ export default function POSScreen() {
           </View>
         </Modal>
 
+        <Modal
+          visible={!!selectedProductForVariants}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setSelectedProductForVariants(null)}
+        >
+          <View className="flex-1 bg-black/70 justify-end">
+            <View className="bg-slate-900 rounded-t-3xl p-5 max-h-[75%]">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="flex-1 mr-3">
+                  <Text className="text-white font-black text-xl">
+                    {selectedProductForVariants?.name}
+                  </Text>
+                  <Text className="text-slate-400 text-sm mt-1">
+                    Choose a variant
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setSelectedProductForVariants(null)}
+                  className="bg-white/10 rounded-full p-2"
+                >
+                  <MaterialIcons name="close" size={20} color="#cbd5e1" />
+                </TouchableOpacity>
+              </View>
+
+              <FlatList
+                data={getProductVariants(selectedProductForVariants || {})}
+                keyExtractor={(variant: any) => variant.id}
+                renderItem={({ item: variant }: { item: any }) => {
+                  const stock =
+                    findInventory(selectedProductForVariants, variant)
+                      ?.quantity || 0;
+                  const saleItem = saleItems.find(
+                    (item: any) =>
+                      item.variantId === (variant.remoteId || variant.id),
+                  );
+                  const unavailable = stock <= 0;
+                  return (
+                    <TouchableOpacity
+                      disabled={unavailable}
+                      onPress={() => {
+                        if (saleItem) handleAddToCart(saleItem);
+                        setSelectedProductForVariants(null);
+                      }}
+                      className={`flex-row items-center p-4 mb-3 rounded-2xl border ${
+                        unavailable
+                          ? "bg-white/5 border-white/5 opacity-50"
+                          : "bg-white/8 border-sky-400/30"
+                      }`}
+                    >
+                      <View className="flex-1">
+                        <Text className="text-white font-bold text-base">
+                          {variant.name}
+                        </Text>
+                        <Text className="text-slate-400 text-xs mt-1">
+                          {variant.color || variant.size
+                            ? [variant.color, variant.size]
+                                .filter(Boolean)
+                                .join(" • ")
+                            : variant.sku}
+                        </Text>
+                        <Text className="text-slate-500 text-[10px] mt-1">
+                          SKU: {variant.sku} • Stock: {stock}
+                        </Text>
+                      </View>
+                      <Text className="text-sky-300 font-black text-lg">
+                        ${Number(variant.price || 0).toFixed(2)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <Text className="text-slate-400 text-center py-8">
+                    No variants available
+                  </Text>
+                }
+              />
+            </View>
+          </View>
+        </Modal>
+
         <BarcodeScannerModal
           visible={showScannerModal}
-          onClose={() => setShowScannerModal(false)}
+          onClose={() => {
+            setShowScannerModal(false);
+            setScannedPreviewItems([]);
+          }}
           onScan={handleScan}
+          allowModeToggle
+          mode={scannerMode}
+          onModeChange={setScannerMode}
+          bottomContent={
+            scannerMode === "continuous" && scannedPreviewItems.length > 0 ? (
+              <View className="bg-black/90 p-4 border-t border-white/20 rounded-t-3xl h-full pb-8">
+                <View className="flex-row justify-between items-center mb-4">
+                  <Text className="text-white font-bold text-lg">
+                    Scanned Items ({scannedPreviewItems.reduce((acc, i) => acc + (i.previewQty || 1), 0)})
+                  </Text>
+                  <TouchableOpacity
+                    className="bg-sky-500 px-6 py-2 rounded-full"
+                    onPress={() => {
+                      scannedPreviewItems.forEach(item => {
+                        for (let i = 0; i < (item.previewQty || 1); i++) {
+                          handleAddToCart(item);
+                        }
+                      });
+                      setScannedPreviewItems([]);
+                      setShowScannerModal(false);
+                    }}
+                  >
+                    <Text className="text-white font-bold">Add to Cart</Text>
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={scannedPreviewItems}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <View className="flex-row justify-between items-center py-3 border-b border-white/10">
+                      <View className="flex-1 pr-2">
+                        <Text className="text-white font-bold">{item.name}</Text>
+                        <Text className="text-white/60 text-xs mt-1">SKU: {item.sku || "N/A"}</Text>
+                      </View>
+                      <View className="flex-row items-center">
+                        <Text className="text-white font-bold mr-4">
+                          ${(item.sellingPrice || 0).toFixed(2)}
+                        </Text>
+                        <View className="bg-white/20 px-3 py-1 rounded-full">
+                          <Text className="text-white font-bold">x{item.previewQty || 1}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                />
+              </View>
+            ) : null
+          }
         />
       </Screen>
     </SafeAreaView>

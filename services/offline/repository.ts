@@ -1,7 +1,3 @@
-// ============================================
-// FILE: services/offline/repository.ts
-// ============================================
-
 import type {
   Category,
   CreateCategoryPayload,
@@ -81,6 +77,8 @@ async function withForeignKeysOff<T>(
 // MOVEMENT TYPE MAPPING (to backend enum)
 // ============================================
 function mapMovementType(type: string, referenceType?: string): string {
+  type = String(type ?? "").toUpperCase();
+  referenceType = String(referenceType ?? "").toUpperCase();
   // Stock adjustments → ADJUSTMENT
   if (referenceType === "STOCK_ADJUSTMENT") {
     return "ADJUSTMENT";
@@ -120,44 +118,57 @@ function mapMovementType(type: string, referenceType?: string): string {
 export function normalizeProduct(
   product: Product & Record<string, any>,
 ): typeof products.$inferInsert {
+  const raw = product as any;
   return {
-    id: product.id,
-    remoteId: product.remoteId || null,
-    tenantId: product.tenantId,
-    name: product.name || "Unnamed Product",
-    description: product.description,
+    id: raw.id ?? raw._id ?? raw.productId ?? raw.product_id ?? raw.remoteId,
+    remoteId: raw.remoteId ?? raw.remote_id ?? raw.id ?? null,
+    tenantId: raw.tenantId ?? raw.tenant_id,
+    name: raw.name || "Unnamed Product",
+    description: raw.description,
     brandId:
-      product.brandId && product.brandId.trim() !== "" ? product.brandId : null,
+      (raw.brandId ?? raw.brand_id) &&
+      String(raw.brandId ?? raw.brand_id).trim() !== ""
+        ? raw.brandId ?? raw.brand_id
+        : null,
     storeId:
-      product.storeId && product.storeId.trim() !== "" ? product.storeId : null,
+      (raw.storeId ?? raw.store_id) &&
+      String(raw.storeId ?? raw.store_id).trim() !== ""
+        ? raw.storeId ?? raw.store_id
+        : null,
     categoryId:
-      product.categoryId && product.categoryId.trim() !== ""
-        ? product.categoryId
+      (raw.categoryId ?? raw.category_id) &&
+      String(raw.categoryId ?? raw.category_id).trim() !== ""
+        ? raw.categoryId ?? raw.category_id
         : null,
     supplierId:
-      product.supplierId && product.supplierId.trim() !== ""
-        ? product.supplierId
+      (raw.supplierId ?? raw.supplier_id) &&
+      String(raw.supplierId ?? raw.supplier_id).trim() !== ""
+        ? raw.supplierId ?? raw.supplier_id
         : null,
-    sku: product.sku || `SKU-${product.id?.slice(-8) || Date.now()}`,
-    barcode: product.barcode,
-    costPrice: Number(product.costPrice ?? 0),
-    sellingPrice: Number(product.sellingPrice ?? 0),
-    wholesalePrice: Number(product.wholesalePrice ?? 0),
-    promoPrice: product.promoPrice ? Number(product.promoPrice) : null,
-    promoStartAt: product.promoStartAt,
-    promoEndAt: product.promoEndAt,
-    isTaxable: product.isTaxable ?? true,
-    isActive: product.isActive ?? true,
-    isReturnable: product.isReturnable ?? true,
-    expiryDate: product.expiryDate,
-    manufacturingDate: product.manufacturingDate,
-    bestBeforeDate: product.bestBeforeDate,
-    deletedAt: product.deletedAt,
-    version: Number(product.version ?? 0),
+    sku:
+      raw.sku ||
+      `SKU-${String(
+        raw.id ?? raw._id ?? raw.productId ?? raw.remoteId ?? Date.now(),
+      ).slice(-8)}`,
+    barcode: raw.barcode,
+    costPrice: Number(raw.costPrice ?? raw.cost_price ?? 0),
+    sellingPrice: Number(raw.sellingPrice ?? raw.selling_price ?? 0),
+    wholesalePrice: Number(raw.wholesalePrice ?? raw.wholesale_price ?? 0),
+    promoPrice: raw.promoPrice ? Number(raw.promoPrice) : null,
+    promoStartAt: raw.promoStartAt ?? raw.promo_start_at,
+    promoEndAt: raw.promoEndAt ?? raw.promo_end_at,
+    isTaxable: raw.isTaxable ?? raw.is_taxable ?? true,
+    isActive: raw.isActive ?? raw.is_active ?? true,
+    isReturnable: raw.isReturnable ?? raw.is_returnable ?? true,
+    expiryDate: raw.expiryDate ?? raw.expiry_date,
+    manufacturingDate: raw.manufacturingDate ?? raw.manufacturing_date,
+    bestBeforeDate: raw.bestBeforeDate ?? raw.best_before_date,
+    deletedAt: raw.deletedAt ?? raw.deleted_at,
+    version: Number(raw.version ?? 0),
     syncStatus: "synced",
     syncError: null,
-    createdAt: product.createdAt ?? new Date().toISOString(),
-    updatedAt: product.updatedAt ?? new Date().toISOString(),
+    createdAt: raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+    updatedAt: raw.updatedAt ?? raw.updated_at ?? new Date().toISOString(),
     lastSyncedAt: new Date().toISOString(),
   };
 }
@@ -165,43 +176,76 @@ export function normalizeProduct(
 export function normalizeProductVariant(
   variant: any,
 ): typeof productVariants.$inferInsert {
+  const id = variant.id ?? variant._id ?? variant.remoteId ?? variant.remote_id;
+  const productId =
+    variant.productId ??
+    variant.product_id ??
+    variant.product?.id ??
+    variant.product?._id;
   return {
-    id: variant.id,
-    remoteId: variant.remoteId,
-    name: variant.name || "Unnamed Variant",
-    productId: variant.productId,
-    tenantId: variant.tenantId,
-    sku: variant.sku || `VAR-${Date.now()}`,
-    barcode: variant.barcode,
-    price: Number(variant.price ?? 0),
-    costPrice: Number(variant.costPrice ?? 0),
+    id,
+    remoteId: variant.remoteId ?? variant.remote_id ?? variant.id ?? variant._id,
+    name: variant.name ?? variant.variantName ?? variant.variant_name ?? "Unnamed Variant",
+    productId,
+    tenantId: variant.tenantId ?? variant.tenant_id,
+    sku: variant.sku ?? `VAR-${String(id ?? Date.now()).slice(-8)}`,
+    barcode: variant.barcode ?? variant.bar_code,
+    price: Number(variant.price ?? variant.sellingPrice ?? variant.selling_price ?? 0),
+    costPrice: Number(variant.costPrice ?? variant.cost_price ?? 0),
     color: variant.color,
     size: variant.size,
-    weight: variant.weight ? Number(variant.weight) : null,
-    isActive: variant.isActive ?? true,
+    weight: variant.weight != null ? Number(variant.weight) : null,
+    isActive: variant.isActive ?? variant.is_active ?? true,
     syncStatus: "synced",
     syncError: null,
-    createdAt: variant.createdAt ?? new Date().toISOString(),
-    updatedAt: variant.updatedAt ?? new Date().toISOString(),
+    createdAt: variant.createdAt ?? variant.created_at ?? new Date().toISOString(),
+    updatedAt: variant.updatedAt ?? variant.updated_at ?? new Date().toISOString(),
     lastSyncedAt: new Date().toISOString(),
   };
 }
 
 export function normalizeInventory(inv: any): typeof inventory.$inferInsert {
+  const rawProductId =
+    inv.productId ?? inv.product_id ?? inv.product?.id ?? inv.product?._id;
+  const productId =
+    rawProductId && typeof rawProductId === "object"
+      ? rawProductId.id ?? rawProductId._id
+      : rawProductId;
+  const storeId = inv.storeId ?? inv.store_id ?? inv.store?.id ?? inv.store?._id;
+  const rawVariantId =
+    inv.variantId ??
+    inv.variant_id ??
+    inv.variant?.id ??
+    inv.variant?._id ??
+    null;
+  const variantId =
+    rawVariantId && typeof rawVariantId === "object"
+      ? rawVariantId.id ?? rawVariantId._id
+      : rawVariantId;
   return {
-    id: inv.id,
-    remoteId: inv.remoteId,
-    tenantId: inv.tenantId,
-    storeId: inv.storeId,
-    productId:
-      inv.productId && inv.productId.trim() !== "" ? inv.productId : null,
-    variantId:
-      inv.variantId && inv.variantId.trim() !== "" ? inv.variantId : null,
-    quantity: Number(inv.quantity ?? 0),
-    reservedQty: Number(inv.reservedQty ?? 0),
-    reorderPoint: Number(inv.reorderPoint ?? 10),
-    reorderQty: Number(inv.reorderQty ?? 0),
-    shelfLocation: inv.shelfLocation,
+    id: inv.id ?? inv._id ?? inv.remoteId,
+    remoteId: inv.remoteId ?? inv.remote_id ?? inv.id,
+    tenantId: inv.tenantId ?? inv.tenant_id,
+    storeId,
+    productId: productId && String(productId).trim() !== "" ? productId : null,
+    variantId: variantId && String(variantId).trim() !== "" ? variantId : null,
+    quantity: Number(
+      inv.quantity ??
+        inv.availableQuantity ??
+        inv.available_quantity ??
+        inv.stockQuantity ??
+        inv.stock_quantity ??
+        inv.currentStock ??
+        inv.current_stock ??
+        inv.onHand ??
+        inv.on_hand ??
+        inv.stock ??
+        0,
+    ),
+    reservedQty: Number(inv.reservedQty ?? inv.reserved_qty ?? 0),
+    reorderPoint: Number(inv.reorderPoint ?? inv.reorder_point ?? 10),
+    reorderQty: Number(inv.reorderQty ?? inv.reorder_qty ?? 0),
+    shelfLocation: inv.shelfLocation ?? inv.shelf_location,
     version: Number(inv.version ?? 0),
     syncStatus: "synced",
     syncError: null,
@@ -260,11 +304,80 @@ export async function upsertProducts(
   if (!remoteProducts.length) return;
   const db = getOfflineDb();
 
-  const productsToInsert = remoteProducts.map((product) => {
+  const remoteToLocalId: Record<string, string> = {};
+  const productsToInsert: Array<typeof products.$inferInsert> = [];
+  const seenIds = new Set<string>();
+
+  for (const product of remoteProducts) {
     const normalized = normalizeProduct(product);
     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
-    return normalized;
-  });
+
+    const remoteId = String(normalized.id);
+    // A locally-created product receives its server ID as `remoteId` as soon
+    // as its create mutation succeeds.  Match that first: master products
+    // with sellable options intentionally have no product-level SKU/barcode.
+    // Falling back to SKU/barcode preserves reconciliation for older records.
+    const existingByRemoteId = (
+      await db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.remoteId, remoteId))
+        .limit(1)
+    )[0];
+    const existing = existingByRemoteId ?? (normalized.barcode
+      ? (
+          await db
+            .select({ id: products.id })
+            .from(products)
+            .where(
+              and(
+                eq(products.tenantId, normalized.tenantId),
+                eq(products.barcode, normalized.barcode),
+              ),
+            )
+            .limit(1)
+        )[0]
+      : normalized.sku
+        ? (
+            await db
+              .select({ id: products.id })
+              .from(products)
+              .where(
+                and(
+                  eq(products.tenantId, normalized.tenantId),
+                  eq(products.sku, normalized.sku),
+                ),
+              )
+              .limit(1)
+          )[0]
+        : undefined);
+
+    if (existing && existing.id !== normalized.id) {
+      remoteToLocalId[remoteId] = existing.id;
+      normalized.id = existing.id;
+      normalized.remoteId = remoteId;
+
+      // The server accepted this product earlier; prevent the old local
+      // create mutation from retrying and creating a duplicate.
+      await db
+        .update(syncOutbox)
+        .set({ status: "synced", lastError: null, updatedAt: new Date().toISOString() })
+        .where(
+          and(
+            eq(syncOutbox.entity, "products"),
+            eq(syncOutbox.entityId, existing.id),
+            eq(syncOutbox.operation, "create"),
+          ),
+        );
+    }
+
+    remoteToLocalId[remoteId] = normalized.id;
+
+    if (!seenIds.has(String(normalized.id))) {
+      seenIds.add(String(normalized.id));
+      productsToInsert.push(normalized);
+    }
+  }
 
   await withForeignKeysOff(db, async () => {
     await db
@@ -302,6 +415,8 @@ export async function upsertProducts(
         },
       });
   });
+
+  return remoteToLocalId;
 }
 
 export async function upsertProductVariants(
@@ -311,11 +426,44 @@ export async function upsertProductVariants(
   if (!remoteVariants.length) return;
   const db = getOfflineDb();
 
-  const variantsToInsert = remoteVariants.map((variant) => {
+  const variantsToInsert: Array<typeof productVariants.$inferInsert> = [];
+  for (const variant of remoteVariants) {
     const normalized = normalizeProductVariant(variant);
     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
-    return normalized;
-  });
+    const remoteId = String(normalized.id);
+
+    // Like products, variants created offline have a local primary key. Once
+    // the parent product is pushed, the next pull returns server variant IDs.
+    // Merge that returned row into its local option by parent + SKU instead of
+    // inserting a duplicate option.
+    const existingByRemoteId = (
+      await db
+        .select({ id: productVariants.id })
+        .from(productVariants)
+        .where(eq(productVariants.remoteId, remoteId))
+        .limit(1)
+    )[0];
+    const existingByProductAndSku = existingByRemoteId
+      ? undefined
+      : (
+          await db
+            .select({ id: productVariants.id })
+            .from(productVariants)
+            .where(
+              and(
+                eq(productVariants.productId, String(normalized.productId)),
+                eq(productVariants.sku, String(normalized.sku)),
+              ),
+            )
+            .limit(1)
+        )[0];
+    const existing = existingByRemoteId ?? existingByProductAndSku;
+    if (existing && existing.id !== normalized.id) {
+      normalized.id = existing.id;
+      normalized.remoteId = remoteId;
+    }
+    variantsToInsert.push(normalized);
+  }
 
   await withForeignKeysOff(db, async () => {
     await db
@@ -349,11 +497,64 @@ export async function upsertInventory(
   if (!remoteInventory.length) return;
   const db = getOfflineDb();
 
-  const inventoryToInsert = remoteInventory.map((inv) => {
+  const inventoryToInsert: Array<typeof inventory.$inferInsert> = [];
+  for (const inv of remoteInventory) {
     const normalized = normalizeInventory(inv);
     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
-    return normalized;
-  });
+    const remoteId = String(normalized.id);
+
+    // Resolve server IDs back to the stable local records created while
+    // offline. Without this, the first server inventory pull after creating
+    // a product with options would add a second inventory row per option.
+    if (normalized.productId) {
+      const [localProduct] = await db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.remoteId, String(normalized.productId)))
+        .limit(1);
+      if (localProduct) normalized.productId = localProduct.id;
+    }
+    if (normalized.variantId) {
+      const [localVariant] = await db
+        .select({ id: productVariants.id })
+        .from(productVariants)
+        .where(eq(productVariants.remoteId, String(normalized.variantId)))
+        .limit(1);
+      if (localVariant) normalized.variantId = localVariant.id;
+    }
+
+    const existingByRemoteId = (
+      await db
+        .select({ id: inventory.id })
+        .from(inventory)
+        .where(eq(inventory.remoteId, remoteId))
+        .limit(1)
+    )[0];
+    const existingByIdentity = existingByRemoteId
+      ? undefined
+      : (
+          await db
+            .select({ id: inventory.id })
+            .from(inventory)
+            .where(
+              and(
+                eq(inventory.tenantId, normalized.tenantId),
+                eq(inventory.storeId, normalized.storeId),
+                eq(inventory.productId, normalized.productId),
+                normalized.variantId
+                  ? eq(inventory.variantId, normalized.variantId)
+                  : sql`${inventory.variantId} IS NULL`,
+              ),
+            )
+            .limit(1)
+        )[0];
+    const existing = existingByRemoteId ?? existingByIdentity;
+    if (existing && existing.id !== normalized.id) {
+      normalized.id = existing.id;
+      normalized.remoteId = remoteId;
+    }
+    inventoryToInsert.push(normalized);
+  }
 
   await withForeignKeysOff(db, async () => {
     await db
@@ -712,19 +913,38 @@ export async function upsertOrders(
   await db.transaction(async (tx) => {
     for (const order of remoteOrders) {
       const tenantId = order.tenantId || defaultTenantId;
+      const remoteId = String(order.remoteId ?? order.id);
+      const orderNumber = order.orderNumber || `ORD-${order.id}`;
+      // A server-created order may have a different primary key from the
+      // local offline row. Reuse the local row when either stable identifier
+      // matches, otherwise pull would create a second local order.
+      const [existing] = await tx
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          or(
+            eq(orders.remoteId, remoteId),
+            and(
+              eq(orders.tenantId, tenantId),
+              eq(orders.orderNumber, orderNumber),
+            ),
+          ),
+        )
+        .limit(1);
+      const localId = existing?.id ?? order.id;
 
       await tx
         .insert(orders)
         .values({
-          id: order.id,
-          remoteId: order.remoteId,
+          id: localId,
+          remoteId,
           tenantId,
           storeId: order.storeId,
           registerId: order.registerId,
           userId: order.userId ?? "",
           customerId: order.customerId,
           sessionId: order.sessionId,
-          orderNumber: order.orderNumber || `ORD-${Date.now()}`,
+          orderNumber,
           status: order.status ?? "COMPLETED",
           paymentStatus: order.paymentStatus ?? "PAID",
           paymentMethod: order.paymentMethod ?? "CASH",
@@ -744,9 +964,23 @@ export async function upsertOrders(
         .onConflictDoUpdate({
           target: orders.id,
           set: {
+            remoteId: sql`excluded.remote_id`,
+            orderNumber: sql`excluded.order_number`,
+            storeId: sql`excluded.store_id`,
+            registerId: sql`excluded.register_id`,
+            userId: sql`excluded.user_id`,
+            customerId: sql`excluded.customer_id`,
+            sessionId: sql`excluded.session_id`,
             status: sql`excluded.status`,
             paymentStatus: sql`excluded.payment_status`,
+            paymentMethod: sql`excluded.payment_method`,
             grandTotal: sql`excluded.grand_total`,
+            subTotal: sql`excluded.sub_total`,
+            taxAmount: sql`excluded.tax_amount`,
+            discountAmount: sql`excluded.discount_amount`,
+            paidAmount: sql`excluded.paid_amount`,
+            changeAmount: sql`excluded.change_amount`,
+            paymentBreakdown: sql`excluded.payment_breakdown`,
             syncStatus: "synced",
             syncError: null,
             updatedAt: sql`excluded.updated_at`,
@@ -760,7 +994,7 @@ export async function upsertOrders(
             .insert(orderItems)
             .values({
               id: item.id ?? createLocalId("item"),
-              orderId: order.id,
+              orderId: localId,
               productId: item.productId,
               variantId: item.variantId,
               productName: item.productName ?? item.product?.name ?? null,
@@ -1299,7 +1533,7 @@ export async function createOfflineProduct(
         payload.description || null,
         payload.brandId || null,
         payload.storeId || null,
-        payload.categoryId || "default-category",
+        payload.categoryId || null,
         payload.supplierId || null,
         Number(payload.costPrice ?? 0),
         Number(payload.sellingPrice ?? 0),
@@ -1615,9 +1849,18 @@ export async function createOfflineOrder(
   const sqlite = getSqliteDatabase();
   const now = new Date().toISOString();
   const orderId = createLocalId("ord");
+  // Persist these values in the outbox payload so retries identify the same
+  // order instead of creating a second server order after a timeout.
+  const clientOrderId = payload.clientOrderId ?? orderId;
+  const orderNumber = payload.orderNumber ?? `ORD-${orderId}`;
 
+  const { syncItems, ...orderPayload } = payload as CreateOrderPayload & {
+    syncItems?: any[];
+  };
   const cleanPayload = {
-    ...payload,
+    ...orderPayload,
+    clientOrderId,
+    orderNumber,
     subTotal: Number(payload.subTotal) || 0,
     taxAmount: Number(payload.taxAmount) || 0,
     discountAmount: Number(payload.discountAmount) || 0,
@@ -1632,15 +1875,25 @@ export async function createOfflineOrder(
       discountAmount: Number(item.discountAmount) || 0,
     })),
   };
+  const remotePayload = {
+    ...cleanPayload,
+    items: (syncItems ?? cleanPayload.items).map((item: any) => ({
+      ...item,
+      quantity: Number(item.quantity) || 0,
+      unitPrice: Number(item.unitPrice) || 0,
+      subTotal: Number(item.subTotal) || 0,
+      discountAmount: Number(item.discountAmount) || 0,
+    })),
+  };
 
   sqlite.withTransactionSync(() => {
     sqlite.runSync(
       `INSERT INTO orders (
-        id, tenant_id, store_id, register_id, user_id, customer_id, session_id, 
+        id, tenant_id, store_id, register_id, user_id, customer_id, session_id, order_number,
         status, payment_status, payment_method, sub_total, tax_amount, 
         discount_amount, grand_total, paid_amount, change_amount, 
         payment_breakdown, sync_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         orderId,
         payload.tenantId || null,
@@ -1649,6 +1902,7 @@ export async function createOfflineOrder(
         cleanPayload.userId,
         cleanPayload.customerId ?? null,
         cleanPayload.sessionId ?? null,
+        orderNumber,
         "PENDING",
         cleanPayload.paymentStatus ?? "PAID",
         cleanPayload.paymentMethod,
@@ -1686,13 +1940,27 @@ export async function createOfflineOrder(
       );
 
       const variantCondition = item.variantId
-        ? `AND variant_id = '${item.variantId}'`
+        ? `AND (variant_id = '${item.variantId}' OR (variant_id IS NULL AND NOT EXISTS (
+             SELECT 1 FROM inventory AS variant_inventory
+             WHERE variant_inventory.product_id = ?
+               AND variant_inventory.store_id = ?
+               AND variant_inventory.variant_id = '${item.variantId}'
+           )))`
         : `AND variant_id IS NULL`;
 
       sqlite.runSync(
         `UPDATE inventory SET quantity = MAX(quantity - ?, 0), updated_at = ? 
          WHERE product_id = ? AND store_id = ? ${variantCondition}`,
-        [item.quantity, now, item.productId, cleanPayload.storeId],
+        item.variantId
+          ? [
+              item.quantity,
+              now,
+              item.productId,
+              cleanPayload.storeId,
+              item.productId,
+              cleanPayload.storeId,
+            ]
+          : [item.quantity, now, item.productId, cleanPayload.storeId],
       );
     }
 
@@ -1708,7 +1976,7 @@ export async function createOfflineOrder(
         "create",
         "/api/tenant/orders",
         "POST",
-        JSON.stringify(cleanPayload),
+        JSON.stringify(remotePayload),
         "pending",
         0,
         now,
@@ -1812,13 +2080,26 @@ export async function createOfflineInventoryMovement(
         : `MAX(quantity - ${payload.quantity}, 0)`;
 
     const variantCondition = payload.variantId
-      ? `AND variant_id = '${payload.variantId}'`
+      ? `AND (variant_id = '${payload.variantId}' OR (variant_id IS NULL AND NOT EXISTS (
+           SELECT 1 FROM inventory AS variant_inventory
+           WHERE variant_inventory.product_id = ?
+             AND variant_inventory.store_id = ?
+             AND variant_inventory.variant_id = '${payload.variantId}'
+         )))`
       : `AND variant_id IS NULL`;
 
     sqlite.runSync(
       `UPDATE inventory SET quantity = ${newQuantity}, updated_at = ? 
        WHERE product_id = ? AND store_id = ? ${variantCondition}`,
-      [now, payload.productId, payload.storeId],
+      payload.variantId
+        ? [
+            now,
+            payload.productId,
+            payload.storeId,
+            payload.productId,
+            payload.storeId,
+          ]
+        : [now, payload.productId, payload.storeId],
     );
 
     // ✅ Map type to server enum
@@ -1826,9 +2107,11 @@ export async function createOfflineInventoryMovement(
 
     // Strip null/undefined values and build clean payload
     const cleanPayload: any = {
+      clientMovementId: id,
       storeId: payload.storeId,
       productId: payload.productId,
       quantity: payload.quantity,
+      direction: String(payload.type).toUpperCase(),
       type: mappedType,
       referenceId: payload.referenceId,
       referenceType: payload.referenceType,
@@ -1985,17 +2268,87 @@ export async function createOfflineGenericRecord<T extends Record<string, any>>(
 
 export async function updateOfflineProduct(
   id: string,
-  data: Partial<Product> & { categoryName?: string },
+  data: Partial<Product> & { categoryName?: string; variants?: any[] },
 ) {
   const now = new Date().toISOString();
-  await getOfflineDb()
+  const db = getOfflineDb();
+
+  // Strip the variants array from the product-level update (it's not a product column)
+  const { variants: variantsPayload, ...productData } = data as any;
+
+  await db
     .update(products)
     .set({
-      ...data,
+      ...productData,
       updatedAt: now,
       syncStatus: "pending",
     } as Partial<typeof products.$inferInsert>)
     .where(eq(products.id, id));
+
+  // ── Sync variants locally if provided ──
+  if (Array.isArray(variantsPayload) && variantsPayload.length > 0) {
+    // Get existing local variants for this product
+    const existingVariants = await db
+      .select()
+      .from(productVariants)
+      .where(eq(productVariants.productId, id));
+
+    const existingIds = new Set(existingVariants.map((v) => v.id));
+    const keptIds = new Set<string>();
+
+    for (const v of variantsPayload) {
+      if (v.id && existingIds.has(v.id)) {
+        // Update existing variant
+        keptIds.add(v.id);
+        await db
+          .update(productVariants)
+          .set({
+            name: v.name,
+            sku: v.sku,
+            barcode: v.barcode || null,
+            price: Number(v.price ?? 0),
+            costPrice: Number(v.costPrice ?? 0),
+            color: v.color,
+            size: v.size,
+            isActive: v.isActive ?? true,
+            updatedAt: now,
+            syncStatus: "pending",
+          } as Partial<typeof productVariants.$inferInsert>)
+          .where(eq(productVariants.id, v.id));
+      } else {
+        // Create new variant locally
+        const newId = v.id || createLocalId();
+        keptIds.add(newId);
+        await db.insert(productVariants).values({
+          id: newId,
+          remoteId: v.id || null,
+          productId: id,
+          tenantId: (productData as any).tenantId ?? "default",
+          name: v.name,
+          sku: v.sku || `VAR-${newId.slice(-8)}`,
+          barcode: v.barcode || null,
+          price: Number(v.price ?? 0),
+          costPrice: Number(v.costPrice ?? 0),
+          color: v.color,
+          size: v.size,
+          isActive: v.isActive ?? true,
+          syncStatus: "pending",
+          createdAt: now,
+          updatedAt: now,
+        } as typeof productVariants.$inferInsert);
+      }
+    }
+
+    // Deactivate variants that were removed from the list
+    for (const existing of existingVariants) {
+      if (!keptIds.has(existing.id)) {
+        await db
+          .update(productVariants)
+          .set({ isActive: false, updatedAt: now, syncStatus: "pending" } as Partial<typeof productVariants.$inferInsert>)
+          .where(eq(productVariants.id, existing.id));
+      }
+    }
+  }
 
   await enqueueMutation(
     "products",
@@ -2005,7 +2358,7 @@ export async function updateOfflineProduct(
     "PUT",
     data,
   );
-  const [row] = await getOfflineDb()
+  const [row] = await db
     .select()
     .from(products)
     .where(eq(products.id, id))
@@ -2666,6 +3019,32 @@ export async function markEntitySynced(
         ...(remote.name && { name: remote.name }),
       })
       .where(eq(stores.id, localId));
+  } else if (entity === "staff") {
+    await getOfflineDb()
+      .update(staff)
+      .set({
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: now,
+        lastSyncedAt: now,
+        ...(remote.id || remote.remoteId
+          ? { remoteId: remote.id ?? remote.remoteId }
+          : {}),
+      })
+      .where(eq(staff.id, localId));
+  } else if (entity === "suppliers") {
+    await getOfflineDb()
+      .update(suppliers)
+      .set({
+        syncStatus: "synced",
+        syncError: null,
+        updatedAt: now,
+        lastSyncedAt: now,
+        ...(remote.id || remote.remoteId
+          ? { remoteId: remote.id ?? remote.remoteId }
+          : {}),
+      })
+      .where(eq(suppliers.id, localId));
   } else if (entity === "sessions") {
     await getOfflineDb()
       .update(sessions)
@@ -2946,6 +3325,7 @@ function parsePaymentBreakdown(value: unknown) {
 function toProduct(product: LocalProduct): Product {
   return {
     id: product.id,
+    remoteId: product.remoteId ?? undefined,
     sku: product.sku,
     barcode: product.barcode ?? undefined,
     name: product.name,

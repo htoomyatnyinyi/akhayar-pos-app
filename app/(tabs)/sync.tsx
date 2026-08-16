@@ -37,15 +37,18 @@ import {
 } from "react-native";
 import { clearAllOutboxItems } from "@/services/offline/repository";
 import { useDispatch } from "react-redux";
+import { useRouter } from "expo-router";
 
 export default function SyncScreen() {
   const dispatch = useDispatch();
+  const router = useRouter();
 
   const {
     isOnline,
     isSyncing,
     isLoading,
     syncStatus,
+    syncPhase,
     syncError,
     queueCount,
     failedCount,
@@ -249,7 +252,7 @@ export default function SyncScreen() {
         </View>
 
         {/* Sync Progress */}
-        {isSyncing && (
+        {(isSyncing || syncStatus === "complete" || syncStatus === "error") && (
           <Card className="mb-5">
             <View className="flex-row items-center justify-between mb-2">
               <Text className="text-slate-300 font-semibold text-xs uppercase tracking-widest">
@@ -266,9 +269,7 @@ export default function SyncScreen() {
               />
             </View>
             <Text className="text-slate-400 text-xs mt-2 text-center">
-              {syncStatus === "syncing"
-                ? "Synchronizing data..."
-                : "Processing..."}
+              {syncPhase}
             </Text>
           </Card>
         )}
@@ -316,11 +317,15 @@ export default function SyncScreen() {
             value={
               isSyncing
                 ? "In Progress..."
-                : syncStatus === "failed"
+                : syncStatus === "error"
                   ? "Failed"
-                  : "Idle"
+                  : syncStatus === "complete"
+                    ? "Completed"
+                    : "Ready"
             }
           />
+          <Divider />
+          <StatRow label="Sync Activity" value={syncPhase} />
           <Divider />
           <StatRow
             label="Total Pending"

@@ -11,11 +11,13 @@ import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { setStore } from "@/services/features/auth/authSlice";
 import { MaterialIcons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
   Pressable,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -23,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
 
 // ✅ Offline-first local APIs
 import {
@@ -46,6 +49,7 @@ import {
   useGetLocalCategoriesQuery,
   useGetLocalCustomersQuery,
   useGetLocalProductsQuery,
+  useGetLocalVariantsQuery,
   useGetLocalStaffQuery,
   useGetLocalStoresQuery,
   useGetLocalSuppliersQuery,
@@ -72,6 +76,7 @@ type ModuleKey =
 export default function ManageScreen() {
   const dispatch = useAppDispatch();
   const { user, currentStoreId } = useAppSelector((state) => state.auth);
+  const isAdmin = user?.role === "ADMIN";
   const [moduleKey, setModuleKey] = useState<ModuleKey>("products");
   const [editor, setEditor] = useState<{
     open: boolean;
@@ -98,13 +103,19 @@ export default function ManageScreen() {
       { skip: !user?.id },
     );
 
-  const { data: staff = [], refetch: refetchStaff } = useGetLocalStaffQuery({});
+  const scopedStoreId = isAdmin ? undefined : currentStoreId || undefined;
+  const { data: staff = [], refetch: refetchStaff } = useGetLocalStaffQuery({
+    storeId: scopedStoreId,
+  });
   const { data: products = [], refetch: refetchProducts } =
-    useGetLocalProductsQuery({});
+    useGetLocalProductsQuery({
+      storeId: isAdmin ? undefined : currentStoreId || undefined,
+    });
+  const { data: variants = [] } = useGetLocalVariantsQuery(undefined);
   const { data: categories = [], refetch: refetchCategories } =
     useGetLocalCategoriesQuery({});
   const { data: suppliers = [], refetch: refetchSuppliers } =
-    useGetLocalSuppliersQuery({});
+    useGetLocalSuppliersQuery({ storeId: scopedStoreId });
 
   // Mutations
   const [createStaff] = useCreateLocalStaffMutation();
@@ -151,7 +162,15 @@ export default function ManageScreen() {
 
   const isPrivileged = user?.role === "ADMIN" || user?.role === "MANAGER";
 
-  const storeOptions = useMemo(() => stores, [stores]);
+  const storeOptions = useMemo(
+    () =>
+      isAdmin
+        ? stores
+        : stores.filter((store: any) =>
+            user?.stores?.some((assigned: any) => assigned.id === store.id),
+          ),
+    [isAdmin, stores, user?.stores],
+  );
 
   if (!isPrivileged) {
     return (
@@ -199,10 +218,23 @@ export default function ManageScreen() {
     },
   ];
 
+  const productsWithVariants = useMemo(
+    () =>
+      products.map((product: any) => ({
+        ...product,
+        variants: variants.filter(
+          (variant: any) =>
+            variant.productId === product.id ||
+            variant.productId === product.remoteId,
+        ),
+      })),
+    [products, variants],
+  );
+
   const list = getModuleList({
     moduleKey,
     staff,
-    products,
+    products: productsWithVariants,
     stores,
     categories,
     customers,
@@ -213,7 +245,75 @@ export default function ManageScreen() {
 
   const handleSave = async (values: Record<string, any>) => {
     try {
-      const nextValues = buildPayload(moduleKey, values, currentStoreId);
+      const nextValues = buildPayload(
+        moduleKey,
+        values,
+        currentStoreId,
+        user?.tenantId,
+      );
+
+      if (moduleKey === "products") {
+        if (!String(nextValues.name ?? "").trim()) {
+          Alert.alert(
+            "Product name required",
+            "Enter a product name before saving.",
+          );
+          return;
+        }
+        if (!nextValues.categoryId && !nextValues.categoryName) {
+          Alert.alert(
+            "Category required",
+            "Select a category before saving the product.",
+          );
+          return;
+        }
+        if (
+          Array.isArray(nextValues.variants) &&
+          nextValues.variants.length > 0
+        ) {
+          const emptyOption = nextValues.variants.find(
+            (variant: any) =>
+              !String(variant.name ?? "").trim() ||
+              !String(variant.sku ?? "").trim(),
+          );
+          if (emptyOption) {
+            Alert.alert(
+              "Option details required",
+              "Every sellable option needs a name and a unique SKU.",
+            );
+            return;
+          }
+          const optionSkus = nextValues.variants.map((variant: any) =>
+            String(variant.sku).trim().toLowerCase(),
+          );
+          if (new Set(optionSkus).size !== optionSkus.length) {
+            Alert.alert(
+              "Duplicate option SKU",
+              "Each option must have a different SKU.",
+            );
+            return;
+          }
+        }
+      }
+      if (moduleKey === "staff") {
+        if (!nextValues.email) {
+          Alert.alert(
+            "Email required",
+            "Enter an email address for the staff account.",
+          );
+          return;
+        }
+        if (
+          editor.mode === "create" &&
+          String(nextValues.password ?? "").length < 6
+        ) {
+          Alert.alert(
+            "Password too short",
+            "Password must contain at least 6 characters.",
+          );
+          return;
+        }
+      }
 
       if (moduleKey === "staff") {
         if (editor.mode === "create") await createStaff(nextValues).unwrap();
@@ -266,6 +366,7 @@ export default function ManageScreen() {
         await deleteSupplier(item.id).unwrap();
       else if (moduleKey === "brands") await deleteBrand(item.id).unwrap();
       await refetchers[moduleKey]();
+      setEditor({ open: false, mode: "create" });
     } catch (error: any) {
       Alert.alert(
         "Delete failed",
@@ -370,12 +471,14 @@ export default function ManageScreen() {
           </View>
 
           <View className="mb-4 flex-row gap-3">
-            <ActionButton
-              title="Add New"
-              icon="add"
-              accent="emerald"
-              onPress={() => openEditor("create")}
-            />
+            {moduleKey !== "sessions" && (
+              <ActionButton
+                title="Add New"
+                icon="add"
+                accent="emerald"
+                onPress={() => openEditor("create")}
+              />
+            )}
             {moduleKey === "sessions" ? (
               <ActionButton
                 title={activeSession ? "Close Session" : "Open Session"}
@@ -427,6 +530,27 @@ export default function ManageScreen() {
                         >
                           {getSubtitle(moduleKey, item)}
                         </Text>
+                        {moduleKey === "products" &&
+                          Array.isArray(item.variants) &&
+                          item.variants.length > 0 && (
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              className="mt-2"
+                            >
+                              {item.variants.map((variant: any) => (
+                                <View
+                                  key={variant.id}
+                                  className="mr-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1"
+                                >
+                                  <Text className="text-[10px] font-semibold text-amber-200">
+                                    {variant.name} • $
+                                    {Number(variant.price ?? 0).toFixed(2)}
+                                  </Text>
+                                </View>
+                              ))}
+                            </ScrollView>
+                          )}
                       </View>
                     </View>
                     <Text className="text-sm font-medium text-slate-300">
@@ -541,8 +665,12 @@ function getModuleList(input: any) {
 function getSubtitle(moduleKey: ModuleKey, item: any) {
   if (moduleKey === "staff")
     return `${item.role} • ${item.email ?? "no email"}`;
-  if (moduleKey === "products")
-    return `${item.sku || "N/A"} • Cost: $${Number(item.costPrice ?? 0).toFixed(2)}`;
+  if (moduleKey === "products") {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    return variants.length
+      ? `${variants.length} variants • ${variants.map((v: any) => v.name).join(", ")}`
+      : `${item.sku || "N/A"} • Cost: $${Number(item.costPrice ?? 0).toFixed(2)}`;
+  }
   if (moduleKey === "stores") return item.address ?? "No address";
   if (moduleKey === "categories") return item.slug ?? "No slug";
   if (moduleKey === "customers") return item.phone ?? item.code;
@@ -556,8 +684,14 @@ function getSubtitle(moduleKey: ModuleKey, item: any) {
 
 function getRightLabel(moduleKey: ModuleKey, item: any) {
   if (moduleKey === "staff") return item.isActive ? "Active" : "Inactive";
-  if (moduleKey === "products")
+  if (moduleKey === "products") {
+    const variants = Array.isArray(item.variants) ? item.variants : [];
+    if (variants.length) {
+      const prices = variants.map((v: any) => Number(v.price ?? 0));
+      return `From $${Math.min(...prices).toFixed(2)}`;
+    }
     return `$${Number(item.sellingPrice ?? 0).toFixed(2)}`;
+  }
   if (moduleKey === "stores") return item.isActive ? "Open" : "Closed";
   if (moduleKey === "categories") return item.isActive ? "Live" : "Off";
   if (moduleKey === "customers") return item.tier ?? "BRONZE";
@@ -667,27 +801,93 @@ function RoleSelector({
 }
 
 function getDefaultPermissions(role: string): string[] {
+  const all = [
+    "VIEW_REPORTS",
+    "EDIT_PRICES",
+    "VOID_ORDERS",
+    "MANAGE_STAFF",
+    "MANAGE_INVENTORY",
+    "REFUND_ORDERS",
+    "VIEW_AUDIT_LOGS",
+    "MANAGE_PROMOTIONS",
+    "VIEW_ANALYTICS",
+    "MANAGE_API_KEYS",
+    "MANAGE_WEBHOOKS",
+  ];
   const permissions = {
-    ADMIN: [
-      "VIEW_REPORTS",
-      "EDIT_PRICES",
-      "MANAGE_STAFF",
-      "MANAGE_PRODUCTS",
-      "VIEW_SALES",
-      "MANAGE_CUSTOMERS",
-      "EDIT_INVENTORY",
-    ],
+    ADMIN: all,
     MANAGER: [
       "VIEW_REPORTS",
       "EDIT_PRICES",
-      "MANAGE_PRODUCTS",
-      "VIEW_SALES",
-      "MANAGE_CUSTOMERS",
+      "VOID_ORDERS",
+      "MANAGE_INVENTORY",
+      "REFUND_ORDERS",
+      "MANAGE_PROMOTIONS",
+      "VIEW_ANALYTICS",
     ],
-    CASHIER: ["VIEW_REPORTS", "VIEW_SALES"],
-    ACCOUNTANT: ["VIEW_REPORTS", "VIEW_SALES", "MANAGE_CUSTOMERS"],
+    CASHIER: ["VIEW_REPORTS"],
+    ACCOUNTANT: ["VIEW_REPORTS", "VIEW_ANALYTICS"],
   };
   return permissions[role as keyof typeof permissions] || [];
+}
+
+const STAFF_PERMISSIONS = [
+  ["VIEW_REPORTS", "View reports"],
+  ["EDIT_PRICES", "Edit prices"],
+  ["VOID_ORDERS", "Void orders"],
+  ["MANAGE_STAFF", "Manage staff"],
+  ["MANAGE_INVENTORY", "Manage inventory"],
+  ["REFUND_ORDERS", "Refund orders"],
+  ["VIEW_AUDIT_LOGS", "View audit logs"],
+  ["MANAGE_PROMOTIONS", "Manage promotions"],
+  ["VIEW_ANALYTICS", "View analytics"],
+  ["MANAGE_API_KEYS", "Manage API keys"],
+  ["MANAGE_WEBHOOKS", "Manage webhooks"],
+] as const;
+
+function PermissionSelector({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (permissions: string[]) => void;
+}) {
+  const toggle = (permission: string) => {
+    onChange(
+      value.includes(permission)
+        ? value.filter((item) => item !== permission)
+        : [...value, permission],
+    );
+  };
+
+  return (
+    <View className="mb-4">
+      <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
+        Permissions
+      </Text>
+      <View className="rounded-2xl border border-white/10 bg-white/5 p-2">
+        {STAFF_PERMISSIONS.map(([permission, label]) => {
+          const selected = value.includes(permission);
+          return (
+            <Pressable
+              key={permission}
+              onPress={() => toggle(permission)}
+              className="flex-row items-center rounded-xl px-2 py-2.5"
+            >
+              <MaterialIcons
+                name={selected ? "check-box" : "check-box-outline-blank"}
+                size={22}
+                color={selected ? "#34d399" : "#64748b"}
+              />
+              <Text className="ml-3 flex-1 text-sm text-slate-200">
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 // ============================================
@@ -1179,6 +1379,38 @@ function EditorModal({
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
+  const [scannerTarget, setScannerTarget] = useState<"master" | number | null>(null);
+  const hasVariants =
+    moduleKey === "products" &&
+    Array.isArray(fields.variants) &&
+    fields.variants.length > 0;
+
+  const startVariantProduct = () => {
+    if (hasVariants) return;
+    setFields((current) => ({
+      ...current,
+      // A variant product is sold by its variants.  Clear any values entered
+      // for the simple-product SKU/barcode so users cannot accidentally
+      // create the same identifier in both levels.
+      sku: "",
+      barcode: "",
+      variants: [
+        {
+          name: "",
+          sku: "",
+          price: 0,
+          costPrice: 0,
+          color: "",
+          size: "",
+          initialStock: 0,
+        },
+      ],
+    }));
+  };
+
+  const useSimpleProduct = () => {
+    set("variants", []);
+  };
 
   const [createCategory] = useCreateLocalCategoryMutation();
   const [createSupplier] = useCreateLocalSupplierMutation();
@@ -1406,84 +1638,169 @@ function EditorModal({
                     set("permissions", getDefaultPermissions(role));
                   }}
                 />
+                <PermissionSelector
+                  value={
+                    Array.isArray(fields.permissions) ? fields.permissions : []
+                  }
+                  onChange={(permissions) => set("permissions", permissions)}
+                />
               </>
             )}
             {/* PRODUCTS FORM */}
             {moduleKey === "products" && (
               <>
                 <Field
-                  label="Name"
+                  label={hasVariants ? "Product name (master)" : "Product name"}
                   value={fields.name ?? ""}
                   onChangeText={(v) => set("name", v)}
                 />
-                <Field
-                  label="SKU"
-                  value={fields.sku ?? ""}
-                  onChangeText={(v) => set("sku", v)}
-                />
-                <Field
+                {mode === "create" && (
+                  <View className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
+                      How is this item sold?
+                    </Text>
+                    <View className="mt-3 flex-row gap-2">
+                      <TouchableOpacity
+                        onPress={useSimpleProduct}
+                        className={`flex-1 rounded-xl border p-3 ${
+                          !hasVariants
+                            ? "border-sky-400/50 bg-sky-500/15"
+                            : "border-white/10 bg-white/5"
+                        }`}
+                      >
+                        <Text className="text-center text-xs font-bold text-white">
+                          Single item
+                        </Text>
+                        <Text className="mt-1 text-center text-[10px] text-slate-400">
+                          One SKU, price, and stock
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={startVariantProduct}
+                        className={`flex-1 rounded-xl border p-3 ${
+                          hasVariants
+                            ? "border-amber-400/50 bg-amber-500/15"
+                            : "border-white/10 bg-white/5"
+                        }`}
+                      >
+                        <Text className="text-center text-xs font-bold text-white">
+                          Has options
+                        </Text>
+                        <Text className="mt-1 text-center text-[10px] text-slate-400">
+                          Size, color, pack, etc.
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+                {!hasVariants && (
+                  <>
+                    <Field
+                      label="SKU"
+                      value={fields.sku ?? ""}
+                      onChangeText={(v) => set("sku", v)}
+                    />
+                    <Field
+                      label="Barcode"
+                      value={fields.barcode ?? ""}
+                      onChangeText={(v) => set("barcode", v)}
+                    />
+                    <View className="flex-row gap-2 mb-4">
+                      <TouchableOpacity
+                        onPress={() => setScannerTarget("master")}
+                        className="flex-1 rounded-xl border border-sky-400/30 bg-sky-500/15 py-3"
+                      >
+                        <Text className="text-center text-sky-200 font-bold text-xs">
+                          Scan barcode / QR
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => set("barcode", generateBarcode())}
+                        className="flex-1 rounded-xl border border-amber-400/30 bg-amber-500/15 py-3"
+                      >
+                        <Text className="text-center text-amber-200 font-bold text-xs">
+                          Auto-generate
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
+
+                {/* <Field
                   label="Barcode"
                   value={fields.barcode ?? ""}
                   onChangeText={(v) => set("barcode", v)}
-                />
+                /> */}
+
                 <Field
                   label="Description"
                   value={fields.description ?? ""}
                   onChangeText={(v) => set("description", v)}
                   multiline
                 />
-                <Field
-                  label="Brand"
-                  value={fields.brand ?? ""}
-                  onChangeText={(v) => set("brand", v)}
+                {!hasVariants && (
+                  <>
+                    <Field
+                      label="Cost Price"
+                      value={fields.costPrice?.toString() ?? ""}
+                      onChangeText={(v) => {
+                        const num = parseFloat(v);
+                        set("costPrice", isNaN(num) ? 0 : num);
+                      }}
+                      keyboardType="decimal-pad"
+                    />
+                    <Field
+                      label="Selling Price"
+                      value={fields.sellingPrice?.toString() ?? ""}
+                      onChangeText={(v) => {
+                        const num = parseFloat(v);
+                        set("sellingPrice", isNaN(num) ? 0 : num);
+                      }}
+                      keyboardType="decimal-pad"
+                    />
+                    <Field
+                      label="Wholesale Price"
+                      value={fields.wholesalePrice?.toString() ?? ""}
+                      onChangeText={(v) => {
+                        const num = parseFloat(v);
+                        set("wholesalePrice", isNaN(num) ? 0 : num);
+                      }}
+                      keyboardType="decimal-pad"
+                    />
+                    <Field
+                      label="Initial Stock"
+                      value={fields.initialStock?.toString() ?? ""}
+                      onChangeText={(v) => {
+                        const num = parseInt(v, 10);
+                        set("initialStock", isNaN(num) ? 0 : num);
+                      }}
+                      keyboardType="numeric"
+                    />
+                  </>
+                )}
+                {hasVariants && (
+                  <Text className="mb-4 text-xs text-amber-300">
+                    This is a master product. Each sellable option below needs
+                    its own name, SKU, price, and stock.
+                  </Text>
+                )}
+                <VariantEditor
+                  variants={
+                    Array.isArray(fields.variants) ? fields.variants : []
+                  }
+                  editable={mode !== "view"}
+                  onChange={(v) => set("variants", v)}
+                  onScanBarcode={(index) => setScannerTarget(index)}
                 />
-                <Field
-                  label="Cost Price"
-                  value={fields.costPrice?.toString() ?? ""}
-                  onChangeText={(v) => {
-                    const num = parseFloat(v);
-                    set("costPrice", isNaN(num) ? 0 : num);
-                  }}
-                  keyboardType="decimal-pad"
-                />
-                <Field
-                  label="Selling Price"
-                  value={fields.sellingPrice?.toString() ?? ""}
-                  onChangeText={(v) => {
-                    const num = parseFloat(v);
-                    set("sellingPrice", isNaN(num) ? 0 : num);
-                  }}
-                  keyboardType="decimal-pad"
-                />
-                <Field
-                  label="Wholesale Price"
-                  value={fields.wholesalePrice?.toString() ?? ""}
-                  onChangeText={(v) => {
-                    const num = parseFloat(v);
-                    set("wholesalePrice", isNaN(num) ? 0 : num);
-                  }}
-                  keyboardType="decimal-pad"
-                />
-                <Field
-                  label="Initial Stock"
-                  value={fields.initialStock?.toString() ?? ""}
-                  onChangeText={(v) => {
-                    const num = parseInt(v, 10);
-                    set("initialStock", isNaN(num) ? 0 : num);
-                  }}
-                  keyboardType="numeric"
-                />
-                <Field
+                <DateField
                   label="Manufacturing Date"
-                  value={fields.manufacturingDate ?? ""}
-                  onChangeText={(v) => set("manufacturingDate", v)}
-                  placeholder="YYYY-MM-DD"
+                  value={fields.manufacturingDate}
+                  onChange={(value) => set("manufacturingDate", value)}
                 />
-                <Field
+                <DateField
                   label="Expiry Date"
-                  value={fields.expiryDate ?? ""}
-                  onChangeText={(v) => set("expiryDate", v)}
-                  placeholder="YYYY-MM-DD"
+                  value={fields.expiryDate}
+                  onChange={(value) => set("expiryDate", value)}
                 />
 
                 {/* Category Selector */}
@@ -1893,6 +2210,22 @@ function EditorModal({
             ) : null}
           </ScrollView>
         </SafeAreaView>
+        <BarcodeScannerModal
+          visible={scannerTarget !== null}
+          onClose={() => setScannerTarget(null)}
+          onScan={(value) => {
+            if (scannerTarget === "master") {
+              set("barcode", value);
+            } else if (typeof scannerTarget === "number") {
+              const currentVariants = fields.variants || [];
+              const nextVariants = currentVariants.map((v: any, i: number) =>
+                i === scannerTarget ? { ...v, barcode: value } : v
+              );
+              set("variants", nextVariants);
+            }
+            setScannerTarget(null);
+          }}
+        />
       </View>
     </Modal>
   );
@@ -1901,6 +2234,259 @@ function EditorModal({
 // ============================================
 // FIELD COMPONENT
 // ============================================
+
+function generateBarcode() {
+  const digits = `${Date.now()}`.slice(-12).padStart(12, "0");
+  const checksum = digits.split("").reduce((sum, digit, index) => {
+    return sum + Number(digit) * (index % 2 === 0 ? 1 : 3);
+  }, 0);
+  return `${digits}${(10 - (checksum % 10)) % 10}`;
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  onChange: (value?: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const parsed = value ? new Date(value) : new Date();
+  const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+
+  if (open && Platform.OS === "android") {
+    return (
+      <View className="mb-4">
+        <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
+          {label}
+        </Text>
+        <DateTimePicker
+          value={date}
+          mode="date"
+          display="default"
+          onValueChange={(event, selectedDate) => {
+            if (selectedDate) onChange(selectedDate.toISOString());
+            setOpen(false);
+          }}
+          onDismiss={() => setOpen(false)}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View className="mb-4">
+      <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
+        {label}
+      </Text>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        className="flex-row items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
+      >
+        <Text className={value ? "text-white" : "text-slate-500"}>
+          {value ? date.toLocaleDateString() : "Select date"}
+        </Text>
+        <MaterialIcons name="event" size={20} color="#94a3b8" />
+      </TouchableOpacity>
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onDismiss={() => setOpen(false)}
+        onRequestClose={() => setOpen(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/70 px-6">
+          <View className="w-full rounded-3xl bg-slate-900 p-5 border border-white/10">
+            <Text className="text-white font-black text-lg mb-3">{label}</Text>
+            <DateTimePicker
+              value={date}
+              mode="date"
+              display="spinner"
+              onValueChange={(_event, selectedDate) => {
+                if (selectedDate) onChange(selectedDate.toISOString());
+              }}
+              onDismiss={() => setOpen(false)}
+              themeVariant="dark"
+            />
+            <View className="flex-row gap-3 mt-4">
+              <TouchableOpacity
+                onPress={() => setOpen(false)}
+                className="flex-1 rounded-xl bg-white/10 py-3"
+              >
+                <Text className="text-center text-slate-300 font-bold">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setOpen(false)}
+                className="flex-1 rounded-xl bg-sky-500 py-3"
+              >
+                <Text className="text-center text-white font-bold">Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function VariantEditor({
+  variants,
+  editable,
+  onChange,
+  onScanBarcode,
+}: {
+  variants: any[];
+  editable: boolean;
+  onChange: (variants: any[]) => void;
+  onScanBarcode?: (index: number) => void;
+}) {
+  const update = (index: number, key: string, value: any) => {
+    onChange(
+      variants.map((variant, variantIndex) =>
+        variantIndex === index ? { ...variant, [key]: value } : variant,
+      ),
+    );
+  };
+
+  return (
+    <View className="mb-5">
+      <View className="flex-row items-center justify-between mb-2">
+        <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
+          Sellable options
+        </Text>
+        {editable && (
+          <TouchableOpacity
+            onPress={() =>
+              onChange([
+                ...variants,
+                {
+                  name: "",
+                  sku: "",
+                  barcode: "",
+                  price: 0,
+                  costPrice: 0,
+                  color: "",
+                  size: "",
+                  initialStock: 0,
+                },
+              ])
+            }
+            className="rounded-full bg-amber-500/15 border border-amber-400/30 px-3 py-1.5"
+          >
+            <Text className="text-amber-200 text-xs font-bold">
+              + Add option
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {!variants.length ? (
+        <Text className="text-slate-500 text-xs">
+          No options. This product is sold as a single item.
+        </Text>
+      ) : (
+        variants.map((variant, index) => (
+          <View
+            key={variant.id ?? index}
+            className="rounded-2xl border border-white/10 bg-white/5 p-3 mb-3"
+          >
+            {editable ? (
+              <>
+                <Field
+                  label="Option name"
+                  value={variant.name ?? ""}
+                  onChangeText={(value) => update(index, "name", value)}
+                />
+                <Field
+                  label="Option SKU"
+                  value={variant.sku ?? ""}
+                  onChangeText={(value) => update(index, "sku", value)}
+                />
+                <Field
+                  label="Option Barcode"
+                  value={variant.barcode ?? ""}
+                  onChangeText={(value) => update(index, "barcode", value)}
+                />
+                <View className="flex-row gap-2 mb-3">
+                  <TouchableOpacity
+                    onPress={() => onScanBarcode?.(index)}
+                    className="flex-1 rounded-xl border border-sky-400/30 bg-sky-500/15 py-3"
+                  >
+                    <Text className="text-center text-sky-200 font-bold text-xs">
+                      Scan barcode / QR
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => update(index, "barcode", generateBarcode())}
+                    className="flex-1 rounded-xl border border-amber-400/30 bg-amber-500/15 py-3"
+                  >
+                    <Text className="text-center text-amber-200 font-bold text-xs">
+                      Auto-generate
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View className="flex-row gap-2">
+                  <View className="flex-1">
+                    <Field
+                      label="Price"
+                      value={String(variant.price ?? 0)}
+                      keyboardType="decimal-pad"
+                      onChangeText={(value) =>
+                        update(index, "price", Number(value) || 0)
+                      }
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Field
+                      label="Cost"
+                      value={String(variant.costPrice ?? 0)}
+                      keyboardType="decimal-pad"
+                      onChangeText={(value) =>
+                        update(index, "costPrice", Number(value) || 0)
+                      }
+                    />
+                  </View>
+                </View>
+                <Field
+                  label="Initial stock"
+                  value={String(variant.initialStock ?? 0)}
+                  keyboardType="numeric"
+                  onChangeText={(value) =>
+                    update(index, "initialStock", Number(value) || 0)
+                  }
+                />
+                <TouchableOpacity
+                  onPress={() =>
+                    onChange(variants.filter((_, i) => i !== index))
+                  }
+                  className="self-end rounded-xl bg-rose-500/15 px-3 py-2"
+                >
+                  <Text className="text-rose-300 text-xs font-bold">
+                    Remove variant
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View>
+                <Text className="text-white font-bold">{variant.name}</Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  SKU: {variant.sku} • ${Number(variant.price ?? 0).toFixed(2)}
+                </Text>
+                <Text className="text-amber-300 text-xs mt-1">
+                  Manage quantity from Inventory
+                </Text>
+              </View>
+            )}
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
 
 function Field({
   label,
@@ -1958,7 +2544,7 @@ function getDefaultFields(moduleKey: ModuleKey) {
       email: "",
       password: "",
       role: "CASHIER",
-      permissions: [],
+      permissions: getDefaultPermissions("CASHIER"),
       storeId: "",
     };
   if (moduleKey === "products")
@@ -2024,9 +2610,11 @@ function buildPayload(
   moduleKey: ModuleKey,
   values: Record<string, any>,
   currentStoreId: string | null,
+  tenantId?: string,
 ) {
   if (moduleKey === "staff") {
     const payload: any = {
+      tenantId: tenantId || "default",
       username: String(values.username ?? "").trim(),
       email: String(values.email ?? "").trim() || undefined,
       name: String(values.name ?? "").trim(),
@@ -2042,10 +2630,33 @@ function buildPayload(
   }
 
   if (moduleKey === "products") {
+    const variants =
+      Array.isArray(values.variants) && values.variants.length > 0
+        ? values.variants.map((variant: any) => ({
+            id: variant.id || undefined,
+            remoteId: variant.remoteId || undefined,
+            name: String(variant.name ?? "").trim(),
+            sku: String(variant.sku ?? "").trim() || undefined,
+            barcode: String(variant.barcode ?? "").trim() || undefined,
+            price: Number(variant.price ?? 0),
+            costPrice: Number(variant.costPrice ?? 0),
+            color: String(variant.color ?? "").trim() || undefined,
+            size: String(variant.size ?? "").trim() || undefined,
+            initialStock: Number(variant.initialStock ?? 0),
+          }))
+        : undefined;
+    const variantStockTotal = variants?.reduce(
+      (total: number, variant: any) => total + variant.initialStock,
+      0,
+    );
     const payload: any = {
-      tenantId: "default",
-      sku: String(values.sku ?? "").trim() || undefined,
-      barcode: String(values.barcode ?? "").trim() || undefined,
+      tenantId: tenantId || "default",
+      // A product with options is a catalogue/master record.  Only its
+      // options receive sales identifiers, prices, and stock.
+      sku: variants ? undefined : String(values.sku ?? "").trim() || undefined,
+      barcode: variants
+        ? undefined
+        : String(values.barcode ?? "").trim() || generateBarcode(),
       name: String(values.name ?? "").trim(),
       description: String(values.description ?? "").trim() || undefined,
       brand: String(values.brand ?? "").trim() || undefined,
@@ -2060,9 +2671,13 @@ function buildPayload(
       expiryDate: String(values.expiryDate ?? "").trim() || undefined,
       supplierId: String(values.supplierId ?? "").trim() || undefined,
       storeId: currentStoreId || undefined,
-      initialStock: values.initialStock
-        ? Number(values.initialStock)
-        : undefined,
+      initialStock:
+        variants && variants.length > 0
+          ? variantStockTotal
+          : values.initialStock
+            ? Number(values.initialStock)
+            : undefined,
+      variants,
     };
     Object.keys(payload).forEach((key) => {
       if (payload[key] === undefined) delete payload[key];
@@ -2078,7 +2693,7 @@ function buildPayload(
       address: String(values.address ?? "").trim() || undefined,
       phone: String(values.phone ?? "").trim() || undefined,
       email: String(values.email ?? "").trim() || undefined,
-      taxNumber: String(values.taxNumber ?? "").trim() || undefined,
+      taxId: String(values.taxNumber ?? "").trim() || undefined,
       isActive: values.isActive ?? true,
     };
   }

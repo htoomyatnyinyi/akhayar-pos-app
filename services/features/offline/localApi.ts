@@ -18,8 +18,10 @@ import {
   suppliers,
   syncOutbox,
 } from "@/services/offline/schema";
+import { refreshIfOnline, pushIfOnline } from "@/services/offline/onlineFirst";
+import type { CloseSessionPayload } from "@/services/features/sessions/sessionTypes";
 import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 
 // ============================================
 // TAG TYPES
@@ -71,6 +73,7 @@ export const localApi = createApi({
     getLocalBrands: builder.query({
       async queryFn({ isActive }: { isActive?: boolean } = {}) {
         try {
+          await refreshIfOnline(["brands"]);
           const db = getOfflineDb();
           let query = db.select().from(brands).orderBy(brands.name).$dynamic();
           if (isActive !== undefined) {
@@ -88,6 +91,7 @@ export const localApi = createApi({
     getLocalBrandById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["brands"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -141,6 +145,7 @@ export const localApi = createApi({
             updatedAt: now,
           });
 
+          pushIfOnline();
           return { data: { id: brandId, ...payload } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -182,6 +187,7 @@ export const localApi = createApi({
             updatedAt: now,
           });
 
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -225,6 +231,7 @@ export const localApi = createApi({
             updatedAt: new Date().toISOString(),
           });
 
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -253,28 +260,32 @@ export const localApi = createApi({
         isActive?: boolean;
       } = {}) {
         try {
+          await refreshIfOnline(["products","inventory"]);
           const db = getOfflineDb();
+          const conditions = [
+            sql`${products.syncStatus} != 'pending_delete'`,
+            ...(storeId
+              ? [
+                  or(
+                    eq(products.storeId, storeId),
+                    sql`${products.storeId} IS NULL`,
+                  ),
+                ]
+              : []),
+            ...(search
+              ? [
+                  sql`${products.name} LIKE ${`%${search}%`} OR ${products.sku} LIKE ${`%${search}%`} OR ${products.barcode} LIKE ${`%${search}%`}`,
+                ]
+              : []),
+            ...(categoryId ? [eq(products.categoryId, categoryId)] : []),
+            ...(isActive !== undefined ? [eq(products.isActive, isActive)] : []),
+          ];
           let query = db
             .select()
             .from(products)
-            .where(sql`${products.syncStatus} != 'pending_delete'`)
+            .where(and(...conditions))
             .orderBy(desc(products.createdAt))
             .$dynamic();
-
-          if (search) {
-            query = query.where(
-              sql`${products.name} LIKE ${`%${search}%`} OR ${products.sku} LIKE ${`%${search}%`} OR ${products.barcode} LIKE ${`%${search}%`}`,
-            );
-          }
-          if (categoryId) {
-            query = query.where(eq(products.categoryId, categoryId));
-          }
-          if (storeId) {
-            query = query.where(eq(products.storeId, storeId));
-          }
-          if (isActive !== undefined) {
-            query = query.where(eq(products.isActive, isActive));
-          }
 
           const result = await query;
           return { data: result };
@@ -288,6 +299,7 @@ export const localApi = createApi({
     getLocalProductById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["products"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -304,6 +316,7 @@ export const localApi = createApi({
     getLocalProductByBarcode: builder.query({
       async queryFn(barcode: string) {
         try {
+          await refreshIfOnline(["products"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -320,6 +333,7 @@ export const localApi = createApi({
     getLocalProductBySku: builder.query({
       async queryFn(sku: string) {
         try {
+          await refreshIfOnline(["products"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -339,6 +353,7 @@ export const localApi = createApi({
           const { createOfflineProduct } =
             await import("@/services/offline/repository");
           const result = await createOfflineProduct(payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -358,6 +373,7 @@ export const localApi = createApi({
           const { updateOfflineProduct } =
             await import("@/services/offline/repository");
           const result = await updateOfflineProduct(id, payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -376,6 +392,7 @@ export const localApi = createApi({
           const { deleteOfflineProduct } =
             await import("@/services/offline/repository");
           await deleteOfflineProduct(id);
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -395,6 +412,7 @@ export const localApi = createApi({
     getLocalVariants: builder.query({
       async queryFn(productId?: string) {
         try {
+          await refreshIfOnline(["products"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -418,6 +436,7 @@ export const localApi = createApi({
     getLocalVariantById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["products"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -436,6 +455,7 @@ export const localApi = createApi({
     getLocalVariantByBarcode: builder.query({
       async queryFn(barcode: string) {
         try {
+          await refreshIfOnline(["products"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -476,6 +496,34 @@ export const localApi = createApi({
             updatedAt: now,
           });
 
+          if (payload.storeId) {
+            await db.insert(inventory).values({
+              id: createLocalId("inv"),
+              tenantId: payload.tenantId,
+              storeId: payload.storeId,
+              productId: payload.productId,
+              variantId,
+              quantity: Number(payload.initialStock ?? 0),
+              reservedQty: 0,
+              reorderPoint: 10,
+              reorderQty: 0,
+              version: 0,
+              syncStatus: "pending",
+              syncError: null,
+              createdAt: now,
+              updatedAt: now,
+              lastSyncedAt: null,
+            });
+          }
+
+          await db.insert(syncOutbox).values({
+            id: createLocalId("outbox"), entity: "product_variants", entityId: variantId,
+            operation: "create", endpoint: "/api/tenant/product-variants", method: "POST",
+            payload: { ...payload }, status: "pending", attempts: 0, nextAttemptAt: now,
+            lastError: null, createdAt: now, updatedAt: now,
+          });
+
+          pushIfOnline();
           return { data: { id: variantId, ...payload } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -503,6 +551,14 @@ export const localApi = createApi({
             })
             .where(eq(productVariants.id, id));
 
+          await db.insert(syncOutbox).values({
+            id: createLocalId("outbox"), entity: "product_variants", entityId: id,
+            operation: "update", endpoint: `/api/tenant/product-variants/${id}`, method: "PUT",
+            payload, status: "pending", attempts: 0, nextAttemptAt: now,
+            lastError: null, createdAt: now, updatedAt: now,
+          });
+
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -519,14 +575,23 @@ export const localApi = createApi({
       async queryFn(id: string) {
         try {
           const db = getOfflineDb();
+          const now = new Date().toISOString();
+          const { createLocalId } = await import("@/services/offline/ids");
           await db
             .update(productVariants)
             .set({
               isActive: false,
               syncStatus: "pending",
-              updatedAt: new Date().toISOString(),
+              updatedAt: now,
             })
             .where(eq(productVariants.id, id));
+          await db.insert(syncOutbox).values({
+            id: createLocalId("outbox"), entity: "product_variants", entityId: id,
+            operation: "delete", endpoint: `/api/tenant/product-variants/${id}`, method: "DELETE",
+            payload: {}, status: "pending", attempts: 0, nextAttemptAt: now,
+            lastError: null, createdAt: now, updatedAt: now,
+          });
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -548,6 +613,7 @@ export const localApi = createApi({
         isActive,
       }: { storeId?: string; isActive?: boolean } = {}) {
         try {
+          await refreshIfOnline(["categories"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -571,6 +637,7 @@ export const localApi = createApi({
     getLocalCategoryById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["categories"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -590,6 +657,7 @@ export const localApi = createApi({
           const { createOfflineCategory } =
             await import("@/services/offline/repository");
           const result = await createOfflineCategory(payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -604,6 +672,7 @@ export const localApi = createApi({
           const { updateOfflineCategory } =
             await import("@/services/offline/repository");
           const result = await updateOfflineCategory(id, payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -621,6 +690,7 @@ export const localApi = createApi({
           const { deleteOfflineCategory } =
             await import("@/services/offline/repository");
           await deleteOfflineCategory(id);
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -647,6 +717,7 @@ export const localApi = createApi({
         isActive?: boolean;
       } = {}) {
         try {
+          await refreshIfOnline(["customers"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -678,6 +749,7 @@ export const localApi = createApi({
     getLocalCustomerById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["customers"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -694,6 +766,7 @@ export const localApi = createApi({
     getLocalCustomerByPhone: builder.query({
       async queryFn(phone: string) {
         try {
+          await refreshIfOnline(["customers"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -713,6 +786,7 @@ export const localApi = createApi({
           const { createOfflineCustomer } =
             await import("@/services/offline/repository");
           const result = await createOfflineCustomer(payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -727,6 +801,7 @@ export const localApi = createApi({
           const { updateOfflineCustomer } =
             await import("@/services/offline/repository");
           const result = await updateOfflineCustomer(id, payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -744,6 +819,7 @@ export const localApi = createApi({
           const { deleteOfflineCustomer } =
             await import("@/services/offline/repository");
           await deleteOfflineCustomer(id);
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -761,6 +837,7 @@ export const localApi = createApi({
     getLocalStores: builder.query({
       async queryFn({ isActive }: { isActive?: boolean } = {}) {
         try {
+          await refreshIfOnline(["stores"]);
           const db = getOfflineDb();
           let query = db.select().from(stores).$dynamic();
 
@@ -780,6 +857,7 @@ export const localApi = createApi({
     getLocalStoreById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["stores"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -799,6 +877,7 @@ export const localApi = createApi({
           const { createOfflineStore } =
             await import("@/services/offline/repository");
           const result = await createOfflineStore(payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -813,6 +892,7 @@ export const localApi = createApi({
           const { updateOfflineStore } =
             await import("@/services/offline/repository");
           const result = await updateOfflineStore(id, payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -830,6 +910,7 @@ export const localApi = createApi({
           const { deleteOfflineStore } =
             await import("@/services/offline/repository");
           await deleteOfflineStore(id);
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -851,6 +932,7 @@ export const localApi = createApi({
         isActive,
       }: { storeId?: string; isActive?: boolean } = {}) {
         try {
+          await refreshIfOnline(["staff"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -877,6 +959,7 @@ export const localApi = createApi({
     getLocalStaffById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["staff"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -915,6 +998,19 @@ export const localApi = createApi({
             lastSyncedAt: null,
           });
 
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "staff",
+              entityId: staffId,
+              operation: "create",
+              endpoint: "/api/tenant/staff/",
+              method: "POST",
+              payload,
+            },
+          ]);
+
+          pushIfOnline();
           return { data: { id: staffId, ...payload } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -938,6 +1034,19 @@ export const localApi = createApi({
             })
             .where(eq(staff.id, id));
 
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "staff",
+              entityId: id,
+              operation: "update",
+              endpoint: `/api/tenant/staff/${id}`,
+              method: "PUT",
+              payload,
+            },
+          ]);
+
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -961,6 +1070,18 @@ export const localApi = createApi({
               updatedAt: new Date().toISOString(),
             })
             .where(eq(staff.id, id));
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "staff",
+              entityId: id,
+              operation: "delete",
+              endpoint: `/api/tenant/staff/${id}`,
+              method: "DELETE",
+              payload: {},
+            },
+          ]);
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -981,6 +1102,7 @@ export const localApi = createApi({
         isActive,
       }: { storeId?: string; isActive?: boolean } = {}) {
         try {
+          await refreshIfOnline(["suppliers"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -1007,6 +1129,7 @@ export const localApi = createApi({
     getLocalSupplierById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["suppliers"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -1039,7 +1162,7 @@ export const localApi = createApi({
             phone: payload.phone,
             email: payload.email,
             address: payload.address,
-            taxNumber: payload.taxNumber,
+            taxNumber: payload.taxNumber ?? payload.taxId,
             paymentTerms: payload.paymentTerms,
             creditLimit: payload.creditLimit,
             currentBalance: payload.currentBalance || 0,
@@ -1050,6 +1173,19 @@ export const localApi = createApi({
             lastSyncedAt: null,
           });
 
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "suppliers",
+              entityId: supplierId,
+              operation: "create",
+              endpoint: "/api/tenant/suppliers/",
+              method: "POST",
+              payload,
+            },
+          ]);
+
+          pushIfOnline();
           return { data: { id: supplierId, ...payload } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1063,16 +1199,31 @@ export const localApi = createApi({
         try {
           const db = getOfflineDb();
           const now = new Date().toISOString();
+          const { taxId, ...supplierPayload } = payload;
 
           await db
             .update(suppliers)
             .set({
-              ...payload,
+              ...supplierPayload,
+              ...(taxId !== undefined ? { taxNumber: taxId } : {}),
               updatedAt: now,
               syncStatus: "pending",
             })
             .where(eq(suppliers.id, id));
 
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "suppliers",
+              entityId: id,
+              operation: "update",
+              endpoint: `/api/tenant/suppliers/${id}`,
+              method: "PUT",
+              payload: { ...supplierPayload, ...(taxId !== undefined ? { taxId } : {}) },
+            },
+          ]);
+
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1096,6 +1247,18 @@ export const localApi = createApi({
               updatedAt: new Date().toISOString(),
             })
             .where(eq(suppliers.id, id));
+          const { enqueueMutations } = await import("@/services/offline/repository");
+          await enqueueMutations([
+            {
+              entity: "suppliers",
+              entityId: id,
+              operation: "delete",
+              endpoint: `/api/tenant/suppliers/${id}`,
+              method: "DELETE",
+              payload: {},
+            },
+          ]);
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1121,6 +1284,7 @@ export const localApi = createApi({
         userId?: string;
       } = {}) {
         try {
+          await refreshIfOnline(["sessions"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -1150,6 +1314,7 @@ export const localApi = createApi({
     getLocalSessionById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["sessions"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -1166,6 +1331,7 @@ export const localApi = createApi({
     // getActiveSession: builder.query({
     //   async queryFn({ userId, storeId }: { userId: string; storeId?: string }) {
     //     try {
+    //       await refreshIfOnline(["sessions"]);
     //       const db = getOfflineDb();
     //       let query = db
     //         .select()
@@ -1191,6 +1357,7 @@ export const localApi = createApi({
     getActiveSession: builder.query({
       async queryFn({ userId, storeId }: { userId: string; storeId?: string }) {
         try {
+          await refreshIfOnline(["sessions"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -1221,6 +1388,7 @@ export const localApi = createApi({
           const { openOfflineSession } =
             await import("@/services/offline/repository");
           const result = await openOfflineSession(payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1230,11 +1398,12 @@ export const localApi = createApi({
     }),
 
     closeLocalSession: builder.mutation({
-      async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
+      async queryFn({ id, ...payload }: { id: string } & CloseSessionPayload) {
         try {
           const { closeOfflineSession } =
             await import("@/services/offline/repository");
           const result = await closeOfflineSession(id, payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1266,6 +1435,7 @@ export const localApi = createApi({
         limit?: number;
       } = {}) {
         try {
+          await refreshIfOnline(["orders"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -1302,6 +1472,7 @@ export const localApi = createApi({
     getLocalOrderById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["orders"]);
           const db = getOfflineDb();
           const [order] = await db
             .select()
@@ -1331,6 +1502,7 @@ export const localApi = createApi({
           const { createOfflineOrder } =
             await import("@/services/offline/repository");
           const result = await createOfflineOrder(payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1345,6 +1517,7 @@ export const localApi = createApi({
           const { updateOfflineOrderStatus } =
             await import("@/services/offline/repository");
           const result = await updateOfflineOrderStatus(id, status);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1362,6 +1535,7 @@ export const localApi = createApi({
           const { deleteOfflineOrder } =
             await import("@/services/offline/repository");
           await deleteOfflineOrder(id);
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1388,17 +1562,22 @@ export const localApi = createApi({
         variantId?: string;
       } = {}) {
         try {
+          await refreshIfOnline(["inventory","products"]);
           const db = getOfflineDb();
           let query = db.select().from(inventory).$dynamic();
+          const conditions = [];
 
           if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
+            conditions.push(eq(inventory.storeId, storeId));
           }
           if (productId) {
-            query = query.where(eq(inventory.productId, productId));
+            conditions.push(eq(inventory.productId, productId));
           }
           if (variantId) {
-            query = query.where(eq(inventory.variantId, variantId));
+            conditions.push(eq(inventory.variantId, variantId));
+          }
+          if (conditions.length) {
+            query = query.where(and(...conditions));
           }
 
           const result = await query;
@@ -1419,16 +1598,15 @@ export const localApi = createApi({
         storeId?: string;
       }) {
         try {
+          await refreshIfOnline(["inventory"]);
           const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.productId, productId))
-            .$dynamic();
+          let query = db.select().from(inventory).$dynamic();
+          const conditions = [eq(inventory.productId, productId)];
 
           if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
+            conditions.push(eq(inventory.storeId, storeId));
           }
+          query = query.where(and(...conditions));
 
           const result = await query;
           return { data: result };
@@ -1448,16 +1626,15 @@ export const localApi = createApi({
         storeId?: string;
       }) {
         try {
+          await refreshIfOnline(["inventory"]);
           const db = getOfflineDb();
-          let query = db
-            .select()
-            .from(inventory)
-            .where(eq(inventory.variantId, variantId))
-            .$dynamic();
+          let query = db.select().from(inventory).$dynamic();
+          const conditions = [eq(inventory.variantId, variantId)];
 
           if (storeId) {
-            query = query.where(eq(inventory.storeId, storeId));
+            conditions.push(eq(inventory.storeId, storeId));
           }
+          query = query.where(and(...conditions));
 
           const result = await query;
           return { data: result };
@@ -1471,6 +1648,7 @@ export const localApi = createApi({
     getLocalInventoryItem: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["inventory"]);
           const db = getOfflineDb();
           const [result] = await db
             .select()
@@ -1504,6 +1682,7 @@ export const localApi = createApi({
         limit?: number;
       } = {}) {
         try {
+          await refreshIfOnline(["inventory"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -1543,6 +1722,7 @@ export const localApi = createApi({
           const { createOfflineInventoryMovement } =
             await import("@/services/offline/repository");
           const result = await createOfflineInventoryMovement(payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1580,9 +1760,21 @@ export const localApi = createApi({
             .$dynamic();
 
           if (payload.variantId) {
-            query = query.where(eq(inventory.variantId, payload.variantId));
+            query = query.where(
+              and(
+                eq(inventory.variantId, payload.variantId),
+                eq(inventory.productId, payload.productId),
+                eq(inventory.storeId, payload.storeId),
+              ),
+            );
           } else {
-            query = query.where(sql`${inventory.variantId} IS NULL`);
+            query = query.where(
+              and(
+                sql`${inventory.variantId} IS NULL`,
+                eq(inventory.productId, payload.productId),
+                eq(inventory.storeId, payload.storeId),
+              ),
+            );
           }
 
           const [existingInventory] = await query;
@@ -1619,7 +1811,9 @@ export const localApi = createApi({
 
           const { createLocalId } = await import("@/services/offline/ids");
           const movementId = createLocalId("mov");
-          const movementType = "ADJUSTMENT";
+          const movementType = diff > 0 ? "IN" : "OUT";
+          const movementQuantity = Math.abs(diff);
+          const adjustmentReferenceId = `adj-${movementId}`;
 
           await db.insert(inventoryMovements).values({
             id: movementId,
@@ -1627,9 +1821,9 @@ export const localApi = createApi({
             storeId: payload.storeId,
             productId: payload.productId,
             variantId: payload.variantId || null,
-            quantity: diff,
+            quantity: movementQuantity,
             type: movementType,
-            referenceId: `adj-${Date.now()}`,
+            referenceId: adjustmentReferenceId,
             referenceType: "STOCK_ADJUSTMENT",
             reason:
               payload.reason ??
@@ -1645,8 +1839,6 @@ export const localApi = createApi({
             .from(inventory)
             .where(eq(inventory.id, existingInventory.id));
 
-
-
           await db.insert(syncOutbox).values({
             id: createLocalId("outbox"),
             entity: "inventory_movements",
@@ -1655,12 +1847,14 @@ export const localApi = createApi({
             endpoint: "/api/tenant/inventory/movements",
             method: "POST",
             payload: {
+              clientMovementId: movementId,
               storeId: payload.storeId,
               productId: payload.productId,
               ...(payload.variantId ? { variantId: payload.variantId } : {}),
-              quantity: diff,
+              quantity: movementQuantity,
+              direction: movementType,
               type: movementType,
-              referenceId: `adj-${Date.now()}`,
+              referenceId: adjustmentReferenceId,
               referenceType: "STOCK_ADJUSTMENT",
               reason:
                 payload.reason ??
@@ -1673,6 +1867,8 @@ export const localApi = createApi({
             createdAt: now,
             updatedAt: now,
           });
+
+          pushIfOnline();
 
           return {
             data: updatedInventory,
@@ -1712,6 +1908,7 @@ export const localApi = createApi({
         limit?: number;
       } = {}) {
         try {
+          await refreshIfOnline(["inventory"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -1742,6 +1939,7 @@ export const localApi = createApi({
     getLocalInventoryCountById: builder.query({
       async queryFn(id: string) {
         try {
+          await refreshIfOnline(["inventory"]);
           const db = getOfflineDb();
           const [count] = await db
             .select()
@@ -1773,6 +1971,7 @@ export const localApi = createApi({
           const { createOfflineInventoryCount } =
             await import("@/services/offline/repository");
           const result = await createOfflineInventoryCount(payload);
+          pushIfOnline();
           return { data: result };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1799,6 +1998,7 @@ export const localApi = createApi({
         limit?: number;
       } = {}) {
         try {
+          await refreshIfOnline(["priceHistory"]);
           const db = getOfflineDb();
           let query = db
             .select()
@@ -1847,6 +2047,7 @@ export const localApi = createApi({
             updatedAt: now,
           });
 
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1924,6 +2125,7 @@ export const localApi = createApi({
             await retryAllFailedOutboxItems();
           }
 
+          pushIfOnline();
           return { data: { success: true } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
@@ -1938,6 +2140,7 @@ export const localApi = createApi({
           const { clearSyncedOutboxItems } =
             await import("@/services/offline/repository");
           const count = await clearSyncedOutboxItems();
+          pushIfOnline();
           return { data: { cleared: count } };
         } catch (error) {
           return { error: { message: (error as Error).message } };

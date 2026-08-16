@@ -1,7 +1,3 @@
-// ============================================
-// FILE: app/(tabs)/inventory.tsx
-// ============================================
-
 import {
   Card,
   Divider,
@@ -22,9 +18,17 @@ import {
   useGetLocalInventoryMovementsQuery,
   useGetLocalInventoryQuery,
   useGetLocalProductsQuery,
+  useGetLocalVariantsQuery,
+  useGetLocalStoresQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useState } from "react";
+import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
+import { isOnline } from "@/services/offline/network";
+import {
+  useAllocateProductStockMutation,
+  useCreateStockTransferMutation,
+} from "@/services/api/remoteApi";
 import {
   ActivityIndicator,
   Alert,
@@ -42,30 +46,43 @@ import {
 type ActiveTab = "stock" | "movements";
 
 export default function InventoryScreen() {
+  const { currentStoreId } = useAppSelector((state) => state.auth);
   const [activeTab, setActiveTab] = useState<ActiveTab>("stock");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [showAllocationModal, setShowAllocationModal] = useState(false);
+  const [selectedAllocationProduct, setSelectedAllocationProduct] =
+    useState<any>(null);
   const [selectedInventory, setSelectedInventory] = useState<any>(null);
+  const [scannerMode, setScannerMode] = useState<"single" | "continuous">("single");
+  const [scannedPreviewItems, setScannedPreviewItems] = useState<any[]>([]);
 
   // ✅ Queries
   const {
     data: inventoryData,
     isLoading: isInventoryLoading,
     refetch: refetchInventory,
-  } = useGetLocalInventoryQuery({});
+  } = useGetLocalInventoryQuery({ storeId: currentStoreId || undefined });
 
   const {
     data: movementsData,
     isLoading: isMovementsLoading,
     refetch: refetchMovements,
-  } = useGetLocalInventoryMovementsQuery({});
+  } = useGetLocalInventoryMovementsQuery({
+    storeId: currentStoreId || undefined,
+  });
 
   const { data: productsData, refetch: refetchProducts } =
+    // Inventory is store-scoped, but its product master can be tenant-wide.
+    // Load all local products so a valid inventory row is never shown as
+    // "Unknown" only because product.storeId differs.
     useGetLocalProductsQuery({});
+  const { data: variantsData } = useGetLocalVariantsQuery(undefined);
   const { data: categories } = useGetLocalCategoriesQuery({});
+  const { data: stores = [] } = useGetLocalStoresQuery({ isActive: true });
   const { data: brands, refetch: refetchBrands } = useGetLocalBrandsQuery({
     isActive: true,
   });
@@ -73,6 +90,10 @@ export default function InventoryScreen() {
   // Mutations
   const [createMovement, { isLoading: isCreatingMovement }] =
     useCreateLocalInventoryMovementMutation();
+  const [createStockTransfer, { isLoading: isCreatingTransfer }] =
+    useCreateStockTransferMutation();
+  const [allocateProductStock, { isLoading: isAllocating }] =
+    useAllocateProductStockMutation();
   const [adjustStock, { isLoading: isAdjusting }] =
     useAdjustLocalStockMutation();
   const [createProduct, { isLoading: isCreatingProduct }] =
@@ -83,22 +104,38 @@ export default function InventoryScreen() {
     if (!inventoryData || !productsData) return [];
 
     return inventoryData.map((inv: any) => {
-      const product = productsData.find((p: any) => p.id === inv.productId);
+      const product = productsData.find(
+        (p: any) => p.id === inv.productId || p.remoteId === inv.productId,
+      );
+      const variant = inv.variantId
+        ? variantsData?.find(
+            (v: any) => v.id === inv.variantId || v.remoteId === inv.variantId,
+          )
+        : undefined;
+      const variantOptions =
+        variantsData?.filter(
+          (candidate: any) =>
+            candidate.productId === product?.id ||
+            candidate.productId === product?.remoteId,
+        ) ?? [];
       const brand = product?.brandId
         ? brands?.find((b: any) => b.id === product.brandId)
         : null;
       return {
         ...inv,
         name: product?.name || "Unknown Product",
-        sku: product?.sku || "N/A",
-        sellingPrice: product?.sellingPrice || 0,
-        costPrice: product?.costPrice || 0,
+        variantName: variant?.name || null,
+        variantOptions,
+        sku: variant?.sku || product?.sku || "N/A",
+        barcode: variant?.barcode || product?.barcode || null,
+        sellingPrice: variant?.price ?? product?.sellingPrice ?? 0,
+        costPrice: variant?.costPrice ?? product?.costPrice ?? 0,
         categoryId: product?.categoryId,
         brandName: brand?.name || null,
         brandId: product?.brandId || null,
       };
     });
-  }, [inventoryData, productsData, brands]);
+  }, [inventoryData, productsData, variantsData, brands]);
 
   // Computed values
   const filteredInventory = inventoryWithDetails.filter((item: any) => {
@@ -106,10 +143,22 @@ export default function InventoryScreen() {
     const q = searchQuery.toLowerCase();
     return (
       item.name?.toLowerCase().includes(q) ||
+      item.variantName?.toLowerCase().includes(q) ||
       item.sku?.toLowerCase().includes(q) ||
       item.brandName?.toLowerCase().includes(q)
     );
   });
+
+  const inventoryGroups = React.useMemo(() => {
+    const groups = new Map<string, any>();
+    for (const row of filteredInventory) {
+      const key = row.productId;
+      const group = groups.get(key);
+      if (group) group.rows.push(row);
+      else groups.set(key, { ...row, rows: [row] });
+    }
+    return Array.from(groups.values());
+  }, [filteredInventory]);
 
   const totalProducts = inventoryWithDetails.length;
   const lowStockCount = inventoryWithDetails.filter(
@@ -160,18 +209,64 @@ export default function InventoryScreen() {
       quantity: number;
       type: "IN" | "OUT";
       reason: string;
+      tenantId: string;
+      storeId: string;
+      transferToStoreId?: string;
     }) => {
       try {
-        await createMovement({
-          storeId: "default", // TODO: Get from context
+        if (!payload.tenantId || !payload.storeId) {
+          throw new Error("Missing tenant or source store for movement");
+        }
+        const referenceId = `transfer-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+        const base = {
+          tenantId: payload.tenantId,
           productId: payload.productId,
           variantId: payload.variantId,
           quantity: payload.quantity,
-          type: payload.type,
-          referenceId: `manual-${Date.now()}`,
-          referenceType: "MANUAL",
-          reason: payload.reason,
-        }).unwrap();
+        };
+
+        if (payload.transferToStoreId && (await isOnline())) {
+          await createStockTransfer({
+            fromStoreId: payload.storeId,
+            toStoreId: payload.transferToStoreId,
+            items: [
+              {
+                productId: payload.productId,
+                variantId: payload.variantId,
+                quantity: payload.quantity,
+              },
+            ],
+            notes: payload.reason || "Store transfer",
+          }).unwrap();
+        } else if (payload.transferToStoreId) {
+          await createMovement({
+            ...base,
+            storeId: payload.storeId,
+            type: "OUT",
+            referenceId,
+            referenceType: "STOCK_TRANSFER",
+            reason: payload.reason || "Store transfer out",
+          }).unwrap();
+          await createMovement({
+            ...base,
+            storeId: payload.transferToStoreId,
+            type: "IN",
+            referenceId,
+            referenceType: "STOCK_TRANSFER",
+            reason: payload.reason || "Store transfer in",
+          }).unwrap();
+        } else {
+          await createMovement({
+            ...base,
+            storeId: payload.storeId,
+            type: payload.type,
+            referenceId: `manual-${Date.now()}`,
+            referenceType: "STOCK_ADJUSTMENT",
+            reason: payload.reason,
+          }).unwrap();
+        }
         setShowMovementModal(false);
         refetchInventory();
         refetchMovements();
@@ -180,7 +275,13 @@ export default function InventoryScreen() {
         Alert.alert("Error", err?.message ?? "Failed to create movement");
       }
     },
-    [createMovement, refetchInventory, refetchMovements],
+    [
+      createMovement,
+      createStockTransfer,
+      refetchInventory,
+      refetchMovements,
+      selectedInventory,
+    ],
   );
 
   const handleCreateProduct = useCallback(
@@ -202,23 +303,59 @@ export default function InventoryScreen() {
     [createProduct, refetchInventory, refetchProducts, refetchBrands],
   );
 
-  const handleScan = useCallback(
+  const resolveScannedInventory = useCallback(
     (data: string) => {
-      setShowScannerModal(false);
-      const inventory = inventoryWithDetails.find(
-        (p: any) => p.barcode === data || p.sku === data || p.id === data,
+      // Also check variant barcodes directly
+      const variant = variantsData?.find(
+        (v: any) => v.barcode === data || v.sku === data,
       );
-      if (inventory) {
-        setSelectedInventory(inventory);
-        setShowAdjustModal(true);
-      } else {
-        Alert.alert(
-          "Not Found",
-          `No local product found for barcode/SKU:\n${data}`,
+      if (variant) {
+        return inventoryWithDetails.find(
+          (inv: any) => inv.variantId === variant.id || inv.variantId === variant.remoteId,
         );
       }
+      return inventoryWithDetails.find(
+        (p: any) => p.barcode === data || p.sku === data || p.id === data,
+      );
     },
-    [inventoryWithDetails],
+    [inventoryWithDetails, variantsData],
+  );
+
+  const handleScan = useCallback(
+    (data: string) => {
+      const inventory = resolveScannedInventory(data);
+
+      if (scannerMode === "single") {
+        setShowScannerModal(false);
+        if (inventory) {
+          setSelectedInventory(inventory);
+          setShowAdjustModal(true);
+        } else {
+          Alert.alert(
+            "Not Found",
+            `No local product found for barcode/SKU:\n${data}`,
+          );
+        }
+      } else {
+        // Continuous mode — stage items in preview list
+        if (inventory) {
+          setScannedPreviewItems((prev) => {
+            const existing = prev.find((item) => item.id === inventory.id);
+            if (existing) {
+              return prev.map((item) =>
+                item.id === inventory.id
+                  ? { ...item, scanCount: (item.scanCount || 1) + 1 }
+                  : item,
+              );
+            }
+            return [...prev, { ...inventory, scanCount: 1 }];
+          });
+        } else {
+          Alert.alert("Not Found", `Barcode ${data} not found in inventory.`);
+        }
+      }
+    },
+    [resolveScannedInventory, scannerMode],
   );
 
   // ============================================
@@ -249,12 +386,102 @@ export default function InventoryScreen() {
   };
 
   const renderStockItem = ({ item }: { item: any }) => {
-    const badge = getStockBadge(item.quantity);
+    if (
+      item.rows?.length > 1 ||
+      item.rows?.[0]?.variantName ||
+      item.variantOptions?.length
+    ) {
+      const hasVariantRows = item.rows.some((row: any) => row.variantId);
+      const totalStock = hasVariantRows
+        ? item.rows.reduce(
+            (total: number, row: any) => total + Number(row.quantity || 0),
+            0,
+          )
+        : Number(item.rows?.[0]?.quantity || 0);
+      return (
+        <Card className="mb-3">
+          <View className="flex-row items-center mb-3">
+            <View className="h-11 w-11 rounded-2xl bg-white/8 items-center justify-center mr-3 border border-white/5">
+              <MaterialIcons name="inventory-2" size={21} color="#94a3b8" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-white font-bold text-sm" numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text className="text-slate-400 text-[10px] mt-1">
+                {item.variantOptions?.length || item.rows.length} variants • tap
+                a row to adjust stock
+              </Text>
+              <Text className="text-emerald-300 text-[10px] font-bold mt-1">
+                Total stock: {totalStock}
+              </Text>
+              {item.variantOptions?.length > 0 &&
+                !item.rows.some((row: any) => row.variantId) && (
+                  <Text className="text-amber-300/80 text-[10px] mt-1">
+                    {item.variantOptions
+                      .map((variant: any) => variant.name)
+                      .join(" • ")}{" "}
+                    (shared stock)
+                  </Text>
+                )}
+            </View>
+          </View>
+          {item.variantOptions?.length > 0 &&
+            !item.rows.some((row: any) => row.variantId) && (
+              <TouchableOpacity
+                className="mb-3 rounded-xl bg-amber-500/15 border border-amber-400/30 px-3 py-2"
+                onPress={() => {
+                  setSelectedAllocationProduct(item);
+                  setShowAllocationModal(true);
+                }}
+              >
+                <Text className="text-amber-200 text-center text-xs font-bold">
+                  Allocate shared stock to variants
+                </Text>
+              </TouchableOpacity>
+            )}
+          {item.rows.map((variantRow: any) => {
+            const badge = getStockBadge(variantRow.quantity);
+            return (
+              <TouchableOpacity
+                key={variantRow.id}
+                className="flex-row items-center py-3 px-3 mb-2 rounded-xl bg-white/5 border border-white/5"
+                onPress={() => {
+                  setSelectedInventory(variantRow);
+                  setShowAdjustModal(true);
+                }}
+              >
+                <View className="flex-1">
+                  <Text className="text-amber-300 font-semibold text-xs">
+                    {variantRow.variantName ||
+                      (item.variantOptions?.length
+                        ? "Shared product stock"
+                        : "Variant")}
+                  </Text>
+                  <Text className="text-slate-400 text-[10px] mt-1">
+                    SKU: {variantRow.sku}
+                  </Text>
+                </View>
+                <View className="items-end">
+                  <Text className="text-white font-black text-base">
+                    {variantRow.quantity}
+                  </Text>
+                  <Pill label={badge.label} tone={badge.tone} />
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </Card>
+      );
+    }
+
+    const row = item.rows?.[0] || item;
+    const badge = getStockBadge(row.quantity);
     return (
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => {
-          setSelectedInventory(item);
+          setSelectedInventory(row);
           setShowAdjustModal(true);
         }}
       >
@@ -265,11 +492,19 @@ export default function InventoryScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-white font-bold text-sm" numberOfLines={1}>
-                {item.name}
+                {row.name}
               </Text>
+              {row.variantName && (
+                <Text
+                  className="text-amber-300/90 text-[10px] font-semibold mt-0.5"
+                  numberOfLines={1}
+                >
+                  Variant: {row.variantName}
+                </Text>
+              )}
               <View className="flex-row items-center mt-0.5">
                 <Text className="text-sky-300/80 text-[10px] font-bold uppercase tracking-[2px]">
-                  {item.sku}
+                  {row.sku}
                 </Text>
                 {item.brandName && (
                   <>
@@ -280,15 +515,10 @@ export default function InventoryScreen() {
                   </>
                 )}
               </View>
-              {item.variantId && (
-                <Text className="text-slate-500 text-[9px] mt-0.5">
-                  Variant: {item.variantId}
-                </Text>
-              )}
             </View>
             <View className="items-end">
               <Text className="text-white font-black text-lg">
-                {item.quantity}
+                {row.quantity}
               </Text>
               <Pill label={badge.label} tone={badge.tone} />
             </View>
@@ -301,6 +531,13 @@ export default function InventoryScreen() {
   const renderMovementItem = ({ item }: { item: any }) => {
     const icon = getMovementIcon(item.type);
     const isIn = ["IN", "TRANSFER_IN"].includes(item.type);
+    const movementVariant = item.variantId
+      ? variantsData?.find(
+          (variant: any) =>
+            variant.id === item.variantId ||
+            variant.remoteId === item.variantId,
+        )
+      : undefined;
     return (
       <Card className="mb-3">
         <View className="flex-row items-center">
@@ -319,7 +556,7 @@ export default function InventoryScreen() {
             </Text>
             {item.variantId && (
               <Text className="text-slate-500 text-[9px] mt-0.5">
-                Variant: {item.variantId}
+                Variant: {movementVariant?.name || item.variantId}
               </Text>
             )}
           </View>
@@ -455,8 +692,8 @@ export default function InventoryScreen() {
       {/* Content */}
       {activeTab === "stock" ? (
         <FlatList
-          data={filteredInventory}
-          keyExtractor={(item) => item.id}
+          data={inventoryGroups}
+          keyExtractor={(item) => item.productId}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
           renderItem={renderStockItem}
           ListEmptyComponent={
@@ -524,9 +761,43 @@ export default function InventoryScreen() {
       <NewMovementModal
         visible={showMovementModal}
         inventoryItems={inventoryWithDetails}
-        isLoading={isCreatingMovement}
+        stores={stores}
+        isLoading={isCreatingMovement || isCreatingTransfer}
         onClose={() => setShowMovementModal(false)}
         onSubmit={handleCreateMovement}
+      />
+
+      <StockAllocationModal
+        visible={showAllocationModal}
+        product={selectedAllocationProduct}
+        storeId={currentStoreId || ""}
+        isLoading={isAllocating}
+        onClose={() => {
+          setShowAllocationModal(false);
+          setSelectedAllocationProduct(null);
+        }}
+        onSubmit={async (allocations) => {
+          if (!selectedAllocationProduct || !currentStoreId) return;
+          try {
+            await allocateProductStock({
+              productId: selectedAllocationProduct.productId,
+              storeId: currentStoreId,
+              allocations,
+            }).unwrap();
+            setShowAllocationModal(false);
+            setSelectedAllocationProduct(null);
+            await refetchInventory();
+            await refetchMovements();
+            Alert.alert("Success", "Variant stock allocated successfully");
+          } catch (error: any) {
+            Alert.alert(
+              "Allocation failed",
+              error?.data?.message ||
+                error?.message ||
+                "Unable to allocate stock",
+            );
+          }
+        }}
       />
 
       {/* ============================================ */}
@@ -547,8 +818,61 @@ export default function InventoryScreen() {
       {/* ============================================ */}
       <BarcodeScannerModal
         visible={showScannerModal}
-        onClose={() => setShowScannerModal(false)}
+        onClose={() => {
+          setShowScannerModal(false);
+          setScannedPreviewItems([]);
+        }}
         onScan={handleScan}
+        allowModeToggle
+        mode={scannerMode}
+        onModeChange={setScannerMode}
+        bottomContent={
+          scannerMode === "continuous" && scannedPreviewItems.length > 0 ? (
+            <View className="bg-black/90 p-4 border-t border-white/20 rounded-t-3xl h-full pb-8">
+              <View className="flex-row justify-between items-center mb-3">
+                <Text className="text-white font-bold text-lg">
+                  Scanned ({scannedPreviewItems.length})
+                </Text>
+                <TouchableOpacity
+                  className="bg-red-500/80 px-4 py-1.5 rounded-full"
+                  onPress={() => setScannedPreviewItems([])}
+                >
+                  <Text className="text-white font-bold text-xs">Clear All</Text>
+                </TouchableOpacity>
+              </View>
+              <FlatList
+                data={scannedPreviewItems}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    className="flex-row justify-between items-center py-3 border-b border-white/10"
+                    onPress={() => {
+                      setShowScannerModal(false);
+                      setScannedPreviewItems([]);
+                      setSelectedInventory(item);
+                      setShowAdjustModal(true);
+                    }}
+                  >
+                    <View className="flex-1 pr-2">
+                      <Text className="text-white font-bold">
+                        {item.name}{item.variantName ? ` — ${item.variantName}` : ""}
+                      </Text>
+                      <Text className="text-white/60 text-xs mt-1">
+                        SKU: {item.sku} • Stock: {item.quantity}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center">
+                      <View className="bg-white/20 px-3 py-1 rounded-full mr-2">
+                        <Text className="text-white font-bold">x{item.scanCount || 1}</Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={20} color="#94a3b8" />
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          ) : null
+        }
       />
     </Screen>
   );
@@ -557,6 +881,135 @@ export default function InventoryScreen() {
 // ============================================
 // ADJUST STOCK MODAL COMPONENT
 // ============================================
+function StockAllocationModal({
+  visible,
+  product,
+  isLoading,
+  onClose,
+  onSubmit,
+}: {
+  visible: boolean;
+  product: any;
+  storeId: string;
+  isLoading: boolean;
+  onClose: () => void;
+  onSubmit: (
+    allocations: Array<{ variantId: string; quantity: number }>,
+  ) => void;
+}) {
+  const variants = product?.variantOptions || [];
+  const totalStock = Number(product?.rows?.[0]?.quantity ?? 0);
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const allocatedTotal = variants.reduce(
+    (sum: number, variant: any) => sum + Number(quantities[variant.id] || 0),
+    0,
+  );
+
+  const reset = useCallback(() => {
+    setQuantities(
+      Object.fromEntries(variants.map((variant: any) => [variant.id, "0"])),
+    );
+  }, [product]);
+
+  const submit = () => {
+    if (allocatedTotal !== totalStock) {
+      Alert.alert(
+        "Total mismatch",
+        `Allocate exactly ${totalStock} units across all variants.`,
+      );
+      return;
+    }
+    onSubmit(
+      variants.map((variant: any) => ({
+        variantId: variant.remoteId || variant.id,
+        quantity: Number(quantities[variant.id] || 0),
+      })),
+    );
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onShow={reset}
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1 justify-end"
+      >
+        <View className="bg-black/60 flex-1 justify-end">
+          <View className="bg-slate-900 rounded-t-4xl p-6 border-t border-white/10">
+            <View className="flex-row items-center justify-between mb-4">
+              <View>
+                <Text className="text-white font-black text-xl">
+                  Allocate Variant Stock
+                </Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  {product?.name} • Total: {totalStock}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={onClose}
+                className="bg-white/10 p-2 rounded-full"
+              >
+                <MaterialIcons name="close" size={18} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {variants.map((variant: any) => (
+                <View key={variant.id} className="mb-3">
+                  <Text className="text-white font-semibold text-sm mb-2">
+                    {variant.name}
+                  </Text>
+                  <TextInput
+                    value={quantities[variant.id] ?? "0"}
+                    onChangeText={(value) =>
+                      setQuantities((current) => ({
+                        ...current,
+                        [variant.id]: value.replace(/[^0-9]/g, ""),
+                      }))
+                    }
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor="#64748b"
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  />
+                </View>
+              ))}
+            </ScrollView>
+
+            <Text
+              className={`text-center text-xs font-bold my-3 ${
+                allocatedTotal === totalStock
+                  ? "text-emerald-400"
+                  : "text-amber-400"
+              }`}
+            >
+              Allocated {allocatedTotal} / {totalStock}
+            </Text>
+            <TouchableOpacity
+              disabled={isLoading}
+              onPress={submit}
+              className="rounded-2xl bg-emerald-500 py-4"
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-white text-center font-black">
+                  Save Allocation
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 function AdjustStockModal({
   visible,
   inventory,
@@ -623,7 +1076,10 @@ function AdjustStockModal({
                 {inventory.variantId && (
                   <>
                     <Divider />
-                    <StatRow label="Variant" value={inventory.variantId} />
+                    <StatRow
+                      label="Variant"
+                      value={inventory.variantName || inventory.variantId}
+                    />
                   </>
                 )}
               </Card>
@@ -682,12 +1138,14 @@ function AdjustStockModal({
 function NewMovementModal({
   visible,
   inventoryItems,
+  stores,
   isLoading,
   onClose,
   onSubmit,
 }: {
   visible: boolean;
   inventoryItems: any[];
+  stores: any[];
   isLoading: boolean;
   onClose: () => void;
   onSubmit: (payload: {
@@ -696,11 +1154,18 @@ function NewMovementModal({
     quantity: number;
     type: "IN" | "OUT";
     reason: string;
+    tenantId: string;
+    storeId: string;
+    transferToStoreId?: string;
   }) => void;
 }) {
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [movementType, setMovementType] = useState<"IN" | "OUT">("IN");
+  const [movementMode, setMovementMode] = useState<"STOCK" | "TRANSFER">(
+    "STOCK",
+  );
+  const [targetStoreId, setTargetStoreId] = useState("");
   const [reason, setReason] = useState("");
   const [productSearch, setProductSearch] = useState("");
 
@@ -708,6 +1173,8 @@ function NewMovementModal({
     setSelectedInventoryId("");
     setQuantity("");
     setMovementType("IN");
+    setMovementMode("STOCK");
+    setTargetStoreId("");
     setReason("");
     setProductSearch("");
   }, []);
@@ -806,6 +1273,55 @@ function NewMovementModal({
                 </TouchableOpacity>
               </View>
 
+              <TouchableOpacity
+                className={`rounded-2xl py-3 items-center border mb-5 ${
+                  movementMode === "TRANSFER"
+                    ? "bg-violet-500/20 border-violet-500/40"
+                    : "bg-white/5 border-white/10"
+                }`}
+                onPress={() =>
+                  setMovementMode((mode) =>
+                    mode === "TRANSFER" ? "STOCK" : "TRANSFER",
+                  )
+                }
+              >
+                <Text className="text-violet-300 font-bold">
+                  {movementMode === "TRANSFER"
+                    ? "Store-to-store transfer enabled"
+                    : "Move product to another store"}
+                </Text>
+              </TouchableOpacity>
+
+              {movementMode === "TRANSFER" && selectedItem && (
+                <View className="mb-5">
+                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+                    Destination Store
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {stores
+                      .filter((store: any) => store.id !== selectedItem.storeId)
+                      .map((store: any) => (
+                        <TouchableOpacity
+                          key={store.id}
+                          className={`mr-2 px-4 py-3 rounded-xl border ${
+                            targetStoreId === store.id
+                              ? "bg-violet-500/20 border-violet-400"
+                              : "bg-white/5 border-white/10"
+                          }`}
+                          onPress={() => setTargetStoreId(store.id)}
+                        >
+                          <Text className="text-white font-semibold">
+                            {store.name}
+                          </Text>
+                          <Text className="text-slate-400 text-xs">
+                            {store.code}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                  </ScrollView>
+                </View>
+              )}
+
               {/* Product Selection */}
               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
                 Product
@@ -817,6 +1333,11 @@ function NewMovementModal({
                       <Text className="text-white font-bold">
                         {selectedItem.name}
                       </Text>
+                      {selectedItem.variantName && (
+                        <Text className="text-amber-300 font-bold text-xs mt-1">
+                          Variant: {selectedItem.variantName}
+                        </Text>
+                      )}
                       <View className="flex-row items-center mt-0.5">
                         <Text className="text-sky-300/60 text-xs">
                           {selectedItem.sku}
@@ -835,11 +1356,6 @@ function NewMovementModal({
                       <Text className="text-slate-400 text-xs mt-0.5">
                         Stock: {selectedItem.quantity}
                       </Text>
-                      {selectedItem.variantId && (
-                        <Text className="text-slate-500 text-[10px] mt-0.5">
-                          Variant: {selectedItem.variantId}
-                        </Text>
-                      )}
                     </View>
                     <TouchableOpacity
                       onPress={() => setSelectedInventoryId("")}
@@ -881,6 +1397,11 @@ function NewMovementModal({
                             <Text className="text-slate-200 font-medium text-sm">
                               {item.name}
                             </Text>
+                            {item.variantName && (
+                              <Text className="text-amber-300/80 text-[10px] mt-0.5">
+                                Variant: {item.variantName}
+                              </Text>
+                            )}
                             {item.brandName && (
                               <Text className="text-purple-300/60 text-[9px]">
                                 {item.brandName}
@@ -888,7 +1409,7 @@ function NewMovementModal({
                             )}
                           </View>
                           <Text className="text-slate-500 text-xs">
-                            Qty: {item.quantity}
+                            Stock: {item.quantity}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -930,7 +1451,10 @@ function NewMovementModal({
                     ? "bg-emerald-500 border-emerald-400"
                     : "bg-rose-500 border-rose-400"
                 } ${
-                  isLoading || !selectedInventoryId || !quantity
+                  isLoading ||
+                  !selectedInventoryId ||
+                  !quantity ||
+                  (movementMode === "TRANSFER" && !targetStoreId)
                     ? "opacity-50"
                     : ""
                 }`}
@@ -944,9 +1468,18 @@ function NewMovementModal({
                     quantity: Number(quantity),
                     type: movementType,
                     reason,
+                    tenantId: product?.tenantId,
+                    storeId: product?.storeId,
+                    transferToStoreId:
+                      movementMode === "TRANSFER" ? targetStoreId : undefined,
                   });
                 }}
-                disabled={isLoading || !selectedInventoryId || !quantity}
+                disabled={
+                  isLoading ||
+                  !selectedInventoryId ||
+                  !quantity ||
+                  (movementMode === "TRANSFER" && !targetStoreId)
+                }
                 activeOpacity={0.8}
               >
                 {isLoading ? (

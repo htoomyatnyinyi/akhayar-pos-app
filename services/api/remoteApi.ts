@@ -451,6 +451,7 @@ export const remoteApi = createApi({
     createPlatformStoreSetting: builder.mutation<
       unknown,
       {
+        clientMovementId?: string;
         storeId: string;
         settingKey: string;
         settingValue: any;
@@ -1082,6 +1083,9 @@ export const remoteApi = createApi({
         url: "/tenant/orders/",
         method: "POST",
         body,
+        headers: body.clientOrderId
+          ? { "Idempotency-Key": body.clientOrderId }
+          : undefined,
       }),
       invalidatesTags: ["Orders", "Inventory"],
     }),
@@ -1180,14 +1184,34 @@ export const remoteApi = createApi({
         referenceId: string;
         referenceType: string;
         reason?: string;
+        clientMovementId?: string;
       }
     >({
       query: (body) => ({
         url: "/tenant/inventory/movements/",
         method: "POST",
         body,
+        headers: body.clientMovementId
+          ? { "Idempotency-Key": body.clientMovementId }
+          : undefined,
       }),
       invalidatesTags: ["InventoryMovements", "Inventory"],
+    }),
+
+    allocateProductStock: builder.mutation<
+      unknown,
+      {
+        productId: string;
+        storeId: string;
+        allocations: Array<{ variantId: string; quantity: number }>;
+      }
+    >({
+      query: ({ productId, ...body }) => ({
+        url: `/tenant/products/${productId}/stock-allocation`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Products", "Inventory", "InventoryMovements"],
     }),
 
     // ---------- Inventory Counts ----------
@@ -2672,6 +2696,7 @@ export const {
   // Inventory Movements
   useGetRemoteInventoryMovementsQuery,
   useCreateRemoteInventoryMovementMutation,
+  useAllocateProductStockMutation,
 
   // Inventory Counts
   useGetRemoteInventoryCountsQuery,

@@ -8,6 +8,10 @@ interface BarcodeScannerModalProps {
   onClose: () => void;
   onScan: (data: string) => void;
   continuous?: boolean;
+  allowModeToggle?: boolean;
+  mode?: "single" | "continuous";
+  onModeChange?: (mode: "single" | "continuous") => void;
+  bottomContent?: React.ReactNode;
 }
 
 export function BarcodeScannerModal({
@@ -15,6 +19,10 @@ export function BarcodeScannerModal({
   onClose,
   onScan,
   continuous = false,
+  allowModeToggle = false,
+  mode = "single",
+  onModeChange,
+  bottomContent,
 }: BarcodeScannerModalProps) {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = React.useState(false);
@@ -68,6 +76,8 @@ export function BarcodeScannerModal({
     );
   }
 
+  const isContinuous = allowModeToggle ? mode === "continuous" : continuous;
+
   const handleBarCodeScanned = ({
     type,
     data,
@@ -75,14 +85,14 @@ export function BarcodeScannerModal({
     type: string;
     data: string;
   }) => {
-    if (continuous) {
+    if (isContinuous) {
       if (lastScannedRef.current === data) {
         return; // Prevent rapid duplicate scans of the same item
       }
       lastScannedRef.current = data;
       setLastScanned(data);
       onScan(data);
-      
+
       // Clear the duplicate prevention lock after 2.5 seconds
       setTimeout(() => {
         lastScannedRef.current = null;
@@ -108,9 +118,34 @@ export function BarcodeScannerModal({
           </TouchableOpacity>
         </View>
         <View className="absolute top-12 right-5 left-0 z-0 items-center justify-center">
-          <Text className="text-white font-bold text-lg bg-black/50 px-4 py-2 rounded-full">
-            Scan Barcode / QR Code
-          </Text>
+          {allowModeToggle ? (
+            <View className="flex-row bg-black/60 rounded-full p-1 border border-white/20">
+              <TouchableOpacity
+                onPress={() => onModeChange?.("single")}
+                className={`px-4 py-2 rounded-full ${mode === "single" ? "bg-sky-500" : ""}`}
+              >
+                <Text
+                  className={`font-bold ${mode === "single" ? "text-white" : "text-white/60"}`}
+                >
+                  Single
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onModeChange?.("continuous")}
+                className={`px-4 py-2 rounded-full ${mode === "continuous" ? "bg-sky-500" : ""}`}
+              >
+                <Text
+                  className={`font-bold ${mode === "continuous" ? "text-white" : "text-white/60"}`}
+                >
+                  Continuous
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text className="text-white font-bold text-lg bg-black/50 px-4 py-2 rounded-full">
+              Scan Barcode / QR Code
+            </Text>
+          )}
         </View>
 
         <CameraView
@@ -138,14 +173,21 @@ export function BarcodeScannerModal({
         </View>
 
         {/* Continuous Scan Feedback */}
-        {continuous && lastScanned && (
-          <View className="absolute bottom-20 left-0 right-0 items-center">
+        {isContinuous && lastScanned && !bottomContent && (
+          <View className="absolute bottom-20 left-0 right-0 items-center pointer-events-none">
             <View className="bg-emerald-500/90 px-6 py-3 rounded-full flex-row items-center">
               <MaterialIcons name="check-circle" size={20} color="white" />
               <Text className="text-white font-bold ml-2">
                 Scanned: {lastScanned}
               </Text>
             </View>
+          </View>
+        )}
+
+        {/* Custom Bottom Content (e.g. Preview List) */}
+        {bottomContent && (
+          <View className="absolute bottom-0 left-0 right-0 max-h-[50%]">
+            {bottomContent}
           </View>
         )}
       </View>
