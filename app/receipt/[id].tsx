@@ -11,6 +11,7 @@ import {
 } from "@/components/app-ui";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import {
+  useGetActiveSessionQuery,
   useGetLocalCustomersQuery,
   useGetLocalOrderByIdQuery,
   useGetLocalStoresQuery,
@@ -21,7 +22,11 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  FlatList,
+  Modal,
+  Pressable,
   ScrollView,
   Share,
   Text,
@@ -32,140 +37,269 @@ import QRCode from "react-native-qrcode-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // ============================================
-// THERMAL RECEIPT FORMATTER
+// Bluetooth Printer Service (REAL - POS-5890U)
+// ============================================
+import { bluetoothPrinterService } from "@/utils/printerService";
+
+// Alias for backward compatibility within this file
+const bluetoothService = bluetoothPrinterService;
+
+// ============================================
+// BLUETOOTH PRINTER MODAL
 // ============================================
 
-function formatThermalReceipt(
-  order: any,
-  customer: any,
-  store: any,
-  receiptNumber: string,
-): string {
-  const lines: string[] = [];
-  const width = 48; // 80mm thermal printer width
+interface BluetoothDevice {
+  address: string;
+  name: string;
+}
 
-  // Center text helper
-  const center = (text: string) => {
-    const padding = Math.max(0, Math.floor((width - text.length) / 2));
-    return " ".repeat(padding) + text;
+function BluetoothPrinterModal({
+  visible,
+  onClose,
+  onConnect,
+  onPrint,
+  receiptText,
+  isPrinting,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConnect: (address: string) => void;
+  onPrint: () => void;
+  receiptText: string;
+  isPrinting: boolean;
+}) {
+  const [devices, setDevices] = useState<BluetoothDevice[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+
+  const scanForPrinters = async () => {
+    setIsScanning(true);
+    try {
+      const hasPermission = await bluetoothService.requestPermissions();
+      if (!hasPermission) {
+        Alert.alert(
+          "Permission Required",
+          "Please grant Bluetooth permissions in Settings",
+        );
+        setIsScanning(false);
+        return;
+      }
+
+      // Enable Bluetooth adapter (required before scan)
+      const btEnabled = await bluetoothService.enableBluetooth();
+      if (!btEnabled) {
+        Alert.alert(
+          "Bluetooth Off",
+          "Please turn on Bluetooth to connect your printer",
+        );
+        setIsScanning(false);
+        return;
+      }
+
+      const scannedDevices = await bluetoothService.scanDevices();
+
+      // Sort: known printer names first, then everything else
+      const sorted = [...scannedDevices].sort((a, b) => {
+        const isPrinter = (d: any) =>
+          d.name?.toLowerCase().includes("printer") ||
+          d.name?.toLowerCase().includes("pos") ||
+          d.name?.toLowerCase().includes("thermal") ||
+          d.name?.toLowerCase().includes("5890") ||
+          d.name?.toLowerCase().includes("escpos");
+        return isPrinter(b) ? 1 : isPrinter(a) ? -1 : 0;
+      });
+
+      setDevices(sorted);
+
+      if (scannedDevices.length === 0) {
+        Alert.alert(
+          "No Devices Found",
+          "Make sure your POS-5890U printer is powered on and in pairing mode",
+        );
+      }
+    } catch (error: any) {
+      Alert.alert(
+        "Scan Failed",
+        error?.message || "Unable to scan for Bluetooth devices",
+      );
+    } finally {
+      setIsScanning(false);
+    }
   };
 
-  const divider = "=".repeat(width);
-  const thinDivider = "-".repeat(width);
-
-  // Header
-  lines.push(center(store?.name || "POS SYSTEM"));
-  lines.push(center(store?.address || ""));
-  lines.push(center(store?.phone || ""));
-  lines.push(center(`Tel: ${store?.phone || ""}`));
-  lines.push(divider);
-  lines.push("");
-
-  // Receipt Info
-  lines.push(`Receipt #: ${receiptNumber}`);
-  lines.push(`Date: ${new Date(order.createdAt).toLocaleString()}`);
-  lines.push(`Order: ${order.id.slice(-8)}`);
-  lines.push(`Customer: ${customer?.name || "Walk-in"}`);
-  lines.push(`Payment: ${order.paymentMethod || "CASH"}`);
-  lines.push(`Status: ${order.status || "COMPLETED"}`);
-  lines.push("");
-  lines.push(thinDivider);
-  lines.push("");
-
-  // Items
-  lines.push("ITEM           QTY  PRICE   TOTAL");
-  lines.push(thinDivider);
-
-  for (const item of order.items || []) {
-    const name = (item.productName || "Item").slice(0, 15).padEnd(15);
-    const qty = String(item.quantity).padStart(4);
-    const price =
-      `$${Number(item.unitPrice || item.price).toFixed(2)}`.padStart(7);
-    const total =
-      `$${(item.quantity * Number(item.unitPrice || item.price)).toFixed(2)}`.padStart(
-        7,
-      );
-    lines.push(`${name} ${qty} ${price} ${total}`);
-  }
-
-  lines.push("");
-  lines.push(thinDivider);
-  lines.push("");
-
-  // Totals
-  lines.push(
-    `Subtotal:     $${Number(order.subTotal ?? 0).toFixed(2)}`.padStart(width),
-  );
-  lines.push(
-    `Tax:          $${Number(order.taxAmount ?? 0).toFixed(2)}`.padStart(width),
-  );
-  if (order.discountAmount > 0) {
-    lines.push(
-      `Discount:    -$${Number(order.discountAmount ?? 0).toFixed(2)}`.padStart(
-        width,
-      ),
-    );
-  }
-  lines.push(divider);
-  lines.push(
-    `TOTAL:        $${Number(order.grandTotal ?? 0).toFixed(2)}`.padStart(
-      width,
-    ),
-  );
-  lines.push(thinDivider);
-  lines.push(
-    `Paid:         $${Number(order.paidAmount ?? 0).toFixed(2)}`.padStart(
-      width,
-    ),
-  );
-  lines.push(
-    `Change:       $${Number(order.changeAmount ?? 0).toFixed(2)}`.padStart(
-      width,
-    ),
-  );
-  lines.push("");
-
-  // Payment Breakdown
-  if (order.paymentBreakdown?.length > 0) {
-    lines.push(thinDivider);
-    for (const tender of order.paymentBreakdown) {
-      lines.push(`${tender.method}: $${Number(tender.amount).toFixed(2)}`);
+  const connectToPrinter = async (address: string) => {
+    setIsConnecting(true);
+    try {
+      const success = await bluetoothService.connectDevice(address);
+      if (success) {
+        setConnectedAddress(address);
+        onConnect(address);
+        Alert.alert("Connected", "Printer connected successfully");
+      } else {
+        Alert.alert("Connection Failed", "Unable to connect to printer");
+      }
+    } catch (error) {
+      Alert.alert("Error", "Connection error occurred");
+    } finally {
+      setIsConnecting(false);
     }
-    lines.push("");
-  }
+  };
 
-  // Footer
-  lines.push(divider);
-  lines.push(center("THANK YOU!"));
-  lines.push(center("Have a great day!"));
-  lines.push("");
-  lines.push(center(receiptNumber));
-  lines.push(center(`Printed: ${new Date().toLocaleString()}`));
+  const handlePrint = async () => {
+    if (!connectedAddress) {
+      Alert.alert("No Printer", "Please connect to a printer first");
+      return;
+    }
+    onPrint();
+  };
 
-  return lines.join("\n");
+  useEffect(() => {
+    if (visible) {
+      scanForPrinters();
+    }
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView
+        className="flex-1"
+        style={{ backgroundColor: "#FFC200", padding: 10 }}
+      >
+        <View className="flex-row items-center justify-between mb-6">
+          <Text className="text-red-900 text-xl font-black">
+            Bluetooth Printer
+          </Text>
+          <Pressable onPress={onClose}>
+            <MaterialIcons name="close" size={24} color="#fff" />
+          </Pressable>
+        </View>
+
+        {/* Status Card */}
+        <Card className="mb-4">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-white">Status:</Text>
+            <Pill
+              label={connectedAddress ? "Connected" : "Disconnected"}
+              tone={connectedAddress ? "emerald" : "rose"}
+            />
+          </View>
+          {connectedAddress && (
+            <Text className="text-slate-400 text-xs mt-1">
+              Device: {connectedAddress}
+            </Text>
+          )}
+        </Card>
+
+        {/* Scan Button */}
+        <TouchableOpacity
+          className={`rounded-2xl p-4 items-center mb-4 ${
+            isScanning ? "bg-slate-700" : "bg-sky-500"
+          }`}
+          onPress={scanForPrinters}
+          disabled={isScanning}
+        >
+          <View className="flex-row items-center">
+            <MaterialIcons
+              name={isScanning ? "sync" : "bluetooth-searching"}
+              size={20}
+              color="white"
+            />
+            <Text className="text-red-500 font-bold ml-2">
+              {isScanning ? "Scanning..." : "Scan for Printers"}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Device List */}
+        {devices.length > 0 && (
+          <View className="flex-1" style={{ backgroundColor: "#FFC200" }}>
+            <Text className="text-blue-900 text-xs uppercase tracking-[3px] mb-2">
+              Found Devices ({devices.length})
+            </Text>
+            <FlatList
+              data={devices}
+              keyExtractor={(item) => item.address}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  className="flex-row items-center justify-between bg-white/5 rounded-xl p-3 mb-2 border border-white/10"
+                  onPress={() => connectToPrinter(item.address)}
+                  disabled={isConnecting}
+                >
+                  <View>
+                    <Text className="text-red-900 font-semibold">
+                      {item.name || "Unknown Device"}
+                    </Text>
+                    <Text className="text-slate-400 text-xs">
+                      {item.address}
+                    </Text>
+                  </View>
+                  {connectedAddress === item.address ? (
+                    <Pill label="Connected" tone="emerald" />
+                  ) : (
+                    <MaterialIcons
+                      name="bluetooth-connected"
+                      size={24}
+                      color="#38bdf8"
+                    />
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
+
+        {/* Print Button */}
+        {connectedAddress && (
+          <TouchableOpacity
+            className={`rounded-2xl p-4 items-center mt-4 ${
+              isPrinting ? "bg-slate-700" : "bg-emerald-500"
+            }`}
+            onPress={handlePrint}
+            disabled={isPrinting}
+          >
+            <View className="flex-row items-center">
+              <MaterialIcons
+                name={isPrinting ? "sync" : "print"}
+                size={20}
+                color="white"
+              />
+              <Text className="text-white font-bold ml-2">
+                {isPrinting ? "Printing..." : "Print Receipt"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
 }
 
 // ============================================
-// MAIN COMPONENT
+// MAIN RECEIPT SCREEN
 // ============================================
 
 export default function ReceiptScreen() {
   const router = useRouter();
   const { user } = useAppSelector((state) => state.auth);
   const { id } = useLocalSearchParams<{ id: string }>();
+  const user = useAppSelector((state) => state.auth.user);
 
-  const {
-    data: order,
-    isLoading: isOrderLoading,
-    refetch,
-  } = useGetLocalOrderByIdQuery(id);
+  // ✅ Offline-first queries
+  const { data: order, isLoading: isOrderLoading } =
+    useGetLocalOrderByIdQuery(id);
   const { data: customers = [] } = useGetLocalCustomersQuery({});
   const { data: stores = [] } = useGetLocalStoresQuery({});
+  const { data: activeSession } = useGetActiveSessionQuery({
+    userId: user?.id || "",
+  });
 
   const offline = useAppSelector((state) => state.offline);
   const qrRef = useRef<any>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [showBluetoothModal, setShowBluetoothModal] = useState(false);
+  const [bluetoothAddress, setBluetoothAddress] = useState<string | null>(null);
 
   const receiptNumber = useMemo(() => {
     if (!order?.id) return "RCPT-XXXX";
@@ -194,7 +328,118 @@ export default function ReceiptScreen() {
   }, [order?.id, receiptNumber]);
 
   // ============================================
-  // HTML RECEIPT BUILDER
+  // THERMAL RECEIPT FORMATTER (POS-5890U)
+  // ============================================
+
+  const buildThermalReceiptText = (): string => {
+    const lines: string[] = [];
+    const width = 48;
+
+    const center = (text: string) => {
+      const padding = Math.max(0, Math.floor((width - text.length) / 2));
+      return " ".repeat(padding) + text;
+    };
+
+    const divider = "=".repeat(width);
+    const thinDivider = "-".repeat(width);
+
+    // Header
+    lines.push(center(store?.name || "POS SYSTEM"));
+    lines.push(center(store?.address || ""));
+    lines.push(center(`Tel: ${store?.phone || ""}`));
+    lines.push(divider);
+    lines.push("");
+
+    // Receipt Info
+    lines.push(`Receipt #: ${receiptNumber}`);
+    lines.push(`Date: ${new Date(order.createdAt).toLocaleString()}`);
+    lines.push(`Order: ${order.id.slice(-8)}`);
+    lines.push(`Customer: ${customer?.name || "Walk-in"}`);
+    lines.push(`Payment: ${order.paymentMethod || "CASH"}`);
+    lines.push(`Status: ${order.status || "COMPLETED"}`);
+    lines.push("");
+    lines.push(thinDivider);
+    lines.push("");
+
+    // Items
+    lines.push("ITEM           QTY  PRICE   TOTAL");
+    lines.push(thinDivider);
+
+    for (const item of order.items || []) {
+      const name = (item.productName || "Item").slice(0, 15).padEnd(15);
+      const qty = String(item.quantity).padStart(4);
+      const price =
+        `$${Number(item.unitPrice || item.price).toFixed(2)}`.padStart(7);
+      const total =
+        `$${(item.quantity * Number(item.unitPrice || item.price)).toFixed(2)}`.padStart(
+          7,
+        );
+      lines.push(`${name} ${qty} ${price} ${total}`);
+    }
+
+    lines.push("");
+    lines.push(thinDivider);
+    lines.push("");
+
+    // Totals
+    lines.push(
+      `Subtotal:     $${Number(order.subTotal ?? 0).toFixed(2)}`.padStart(
+        width,
+      ),
+    );
+    lines.push(
+      `Tax:          $${Number(order.taxAmount ?? 0).toFixed(2)}`.padStart(
+        width,
+      ),
+    );
+    if (order.discountAmount > 0) {
+      lines.push(
+        `Discount:    -$${Number(order.discountAmount ?? 0).toFixed(2)}`.padStart(
+          width,
+        ),
+      );
+    }
+    lines.push(divider);
+    lines.push(
+      `TOTAL:        $${Number(order.grandTotal ?? 0).toFixed(2)}`.padStart(
+        width,
+      ),
+    );
+    lines.push(thinDivider);
+    lines.push(
+      `Paid:         $${Number(order.paidAmount ?? 0).toFixed(2)}`.padStart(
+        width,
+      ),
+    );
+    lines.push(
+      `Change:       $${Number(order.changeAmount ?? 0).toFixed(2)}`.padStart(
+        width,
+      ),
+    );
+    lines.push("");
+
+    // Payment Breakdown
+    if (order.paymentBreakdown?.length > 0) {
+      lines.push(thinDivider);
+      for (const tender of order.paymentBreakdown) {
+        lines.push(`${tender.method}: $${Number(tender.amount).toFixed(2)}`);
+      }
+      lines.push("");
+    }
+
+    // Footer
+    lines.push(divider);
+    lines.push(center("THANK YOU!"));
+    lines.push(center("Have a great day!"));
+    lines.push("");
+    lines.push(center(receiptNumber));
+    lines.push(center(`Printed: ${new Date().toLocaleString()}`));
+
+    return lines.join("\n");
+  };
+
+  // ============================================
+  // HTML RECEIPT BUILDER (for PDF/Print)
   // ============================================
 
   const buildReceiptHtml = () => {
@@ -309,49 +554,30 @@ export default function ReceiptScreen() {
   };
 
   // ============================================
-  // PRINT TO THERMAL PRINTER
+  // PRINT FUNCTIONS
   // ============================================
 
-  const printThermalReceipt = async () => {
+  // ✅ Print via expo-print
+  const printReceipt = async () => {
     if (!order) return;
 
     setIsPrinting(true);
     try {
-      // Check if the device supports thermal printing
-      const isAvailable = await Print.isAvailableAsync();
-
-      if (!isAvailable) {
-        Alert.alert(
-          "Not Available",
-          "Printing is not available on this device.",
-        );
-        setIsPrinting(false);
-        return;
-      }
-
-      // For POS-5890U, use the thermal receipt format
-      // Since thermal printers work best with simple text, we'll use the HTML version
-      // but formatted for thermal printer dimensions
       await Print.printAsync({
         html: buildReceiptHtml(),
-        printerUrl: null, // Uses default printer
-        orientation: Print.Orientation.portrait,
-        margins: {
-          left: 5,
-          top: 5,
-          right: 5,
-          bottom: 5,
-        },
       });
     } catch (error: any) {
-      // If thermal printing fails, try alternative
-      if (error.message?.includes("No print service")) {
+      if (
+        error.message?.includes("No print service") ||
+        error.message?.includes("not available") ||
+        error.code === "E_PRINT_UNAVAILABLE"
+      ) {
         Alert.alert(
-          "Print Service",
-          "No print service found. Would you like to save as PDF?",
+          "Print Not Available",
+          "No print service found. Would you like to save as PDF instead?",
           [
             { text: "Cancel", style: "cancel" },
-            { text: "Save PDF", onPress: saveAsPDF },
+            { text: "Save as PDF", onPress: saveAsPDF },
           ],
         );
       } else {
@@ -365,9 +591,32 @@ export default function ReceiptScreen() {
     }
   };
 
-  // ============================================
-  // SAVE AS PDF
-  // ============================================
+  // ✅ Print via Bluetooth
+  const printViaBluetooth = async () => {
+    if (!order) return;
+
+    const receiptText = buildThermalReceiptText();
+
+    // If already connected, print directly
+    if (bluetoothAddress) {
+      setIsPrinting(true);
+      try {
+        const success = await bluetoothService.printThermalReceipt(receiptText);
+        if (success) {
+          Alert.alert("Success", "Receipt printed successfully");
+        } else {
+          Alert.alert("Print Failed", "Unable to print receipt");
+        }
+      } catch (error) {
+        Alert.alert("Error", "Print error occurred");
+      } finally {
+        setIsPrinting(false);
+      }
+    } else {
+      // Show Bluetooth connection modal
+      setShowBluetoothModal(true);
+    }
+  };
 
   const saveAsPDF = async () => {
     try {
@@ -376,39 +625,57 @@ export default function ReceiptScreen() {
         base64: false,
       });
 
-      Alert.alert("PDF Created", `Receipt saved to:\n${uri}`, [
+      Alert.alert("PDF Created", "Receipt saved to PDF", [
         { text: "Cancel", style: "cancel" },
-        { text: "Share", onPress: () => Sharing.shareAsync(uri) },
+        { text: "Share PDF", onPress: () => Sharing.shareAsync(uri) },
       ]);
     } catch (error: any) {
       Alert.alert("Error", error?.message || "Failed to save PDF.");
     }
   };
 
-  // ============================================
-  // SHARE RECEIPT
-  // ============================================
-
   const shareReceipt = async () => {
     if (!order) return;
-
-    const text = formatThermalReceipt(order, customer, store, receiptNumber);
+    const text = buildThermalReceiptText();
     await Share.share({ message: text });
   };
 
-  // ============================================
-  // REFRESH
-  // ============================================
-
-  const handleRefresh = () => {
-    refetch();
+  const handleBluetoothConnect = (address: string) => {
+    setBluetoothAddress(address);
+    setShowBluetoothModal(false);
   };
+
+  const handleBluetoothPrint = async () => {
+    const receiptText = buildThermalReceiptText();
+    setIsPrinting(true);
+    try {
+      const success = await bluetoothService.printThermalReceipt(receiptText);
+      if (success) {
+        Alert.alert("Success", "Receipt printed successfully");
+        setShowBluetoothModal(false);
+      } else {
+        Alert.alert("Print Failed", "Unable to print receipt");
+      }
+    } catch (error) {
+      Alert.alert("Error", "Print error occurred");
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleNewSale = () => {
+    router.replace("/(tabs)/pos");
+  };
+
+  // ============================================
+  // LOADING / ERROR STATES
+  // ============================================
 
   if (isOrderLoading) {
     return (
       <Screen>
         <View className="flex-1 items-center justify-center">
-          <View className="h-16 w-16 rounded-full border-4 border-sky-500/30 border-t-sky-500 animate-spin" />
+          <ActivityIndicator size="large" color="#38bdf8" />
           <Text className="text-slate-400 mt-4 text-sm">
             Loading receipt...
           </Text>
@@ -442,6 +709,10 @@ export default function ReceiptScreen() {
     );
   }
 
+  // ============================================
+  // MAIN RENDER
+  // ============================================
+
   return (
     <Screen padded={false}>
       <SafeAreaView className="flex-1 bg-slate-950">
@@ -462,15 +733,14 @@ export default function ReceiptScreen() {
                     label={offline.isOnline ? "Online" : "Offline"}
                     tone={offline.isOnline ? "emerald" : "rose"}
                   />
-                  <TouchableOpacity
-                    onPress={handleRefresh}
-                    className="mt-1 bg-white/10 p-1.5 rounded-full"
-                  >
-                    <MaterialIcons name="refresh" size={14} color="#94a3b8" />
-                  </TouchableOpacity>
                   <Text className="text-slate-500 text-[10px] mt-1">
                     {new Date(order.createdAt).toLocaleTimeString()}
                   </Text>
+                  {bluetoothAddress && (
+                    <Text className="text-emerald-400 text-[8px] mt-1">
+                      Bluetooth ✓
+                    </Text>
+                  )}
                 </View>
               }
             />
@@ -616,18 +886,24 @@ export default function ReceiptScreen() {
               title="New Sale"
               icon="add-shopping-cart"
               accent="emerald"
-              onPress={() => router.replace("/(tabs)/pos")}
+              onPress={handleNewSale}
             />
             <ActionButton
               title={isPrinting ? "Printing..." : "Print"}
               icon="print"
               accent="sky"
-              onPress={printThermalReceipt}
+              onPress={printReceipt}
               disabled={isPrinting}
             />
           </View>
 
           <View className="mt-3 flex-row gap-3">
+            <ActionButton
+              title="Bluetooth"
+              icon="bluetooth"
+              accent="sky"
+              onPress={printViaBluetooth}
+            />
             <ActionButton
               title="Share"
               icon="share"
@@ -640,6 +916,9 @@ export default function ReceiptScreen() {
               accent="rose"
               onPress={saveAsPDF}
             />
+          </View>
+
+          <View className="mt-3">
             <ActionButton
               title="Back"
               icon="arrow-back"
@@ -670,6 +949,16 @@ export default function ReceiptScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Bluetooth Printer Modal */}
+      <BluetoothPrinterModal
+        visible={showBluetoothModal}
+        onClose={() => setShowBluetoothModal(false)}
+        onConnect={handleBluetoothConnect}
+        onPrint={handleBluetoothPrint}
+        receiptText={buildThermalReceiptText()}
+        isPrinting={isPrinting}
+      />
     </Screen>
   );
 }
