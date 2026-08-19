@@ -229,7 +229,7 @@ export function RowItem({
   return (
     <Pressable
       onPress={onPress}
-      className={`flex-row items-center gap-3 rounded-[20px] border ${s.border} ${s.bg} px-4 py-3`}
+      className={`flex-row items-center gap-3 mb-2 rounded-[20px] border ${s.border} ${s.bg} px-4 py-3`}
     >
       {icon ? (
         <View className="h-11 w-11 items-center justify-center rounded-2xl bg-white/8">

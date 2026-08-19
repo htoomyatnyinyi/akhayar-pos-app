@@ -588,42 +588,65 @@ export async function upsertCategories(
 ) {
   if (!remoteCategories.length) return;
   const now = new Date().toISOString();
+  const db = getOfflineDb();
 
-  const categoriesToInsert = remoteCategories.map((category) => ({
-    id: category.id,
-    remoteId: category.remoteId,
-    tenantId: category.tenantId || defaultTenantId,
-    name: category.name || "Unnamed Category",
-    slug: category.slug,
-    description: category.description,
-    parentId: category.parentId,
-    isActive: category.isActive ?? true,
-    sortOrder: category.sortOrder ?? 0,
-    syncStatus: "synced",
-    syncError: null,
-    createdAt: category.createdAt ?? now,
-    updatedAt: category.updatedAt ?? now,
-    lastSyncedAt: now,
-  }));
+  for (const category of remoteCategories) {
+    const tenantId = category.tenantId || defaultTenantId;
+    const name = category.name || "Unnamed Category";
 
-  await getOfflineDb()
-    .insert(categories)
-    .values(categoriesToInsert)
-    .onConflictDoUpdate({
-      target: categories.id,
-      set: {
-        name: sql`excluded.name`,
-        slug: sql`excluded.slug`,
-        description: sql`excluded.description`,
-        parentId: sql`excluded.parent_id`,
-        isActive: sql`excluded.is_active`,
-        sortOrder: sql`excluded.sort_order`,
+    // Check if a row already exists by remoteId or by the same (tenantId, name) pair
+    const [existing] = await db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(
+        or(
+          eq(categories.id, category.id),
+          category.remoteId
+            ? eq(categories.remoteId, category.remoteId)
+            : undefined,
+          and(eq(categories.tenantId, tenantId), eq(categories.name, name)),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      // Update the existing row
+      await db
+        .update(categories)
+        .set({
+          remoteId: category.remoteId ?? existing.id,
+          name,
+          slug: category.slug,
+          description: category.description,
+          parentId: category.parentId,
+          isActive: category.isActive ?? true,
+          sortOrder: category.sortOrder ?? 0,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: category.updatedAt ?? now,
+          lastSyncedAt: now,
+        })
+        .where(eq(categories.id, existing.id));
+    } else {
+      // Insert new row
+      await db.insert(categories).values({
+        id: category.id,
+        remoteId: category.remoteId,
+        tenantId,
+        name,
+        slug: category.slug,
+        description: category.description,
+        parentId: category.parentId,
+        isActive: category.isActive ?? true,
+        sortOrder: category.sortOrder ?? 0,
         syncStatus: "synced",
         syncError: null,
-        updatedAt: sql`excluded.updated_at`,
+        createdAt: category.createdAt ?? now,
+        updatedAt: category.updatedAt ?? now,
         lastSyncedAt: now,
-      },
-    });
+      });
+    }
+  }
 }
 
 export async function upsertCustomers(

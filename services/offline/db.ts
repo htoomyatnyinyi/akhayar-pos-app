@@ -125,9 +125,17 @@ export async function getOfflineDbSize(): Promise<string> {
 
 export async function clearOfflineDatabase() {
   try {
+    const rawDb = getSqliteDatabase();
     const offlineDb = getOfflineDb();
 
     console.log("🗑️ Clearing offline database...");
+
+    // Disable foreign key constraints temporarily for bulk deletion
+    try {
+      rawDb.execSync("PRAGMA foreign_keys = OFF;");
+    } catch (e) {
+      console.warn("Could not disable foreign_keys pragma:", e);
+    }
 
     await offlineDb.delete(schema.orderItems);
     await offlineDb.delete(schema.inventoryCountItems);
@@ -135,16 +143,26 @@ export async function clearOfflineDatabase() {
     await offlineDb.delete(schema.inventoryMovements);
     await offlineDb.delete(schema.inventory);
     await offlineDb.delete(schema.productVariants);
+    await offlineDb.delete(schema.priceHistory);
+    await offlineDb.delete(schema.products);
+    await offlineDb.delete(schema.categories);
+    await offlineDb.delete(schema.brands);
+    await offlineDb.delete(schema.suppliers);
+    await offlineDb.delete(schema.staff);
     await offlineDb.delete(schema.orders);
     await offlineDb.delete(schema.sessions);
-    await offlineDb.delete(schema.stores);
     await offlineDb.delete(schema.customers);
-    await offlineDb.delete(schema.categories);
-    await offlineDb.delete(schema.products);
-    await offlineDb.delete(schema.priceHistory);
+    await offlineDb.delete(schema.stores);
     await offlineDb.delete(schema.syncOutbox);
     await offlineDb.delete(schema.syncState);
     await offlineDb.delete(schema.genericRecords);
+
+    // Re-enable foreign key constraints
+    try {
+      rawDb.execSync("PRAGMA foreign_keys = ON;");
+    } catch (e) {
+      console.warn("Could not re-enable foreign_keys pragma:", e);
+    }
 
     console.log("🔥 Offline database cleared successfully!");
   } catch (error) {
@@ -174,6 +192,12 @@ export async function resetDatabaseCompletely() {
 
     console.log("Dropping all tables...");
 
+    try {
+      db.execSync("PRAGMA foreign_keys = OFF;");
+    } catch (e) {
+      console.warn("Could not disable foreign_keys pragma:", e);
+    }
+
     // Drop all tables in correct order
     const tablesToDrop = [
       "order_items",
@@ -182,13 +206,16 @@ export async function resetDatabaseCompletely() {
       "inventory_movements",
       "inventory",
       "product_variants",
+      "price_history",
+      "products",
+      "categories",
+      "brands",
+      "suppliers",
+      "staff",
       "orders",
       "sessions",
-      "stores",
       "customers",
-      "categories",
-      "products",
-      "price_history",
+      "stores",
       "sync_outbox",
       "sync_state",
       "generic_records",
@@ -202,6 +229,12 @@ export async function resetDatabaseCompletely() {
       } catch (e) {
         // Table might not exist, ignore
       }
+    }
+
+    try {
+      db.execSync("PRAGMA foreign_keys = ON;");
+    } catch (e) {
+      console.warn("Could not re-enable foreign_keys pragma:", e);
     }
 
     console.log("✅ All tables dropped!");

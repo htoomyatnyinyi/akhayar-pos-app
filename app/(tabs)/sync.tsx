@@ -148,12 +148,15 @@ export default function SyncScreen() {
   const handleSignOut = async () => {
     // Check for open session first
     if (user?.id) {
-      const activeSession = await getLocalActiveSession(user.id, currentStoreId || undefined);
+      const activeSession = await getLocalActiveSession(
+        user.id,
+        currentStoreId || undefined,
+      );
       if (activeSession) {
         Alert.alert(
           "Open Session Detected",
           "You must close your current cash register session before signing out.",
-          [{ text: "OK", style: "default" }]
+          [{ text: "OK", style: "default" }],
         );
         return;
       }
@@ -246,26 +249,45 @@ export default function SyncScreen() {
         {/* Status Section */}
         <SectionTitle title="Overview" />
 
-        <View className="flex-row gap-3 mb-5 mt-2">
-          <MetricCard
-            icon="cloud-upload"
-            label="Pending"
-            value={queueCount?.toString() ?? "0"}
-            tone={queueCount > 0 ? "sky" : "emerald"}
-          />
-          <MetricCard
-            icon="error-outline"
-            label="Failed"
-            value={failedCount?.toString() ?? "0"}
-            tone={failedCount > 0 ? "rose" : "emerald"}
-          />
-          <MetricCard
-            icon="storage"
-            label="Database"
-            value={dbSize}
-            tone="amber"
-          />
+        <View className="flex gap-3 mb-3 mt-0">
+          <View className="flex flex-row gap-3">
+            <MetricCard
+              icon="cloud-upload"
+              label="Pending"
+              value={queueCount?.toString() ?? "0"}
+              tone={queueCount > 0 ? "sky" : "emerald"}
+            />
+            <MetricCard
+              icon="error-outline"
+              label="Failed"
+              value={failedCount?.toString() ?? "0"}
+              tone={failedCount > 0 ? "rose" : "emerald"}
+            />
+          </View>
+          <View className="flex flex-row gap-3">
+            <MetricCard
+              icon="storage"
+              label="Database"
+              value={dbSize}
+              tone="amber"
+            />
+            <ActionButton
+              title={isSyncing ? "Syncing..." : "Sync Now"}
+              icon="sync"
+              accent={isOnline && !isSyncing ? "sky" : "amber"}
+              onPress={isOnline && !isSyncing ? handleSyncNow : undefined}
+              disabled={isSyncing || !isOnline}
+            />
+          </View>
         </View>
+
+        {/* <ActionButton
+          title={isSyncing ? "Syncing..." : "Sync Now"}
+          icon="sync"
+          accent={isOnline && !isSyncing ? "sky" : "amber"}
+          onPress={isOnline && !isSyncing ? handleSyncNow : undefined}
+          disabled={isSyncing || !isOnline}
+        /> */}
 
         {/* Sync Progress */}
         {(isSyncing || syncStatus === "complete" || syncStatus === "error") && (
