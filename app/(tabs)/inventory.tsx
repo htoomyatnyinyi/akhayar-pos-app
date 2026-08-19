@@ -57,7 +57,9 @@ export default function InventoryScreen() {
   const [selectedAllocationProduct, setSelectedAllocationProduct] =
     useState<any>(null);
   const [selectedInventory, setSelectedInventory] = useState<any>(null);
-  const [scannerMode, setScannerMode] = useState<"single" | "continuous">("single");
+  const [scannerMode, setScannerMode] = useState<"single" | "continuous">(
+    "single",
+  );
   const [scannedPreviewItems, setScannedPreviewItems] = useState<any[]>([]);
 
   // ✅ Queries
@@ -311,7 +313,8 @@ export default function InventoryScreen() {
       );
       if (variant) {
         return inventoryWithDetails.find(
-          (inv: any) => inv.variantId === variant.id || inv.variantId === variant.remoteId,
+          (inv: any) =>
+            inv.variantId === variant.id || inv.variantId === variant.remoteId,
         );
       }
       return inventoryWithDetails.find(
@@ -837,7 +840,9 @@ export default function InventoryScreen() {
                   className="bg-red-500/80 px-4 py-1.5 rounded-full"
                   onPress={() => setScannedPreviewItems([])}
                 >
-                  <Text className="text-white font-bold text-xs">Clear All</Text>
+                  <Text className="text-white font-bold text-xs">
+                    Clear All
+                  </Text>
                 </TouchableOpacity>
               </View>
               <FlatList
@@ -855,7 +860,8 @@ export default function InventoryScreen() {
                   >
                     <View className="flex-1 pr-2">
                       <Text className="text-white font-bold">
-                        {item.name}{item.variantName ? ` — ${item.variantName}` : ""}
+                        {item.name}
+                        {item.variantName ? ` — ${item.variantName}` : ""}
                       </Text>
                       <Text className="text-white/60 text-xs mt-1">
                         SKU: {item.sku} • Stock: {item.quantity}
@@ -863,9 +869,15 @@ export default function InventoryScreen() {
                     </View>
                     <View className="flex-row items-center">
                       <View className="bg-white/20 px-3 py-1 rounded-full mr-2">
-                        <Text className="text-white font-bold">x{item.scanCount || 1}</Text>
+                        <Text className="text-white font-bold">
+                          x{item.scanCount || 1}
+                        </Text>
                       </View>
-                      <MaterialIcons name="chevron-right" size={20} color="#94a3b8" />
+                      <MaterialIcons
+                        name="chevron-right"
+                        size={20}
+                        color="#94a3b8"
+                      />
                     </View>
                   </TouchableOpacity>
                 )}

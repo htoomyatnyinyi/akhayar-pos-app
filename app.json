@@ -56,6 +56,7 @@
           "cameraPermission": "Allow POS App to use camera for scanning barcodes and QR codes"
         }
       ],
+      "react-native-ble-manager",
       "expo-audio"
     ],
     "experiments": {
@@ -63,16 +64,10 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "852110f3-9a8d-4416-b10d-9f2df0bc8b68"
-      }
+      "router": {}
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/852110f3-9a8d-4416-b10d-9f2df0bc8b68"
     }
   }
 }

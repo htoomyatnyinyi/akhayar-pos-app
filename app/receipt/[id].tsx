@@ -32,19 +32,19 @@ import {
   FlatList,
   NativeModules,
 } from "react-native";
-import QRCode from "react-native-qrcode-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Buffer } from "buffer";
 
 // Safely access BleManager without crashing if native module is not compiled yet
 let BleManager: any = null;
 try {
   if (NativeModules.BleManager) {
+    // The module must be loaded lazily so Expo Go can still open this screen.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const BleModule = require("react-native-ble-manager");
     BleManager = BleModule.default || BleModule;
   }
-} catch (e) {
+} catch {
   // Not available in current runtime
 }
 
@@ -240,7 +240,6 @@ function formatThermalReceipt(
 
 const ReceiptScreen = () => {
   const router = useRouter();
-  const { user } = useAppSelector((state) => state.auth);
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const {
@@ -252,8 +251,6 @@ const ReceiptScreen = () => {
   const { data: stores = [] } = useGetLocalStoresQuery({});
 
   const offline = useAppSelector((state) => state.offline);
-  const qrRef = useRef<any>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
 
   // Bluetooth state
@@ -262,10 +259,17 @@ const ReceiptScreen = () => {
   const [devices, setDevices] = useState<any[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<any>(null);
   const [connecting, setConnecting] = useState(false);
+  const scanSubscriptions = useRef<any[]>([]);
+
+  const clearScanSubscriptions = () => {
+    scanSubscriptions.current.forEach((subscription) => subscription.remove());
+    scanSubscriptions.current = [];
+  };
 
   // Load saved printer
   useEffect(() => {
     loadSavedPrinter();
+    return clearScanSubscriptions;
   }, []);
 
   const loadSavedPrinter = async () => {
@@ -274,14 +278,14 @@ const ReceiptScreen = () => {
       if (saved) {
         setConnectedDevice(JSON.parse(saved));
       }
-    } catch (e) {}
+    } catch {}
   };
 
   const savePrinter = async (device: any) => {
     try {
       await AsyncStorage.setItem("selected_printer", JSON.stringify(device));
       setConnectedDevice(device);
-    } catch (e) {}
+    } catch {}
   };
 
   const receiptNumber = useMemo(() => {
@@ -302,14 +306,6 @@ const ReceiptScreen = () => {
     [stores, order?.storeId],
   );
 
-  useEffect(() => {
-    setQrDataUrl(null);
-    if (!order?.id || !qrRef.current?.toDataURL) return;
-    qrRef.current.toDataURL((data: string) => {
-      setQrDataUrl(`data:image/png;base64,${data}`);
-    });
-  }, [order?.id, receiptNumber]);
-
   // ============================================
   // BLUETOOTH SCANNING & CONNECTION
   // ============================================
@@ -329,25 +325,35 @@ const ReceiptScreen = () => {
       if (BleManager.start) {
         await BleManager.start({ showAlert: false }).catch(() => {});
       }
-      await BleManager.scan([], 5, true);
-      const listener = BleManager.onDiscover
-        ? BleManager.onDiscover((device: any) => {
-            if (device.name) {
-              setDevices((prev) => {
-                const exists = prev.find((d) => d.id === device.id);
-                if (exists) return prev;
-                return [...prev, device];
-              });
-            }
-          })
-        : null;
+      clearScanSubscriptions();
+      scanSubscriptions.current = [
+        BleManager.onDiscoverPeripheral((device: any) => {
+          const name = device.name || device.advertising?.localName;
+          if (!name) return;
 
-      setTimeout(() => {
-        if (BleManager?.stopScan) BleManager.stopScan().catch(() => {});
-        if (listener?.remove) listener.remove();
-        setScanning(false);
-      }, 8000);
+          setDevices((previousDevices) => {
+            const existingIndex = previousDevices.findIndex(
+              (item) => item.id === device.id,
+            );
+            const nextDevice = { ...device, name };
+            if (existingIndex === -1) return [...previousDevices, nextDevice];
+
+            const nextDevices = [...previousDevices];
+            nextDevices[existingIndex] = {
+              ...nextDevices[existingIndex],
+              ...nextDevice,
+            };
+            return nextDevices;
+          });
+        }),
+        BleManager.onStopScan(() => {
+          clearScanSubscriptions();
+          setScanning(false);
+        }),
+      ];
+      await BleManager.scan({ seconds: 8, allowDuplicates: false });
     } catch (error: any) {
+      clearScanSubscriptions();
       Alert.alert("Scan Error", error.message || "Unable to start scan.");
       setScanning(false);
     }
@@ -358,26 +364,28 @@ const ReceiptScreen = () => {
     setConnecting(true);
     try {
       await BleManager.connect(device.id);
-      await BleManager.retrieveServices(device.id);
-      const services = await BleManager.retrieveServices(device.id);
-
-      let writeChar = null;
-      for (const service of services) {
-        for (const char of service.characteristics) {
-          if (char.properties.write || char.properties.writeWithoutResponse) {
-            writeChar = char;
-            break;
-          }
-        }
-        if (writeChar) break;
-      }
+      const peripheral = await BleManager.retrieveServices(device.id);
+      const writeChar = peripheral.characteristics?.find(
+        (characteristic: any) =>
+          characteristic.properties?.Write ||
+          characteristic.properties?.WriteWithoutResponse,
+      );
       if (!writeChar) {
         throw new Error("No write characteristic found for this printer.");
       }
-      await savePrinter({ ...device, writeChar });
+      await savePrinter({
+        id: device.id,
+        name: device.name || device.advertising?.localName || "BLE printer",
+        writeCharacteristic: {
+          service: writeChar.service,
+          characteristic: writeChar.characteristic,
+          withoutResponse: Boolean(writeChar.properties?.WriteWithoutResponse),
+        },
+      });
       setBluetoothModalVisible(false);
-      Alert.alert("Connected", `Connected to ${device.name}`);
+      Alert.alert("Connected", `Connected to ${device.name || "BLE printer"}`);
     } catch (error: any) {
+      await BleManager.disconnect(device.id).catch(() => {});
       Alert.alert("Connection Error", error.message || "Failed to connect.");
     } finally {
       setConnecting(false);
@@ -401,6 +409,15 @@ const ReceiptScreen = () => {
       );
       return;
     }
+    const writeCharacteristic = connectedDevice.writeCharacteristic;
+    if (!writeCharacteristic?.service || !writeCharacteristic?.characteristic) {
+      Alert.alert(
+        "Reconnect Printer",
+        "This saved printer uses an old configuration. Connect to it again before printing.",
+        [{ text: "Connect", onPress: () => setBluetoothModalVisible(true) }],
+      );
+      return;
+    }
     setIsPrinting(true);
     try {
       const escPosData = buildEscPosReceipt(
@@ -409,18 +426,19 @@ const ReceiptScreen = () => {
         store,
         receiptNumber,
       );
-      await BleManager.write(
+      const write = writeCharacteristic.withoutResponse
+        ? BleManager.writeWithoutResponse
+        : BleManager.write;
+      await write(
         connectedDevice.id,
-        connectedDevice.writeChar.serviceUUID,
-        connectedDevice.writeChar.characteristicUUID,
-        Buffer.from(escPosData).toString("base64"),
-        1,
+        writeCharacteristic.service,
+        writeCharacteristic.characteristic,
+        Array.from(escPosData),
+        20,
       );
       Alert.alert("Success", "Receipt printed successfully.");
     } catch (error: any) {
       Alert.alert("Print Error", error.message || "Failed to print.");
-      // Fallback to system print
-      printThermalReceipt();
     } finally {
       setIsPrinting(false);
     }
@@ -530,7 +548,6 @@ const ReceiptScreen = () => {
           `
               : ""
           }
-          ${qrDataUrl ? `<div class="qr"><img src="${qrDataUrl}" alt="QR" /></div>` : ""}
           <div class="divider"></div>
           <div class="center">
             <div><strong>THANK YOU!</strong></div>
@@ -545,15 +562,6 @@ const ReceiptScreen = () => {
     if (!order) return;
     setIsPrinting(true);
     try {
-      const isAvailable = await Print.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert(
-          "Not Available",
-          "Printing is not available on this device.",
-        );
-        setIsPrinting(false);
-        return;
-      }
       await Print.printAsync({
         html: buildReceiptHtml(),
         orientation: Print.Orientation.portrait,
@@ -633,7 +641,7 @@ const ReceiptScreen = () => {
             Receipt Not Found
           </Text>
           <Text className="mt-2 text-center text-sm text-slate-400">
-            The order you're looking for doesn't exist or hasn't been synced
+            The order you’re looking for doesn’t exist or hasn’t been synced
             yet.
           </Text>
           <TouchableOpacity

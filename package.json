@@ -9,6 +9,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "postinstall": "chmod +x node_modules/react-native/scripts/xcode/*.sh node_modules/react-native/scripts/react_native_pods_utils/*.sh",
     "db:export": "drizzle-kit export",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
