@@ -32,6 +32,7 @@ export interface Order {
   items: OrderItem[];
   createdAt: string;
   updatedAt: string;
+  syncStatus?: string;
 }
 
 export interface OrderItem {

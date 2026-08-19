@@ -1339,9 +1339,17 @@ async function processOutboxItem(
           await markOutboxSynced(item.id);
           return { success: true };
         } else if (item.operation === "updateStatus") {
+          const [orderRow] = await db
+            .select({ remoteId: orders.remoteId })
+            .from(orders)
+            .where(eq(orders.id, item.entityId))
+            .limit(1);
+          
+          const targetId = orderRow?.remoteId || item.entityId;
+
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteOrderStatus.initiate({
-              id: item.entityId,
+              id: targetId,
               ...payload,
             }),
           );
@@ -1353,8 +1361,16 @@ async function processOutboxItem(
           await markOutboxSynced(item.id);
           return { success: true };
         } else if (item.operation === "delete") {
+          const [orderRow] = await db
+            .select({ remoteId: orders.remoteId })
+            .from(orders)
+            .where(eq(orders.id, item.entityId))
+            .limit(1);
+
+          const targetId = orderRow?.remoteId || item.entityId;
+
           const { error } = await store.dispatch(
-            remoteApi.endpoints.deleteRemoteOrder.initiate(item.entityId),
+            remoteApi.endpoints.deleteRemoteOrder.initiate(targetId),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db.delete(orders).where(eq(orders.id, item.entityId));

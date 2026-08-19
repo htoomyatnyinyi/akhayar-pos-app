@@ -10,12 +10,14 @@ import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import {
   useGetLocalOrdersQuery,
   useGetLocalOrderByIdQuery,
+  useUpdateLocalOrderStatusMutation,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   RefreshControl,
@@ -28,6 +30,41 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 type OrderStatus = "PENDING" | "COMPLETED" | "VOIDED" | "CANCELLED";
 
+/** Sync status badge for an order */
+function SyncBadge({ syncStatus }: { syncStatus?: string }) {
+  if (syncStatus === "pending") {
+    return (
+      <View className="flex-row items-center gap-1 bg-amber-500/10 border border-amber-500/20 rounded-full px-2 py-0.5">
+        <MaterialIcons name="cloud-upload" size={10} color="#f59e0b" />
+        <Text className="text-amber-400 text-[9px] font-bold uppercase tracking-wider">
+          Pending
+        </Text>
+      </View>
+    );
+  }
+  if (syncStatus === "synced") {
+    return (
+      <View className="flex-row items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
+        <MaterialIcons name="cloud-done" size={10} color="#10b981" />
+        <Text className="text-emerald-400 text-[9px] font-bold uppercase tracking-wider">
+          Synced
+        </Text>
+      </View>
+    );
+  }
+  if (syncStatus === "failed") {
+    return (
+      <View className="flex-row items-center gap-1 bg-rose-500/10 border border-rose-500/20 rounded-full px-2 py-0.5">
+        <MaterialIcons name="cloud-off" size={10} color="#f43f5e" />
+        <Text className="text-rose-400 text-[9px] font-bold uppercase tracking-wider">
+          Failed
+        </Text>
+      </View>
+    );
+  }
+  return null;
+}
+
 export default function OrdersScreen() {
   const { currentStoreId } = useAppSelector((state) => state.auth);
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "ALL">("ALL");
@@ -37,15 +74,21 @@ export default function OrdersScreen() {
     data: orders = [],
     isLoading,
     refetch,
-  } = useGetLocalOrdersQuery({
-    storeId: currentStoreId || undefined,
-    status: filterStatus === "ALL" ? undefined : filterStatus,
-  });
-
-  const { data: orderDetail } = useGetLocalOrderByIdQuery(
-    selectedOrderId || "",
-    { skip: !selectedOrderId },
+  } = useGetLocalOrdersQuery(
+    {
+      storeId: currentStoreId || undefined,
+      status: filterStatus === "ALL" ? undefined : filterStatus,
+    },
+    { pollingInterval: 5000 }, // Auto-refresh every 5s to pick up background sync changes
   );
+
+  const [updateStatus, { isLoading: isUpdatingStatus }] =
+    useUpdateLocalOrderStatusMutation();
+
+  const { data: orderDetail, refetch: refetchDetail } =
+    useGetLocalOrderByIdQuery(selectedOrderId || "", {
+      skip: !selectedOrderId,
+    });
 
   const statusColors = {
     PENDING: "amber",
@@ -54,12 +97,35 @@ export default function OrdersScreen() {
     CANCELLED: "rose",
   } as const;
 
-  const statusIcons = {
-    PENDING: "pending",
-    COMPLETED: "check-circle",
-    VOIDED: "cancel",
-    CANCELLED: "cancel",
-  } as const;
+  const handleStatusUpdate = useCallback(
+    (orderId: string, newStatus: string, label: string) => {
+      Alert.alert(
+        `${label} Order?`,
+        `Are you sure you want to mark this order as ${newStatus}?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: label,
+            style: newStatus === "COMPLETED" ? "default" : "destructive",
+            onPress: async () => {
+              try {
+                await updateStatus({ id: orderId, status: newStatus }).unwrap();
+                // Close and reopen to force refetch of detail
+                setSelectedOrderId(null);
+                setTimeout(() => {
+                  setSelectedOrderId(orderId);
+                  refetch();
+                }, 300);
+              } catch (e: any) {
+                Alert.alert("Error", e?.message || "Failed to update status");
+              }
+            },
+          },
+        ],
+      );
+    },
+    [updateStatus, refetch],
+  );
 
   const renderOrderItem = ({ item }: { item: any }) => (
     <TouchableOpacity
@@ -75,9 +141,10 @@ export default function OrdersScreen() {
             <Text className="text-slate-400 text-xs mt-1">
               {new Date(item.createdAt).toLocaleString()}
             </Text>
-            <Text className="text-slate-400 text-xs mt-0.5">
-              {item.items?.length || 0} items
-            </Text>
+            {/* Sync badge inline */}
+            <View className="mt-1.5">
+              <SyncBadge syncStatus={item.syncStatus} />
+            </View>
           </View>
           <View className="items-end">
             <Pill
@@ -181,7 +248,7 @@ export default function OrdersScreen() {
         >
           <View className="flex-1 bg-black/80">
             <View className="flex-1 bg-slate-900 rounded-t-3xl mt-12">
-              <View className="px-5 pt-5 pb-4">
+              <View className="px-5 pt-5 pb-4 flex-1">
                 <View className="flex-row justify-between items-center mb-4">
                   <Text className="text-white font-bold text-xl">
                     Order Details
@@ -192,9 +259,19 @@ export default function OrdersScreen() {
                 </View>
 
                 {orderDetail ? (
-                  <ScrollView showsVerticalScrollIndicator={false}>
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 40 }}
+                  >
+                    {/* Info Card */}
                     <Card className="mb-4">
-                      <StatRow label="Order ID" value={orderDetail.id} />
+                      <StatRow
+                        label="Order ID"
+                        value={
+                          orderDetail.orderNumber ||
+                          `#${orderDetail.id.slice(-6)}`
+                        }
+                      />
                       <StatRow
                         label="Status"
                         value={orderDetail.status}
@@ -208,7 +285,9 @@ export default function OrdersScreen() {
                       />
                       <StatRow
                         label="Date"
-                        value={new Date(orderDetail.createdAt).toLocaleString()}
+                        value={new Date(
+                          orderDetail.createdAt,
+                        ).toLocaleString()}
                       />
                       <StatRow
                         label="Payment Method"
@@ -219,6 +298,96 @@ export default function OrdersScreen() {
                         value={orderDetail.customerId || "Walk-in"}
                       />
                     </Card>
+
+                    {/* Sync Status Card */}
+                    <Card className="mb-4">
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                          Cloud Sync
+                        </Text>
+                        <SyncBadge syncStatus={orderDetail.syncStatus} />
+                      </View>
+                    </Card>
+
+                    {/* Status Actions — only show if the order is actionable */}
+                    {(orderDetail.status === "PENDING" ||
+                      orderDetail.status === "COMPLETED") && (
+                      <View className="mb-4">
+                        <Text className="text-slate-500 text-[10px] font-bold uppercase tracking-[3px] mb-2">
+                          Actions
+                        </Text>
+                        <View className="flex-row gap-2">
+                          {orderDetail.status === "PENDING" && (
+                            <>
+                              <TouchableOpacity
+                                className="flex-1 bg-emerald-500/15 py-3 rounded-xl border border-emerald-500/30 flex-row items-center justify-center gap-2"
+                                onPress={() =>
+                                  handleStatusUpdate(
+                                    orderDetail.id,
+                                    "COMPLETED",
+                                    "Complete",
+                                  )
+                                }
+                                disabled={isUpdatingStatus}
+                              >
+                                <MaterialIcons
+                                  name="check-circle"
+                                  size={16}
+                                  color="#34d399"
+                                />
+                                <Text className="text-emerald-400 font-bold text-xs">
+                                  {isUpdatingStatus
+                                    ? "Updating..."
+                                    : "COMPLETE"}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                className="flex-1 bg-rose-500/15 py-3 rounded-xl border border-rose-500/30 flex-row items-center justify-center gap-2"
+                                onPress={() =>
+                                  handleStatusUpdate(
+                                    orderDetail.id,
+                                    "CANCELLED",
+                                    "Cancel",
+                                  )
+                                }
+                                disabled={isUpdatingStatus}
+                              >
+                                <MaterialIcons
+                                  name="cancel"
+                                  size={16}
+                                  color="#f87171"
+                                />
+                                <Text className="text-rose-400 font-bold text-xs">
+                                  CANCEL
+                                </Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
+                          {orderDetail.status === "COMPLETED" && (
+                            <TouchableOpacity
+                              className="flex-1 bg-rose-500/15 py-3 rounded-xl border border-rose-500/30 flex-row items-center justify-center gap-2"
+                              onPress={() =>
+                                handleStatusUpdate(
+                                  orderDetail.id,
+                                  "VOIDED",
+                                  "Void",
+                                )
+                              }
+                              disabled={isUpdatingStatus}
+                            >
+                              <MaterialIcons
+                                name="block"
+                                size={16}
+                                color="#f87171"
+                              />
+                              <Text className="text-rose-400 font-bold text-xs">
+                                VOID ORDER
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    )}
 
                     <SectionTitle title="Items" />
                     <Card className="mb-4">

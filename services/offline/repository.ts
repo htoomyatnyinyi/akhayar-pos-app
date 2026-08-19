@@ -3412,6 +3412,7 @@ async function toOrder(order: LocalOrder): Promise<Order> {
     status: order.status as Order["status"],
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
+    syncStatus: order.syncStatus,
     subTotal: order.subTotal,
     taxAmount: order.taxAmount,
     discountAmount: order.discountAmount,
