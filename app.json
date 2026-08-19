@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "oasis_POS",
-    "slug": "oasis-pos",
+    "name": "forest ERP/POS",
+    "slug": "forest-erp-pos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mini-pos",
+    "scheme": "forest-erp-pos",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
@@ -13,45 +13,42 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/forest/android-icon-foreground.png",
+        "backgroundImage": "./assets/forest/android-icon-background.png",
+        "monochromeImage": "./assets/forest/android-icon-monochrome.png"
       },
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "predictiveBackGestureEnabled": false,
-      "package": "com.htoomyatnyinyi24.oasispos"
+      "package": "com.htoomyatnyinyi24.forest_erp_pos"
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/forest/favicon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/forest/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#2f8b99",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#2f8dcc"
           }
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow POS App to use camera for scanning barcodes and QR codes"
+          "cameraPermission": "Allow forest ERP/POS App to use camera for scanning barcodes and QR codes"
         }
       ],
       "expo-audio"
@@ -63,14 +60,11 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "852110f3-9a8d-4416-b10d-9f2df0bc8b68"
+        "projectId": "2409693f-364f-40fb-af6e-dbf6d1be4a7e"
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/852110f3-9a8d-4416-b10d-9f2df0bc8b68"
     }
   }
 }
