@@ -22,17 +22,120 @@ import * as Sharing from "expo-sharing";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Modal,
   ScrollView,
   Share,
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
+  FlatList,
+  NativeModules,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Buffer } from "buffer";
+
+// Safely access BleManager without crashing if native module is not compiled yet
+let BleManager: any = null;
+try {
+  if (NativeModules.BleManager) {
+    const BleModule = require("react-native-ble-manager");
+    BleManager = BleModule.default || BleModule;
+  }
+} catch (e) {
+  // Not available in current runtime
+}
 
 // ============================================
-// THERMAL RECEIPT FORMATTER
+// ESC/POS BUILDER (Bluetooth thermal)
+// ============================================
+
+function buildEscPosReceipt(
+  order: any,
+  customer: any,
+  store: any,
+  receiptNumber: string,
+): Uint8Array {
+  const chunks: number[] = [];
+
+  // ESC/POS init
+  chunks.push(0x1b, 0x40); // Initialize printer
+  chunks.push(0x1b, 0x61, 0x01); // Center alignment
+
+  const textEncoder = new TextEncoder();
+  const addText = (text: string) => {
+    const bytes = textEncoder.encode(text);
+    chunks.push(...bytes);
+  };
+
+  // Header
+  const storeName = (store?.name || "POS SYSTEM").padEnd(32, " ");
+  const address = (store?.address || "").padEnd(32, " ");
+  const phone = (store?.phone || "").padEnd(32, " ");
+  addText(storeName + "\n");
+  addText(address + "\n");
+  addText(phone + "\n");
+  addText("Tel: " + (store?.phone || "") + "\n");
+  addText("=".repeat(32) + "\n\n");
+
+  // Receipt Info
+  addText("Receipt #: " + receiptNumber + "\n");
+  addText("Date: " + new Date(order.createdAt).toLocaleString() + "\n");
+  addText("Customer: " + (customer?.name || "Walk-in") + "\n");
+  addText("Payment: " + (order.paymentMethod || "CASH") + "\n\n");
+  addText("-".repeat(32) + "\n");
+  addText("ITEM          QTY  PRICE   TOTAL\n");
+  addText("-".repeat(32) + "\n");
+
+  for (const item of order.items || []) {
+    const name = (item.productName || "Item").slice(0, 15).padEnd(15);
+    const qty = String(item.quantity).padStart(4);
+    const price =
+      `$${Number(item.unitPrice || item.price).toFixed(2)}`.padStart(7);
+    const total =
+      `$${(item.quantity * Number(item.unitPrice || item.price)).toFixed(2)}`.padStart(
+        7,
+      );
+    addText(`${name} ${qty} ${price} ${total}\n`);
+  }
+
+  addText("\n");
+  addText("-".repeat(32) + "\n");
+  addText(`Subtotal:     $${Number(order.subTotal ?? 0).toFixed(2)}\n`);
+  addText(`Tax:          $${Number(order.taxAmount ?? 0).toFixed(2)}\n`);
+  if (order.discountAmount > 0) {
+    addText(`Discount:    -$${Number(order.discountAmount ?? 0).toFixed(2)}\n`);
+  }
+  addText("=".repeat(32) + "\n");
+  addText(`TOTAL:        $${Number(order.grandTotal ?? 0).toFixed(2)}\n`);
+  addText("-".repeat(32) + "\n");
+  addText(`Paid:         $${Number(order.paidAmount ?? 0).toFixed(2)}\n`);
+  addText(`Change:       $${Number(order.changeAmount ?? 0).toFixed(2)}\n\n`);
+
+  // Payment breakdown
+  if (order.paymentBreakdown?.length > 0) {
+    addText("-".repeat(32) + "\n");
+    for (const tender of order.paymentBreakdown) {
+      addText(`${tender.method}: $${Number(tender.amount).toFixed(2)}\n`);
+    }
+    addText("\n");
+  }
+
+  addText("=".repeat(32) + "\n");
+  addText("THANK YOU!\n");
+  addText("Have a great day!\n\n");
+  addText(receiptNumber + "\n");
+  addText("Printed: " + new Date().toLocaleString() + "\n");
+
+  // Cut paper
+  chunks.push(0x1d, 0x56, 0x00);
+  return new Uint8Array(chunks);
+}
+
+// ============================================
+// PLAIN TEXT RECEIPT (for sharing)
 // ============================================
 
 function formatThermalReceipt(
@@ -42,9 +145,8 @@ function formatThermalReceipt(
   receiptNumber: string,
 ): string {
   const lines: string[] = [];
-  const width = 48; // 80mm thermal printer width
+  const width = 48;
 
-  // Center text helper
   const center = (text: string) => {
     const padding = Math.max(0, Math.floor((width - text.length) / 2));
     return " ".repeat(padding) + text;
@@ -53,27 +155,19 @@ function formatThermalReceipt(
   const divider = "=".repeat(width);
   const thinDivider = "-".repeat(width);
 
-  // Header
   lines.push(center(store?.name || "POS SYSTEM"));
   lines.push(center(store?.address || ""));
   lines.push(center(store?.phone || ""));
   lines.push(center(`Tel: ${store?.phone || ""}`));
   lines.push(divider);
   lines.push("");
-
-  // Receipt Info
   lines.push(`Receipt #: ${receiptNumber}`);
   lines.push(`Date: ${new Date(order.createdAt).toLocaleString()}`);
-  lines.push(`Order: ${order.id.slice(-8)}`);
   lines.push(`Customer: ${customer?.name || "Walk-in"}`);
   lines.push(`Payment: ${order.paymentMethod || "CASH"}`);
-  lines.push(`Status: ${order.status || "COMPLETED"}`);
   lines.push("");
   lines.push(thinDivider);
-  lines.push("");
-
-  // Items
-  lines.push("ITEM           QTY  PRICE   TOTAL");
+  lines.push("ITEM          QTY  PRICE   TOTAL");
   lines.push(thinDivider);
 
   for (const item of order.items || []) {
@@ -90,9 +184,6 @@ function formatThermalReceipt(
 
   lines.push("");
   lines.push(thinDivider);
-  lines.push("");
-
-  // Totals
   lines.push(
     `Subtotal:     $${Number(order.subTotal ?? 0).toFixed(2)}`.padStart(width),
   );
@@ -125,7 +216,6 @@ function formatThermalReceipt(
   );
   lines.push("");
 
-  // Payment Breakdown
   if (order.paymentBreakdown?.length > 0) {
     lines.push(thinDivider);
     for (const tender of order.paymentBreakdown) {
@@ -134,7 +224,6 @@ function formatThermalReceipt(
     lines.push("");
   }
 
-  // Footer
   lines.push(divider);
   lines.push(center("THANK YOU!"));
   lines.push(center("Have a great day!"));
@@ -149,7 +238,7 @@ function formatThermalReceipt(
 // MAIN COMPONENT
 // ============================================
 
-export default function ReceiptScreen() {
+const ReceiptScreen = () => {
   const router = useRouter();
   const { user } = useAppSelector((state) => state.auth);
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -166,6 +255,34 @@ export default function ReceiptScreen() {
   const qrRef = useRef<any>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+
+  // Bluetooth state
+  const [bluetoothModalVisible, setBluetoothModalVisible] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [devices, setDevices] = useState<any[]>([]);
+  const [connectedDevice, setConnectedDevice] = useState<any>(null);
+  const [connecting, setConnecting] = useState(false);
+
+  // Load saved printer
+  useEffect(() => {
+    loadSavedPrinter();
+  }, []);
+
+  const loadSavedPrinter = async () => {
+    try {
+      const saved = await AsyncStorage.getItem("selected_printer");
+      if (saved) {
+        setConnectedDevice(JSON.parse(saved));
+      }
+    } catch (e) {}
+  };
+
+  const savePrinter = async (device: any) => {
+    try {
+      await AsyncStorage.setItem("selected_printer", JSON.stringify(device));
+      setConnectedDevice(device);
+    } catch (e) {}
+  };
 
   const receiptNumber = useMemo(() => {
     if (!order?.id) return "RCPT-XXXX";
@@ -194,7 +311,123 @@ export default function ReceiptScreen() {
   }, [order?.id, receiptNumber]);
 
   // ============================================
-  // HTML RECEIPT BUILDER
+  // BLUETOOTH SCANNING & CONNECTION
+  // ============================================
+
+  const startScan = async () => {
+    if (!BleManager) {
+      Alert.alert(
+        "Bluetooth Unavailable",
+        "Direct Bluetooth printing requires a native build with Bluetooth enabled. Use Print or PDF instead.",
+      );
+      return;
+    }
+    if (scanning) return;
+    setScanning(true);
+    setDevices([]);
+    try {
+      if (BleManager.start) {
+        await BleManager.start({ showAlert: false }).catch(() => {});
+      }
+      await BleManager.scan([], 5, true);
+      const listener = BleManager.onDiscover
+        ? BleManager.onDiscover((device: any) => {
+            if (device.name) {
+              setDevices((prev) => {
+                const exists = prev.find((d) => d.id === device.id);
+                if (exists) return prev;
+                return [...prev, device];
+              });
+            }
+          })
+        : null;
+
+      setTimeout(() => {
+        if (BleManager?.stopScan) BleManager.stopScan().catch(() => {});
+        if (listener?.remove) listener.remove();
+        setScanning(false);
+      }, 8000);
+    } catch (error: any) {
+      Alert.alert("Scan Error", error.message || "Unable to start scan.");
+      setScanning(false);
+    }
+  };
+
+  const connectToDevice = async (device: any) => {
+    if (!BleManager) return;
+    setConnecting(true);
+    try {
+      await BleManager.connect(device.id);
+      await BleManager.retrieveServices(device.id);
+      const services = await BleManager.retrieveServices(device.id);
+
+      let writeChar = null;
+      for (const service of services) {
+        for (const char of service.characteristics) {
+          if (char.properties.write || char.properties.writeWithoutResponse) {
+            writeChar = char;
+            break;
+          }
+        }
+        if (writeChar) break;
+      }
+      if (!writeChar) {
+        throw new Error("No write characteristic found for this printer.");
+      }
+      await savePrinter({ ...device, writeChar });
+      setBluetoothModalVisible(false);
+      Alert.alert("Connected", `Connected to ${device.name}`);
+    } catch (error: any) {
+      Alert.alert("Connection Error", error.message || "Failed to connect.");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  // ============================================
+  // PRINT TO BLUETOOTH PRINTER
+  // ============================================
+
+  const printViaBluetooth = async () => {
+    if (!BleManager) {
+      printThermalReceipt();
+      return;
+    }
+    if (!connectedDevice) {
+      Alert.alert(
+        "No Printer",
+        "Please connect to a Bluetooth printer first.",
+        [{ text: "Scan", onPress: () => setBluetoothModalVisible(true) }],
+      );
+      return;
+    }
+    setIsPrinting(true);
+    try {
+      const escPosData = buildEscPosReceipt(
+        order,
+        customer,
+        store,
+        receiptNumber,
+      );
+      await BleManager.write(
+        connectedDevice.id,
+        connectedDevice.writeChar.serviceUUID,
+        connectedDevice.writeChar.characteristicUUID,
+        Buffer.from(escPosData).toString("base64"),
+        1,
+      );
+      Alert.alert("Success", "Receipt printed successfully.");
+    } catch (error: any) {
+      Alert.alert("Print Error", error.message || "Failed to print.");
+      // Fallback to system print
+      printThermalReceipt();
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  // ============================================
+  // SYSTEM PRINT (fallback)
   // ============================================
 
   const buildReceiptHtml = () => {
@@ -308,18 +541,11 @@ export default function ReceiptScreen() {
       </html>`;
   };
 
-  // ============================================
-  // PRINT TO THERMAL PRINTER
-  // ============================================
-
   const printThermalReceipt = async () => {
     if (!order) return;
-
     setIsPrinting(true);
     try {
-      // Check if the device supports thermal printing
       const isAvailable = await Print.isAvailableAsync();
-
       if (!isAvailable) {
         Alert.alert(
           "Not Available",
@@ -328,23 +554,12 @@ export default function ReceiptScreen() {
         setIsPrinting(false);
         return;
       }
-
-      // For POS-5890U, use the thermal receipt format
-      // Since thermal printers work best with simple text, we'll use the HTML version
-      // but formatted for thermal printer dimensions
       await Print.printAsync({
         html: buildReceiptHtml(),
-        printerUrl: null, // Uses default printer
         orientation: Print.Orientation.portrait,
-        margins: {
-          left: 5,
-          top: 5,
-          right: 5,
-          bottom: 5,
-        },
+        margins: { left: 5, top: 5, right: 5, bottom: 5 },
       });
     } catch (error: any) {
-      // If thermal printing fails, try alternative
       if (error.message?.includes("No print service")) {
         Alert.alert(
           "Print Service",
@@ -366,7 +581,7 @@ export default function ReceiptScreen() {
   };
 
   // ============================================
-  // SAVE AS PDF
+  // PDF & SHARE
   // ============================================
 
   const saveAsPDF = async () => {
@@ -375,7 +590,6 @@ export default function ReceiptScreen() {
         html: buildReceiptHtml(),
         base64: false,
       });
-
       Alert.alert("PDF Created", `Receipt saved to:\n${uri}`, [
         { text: "Cancel", style: "cancel" },
         { text: "Share", onPress: () => Sharing.shareAsync(uri) },
@@ -385,31 +599,22 @@ export default function ReceiptScreen() {
     }
   };
 
-  // ============================================
-  // SHARE RECEIPT
-  // ============================================
-
   const shareReceipt = async () => {
     if (!order) return;
-
     const text = formatThermalReceipt(order, customer, store, receiptNumber);
     await Share.share({ message: text });
   };
 
   // ============================================
-  // REFRESH
+  // RENDER
   // ============================================
-
-  const handleRefresh = () => {
-    refetch();
-  };
 
   if (isOrderLoading) {
     return (
       <Screen>
         <View className="flex-1 items-center justify-center">
-          <View className="h-16 w-16 rounded-full border-4 border-sky-500/30 border-t-sky-500 animate-spin" />
-          <Text className="text-slate-400 mt-4 text-sm">
+          <ActivityIndicator size="large" color="#38bdf8" />
+          <Text className="mt-4 text-sm text-slate-400">
             Loading receipt...
           </Text>
         </View>
@@ -421,21 +626,21 @@ export default function ReceiptScreen() {
     return (
       <Screen>
         <View className="flex-1 items-center justify-center px-5">
-          <View className="h-20 w-20 bg-rose-500/10 rounded-full items-center justify-center border border-rose-500/20">
+          <View className="h-20 w-20 items-center justify-center rounded-full border border-rose-500/20 bg-rose-500/10">
             <MaterialIcons name="receipt-long" size={40} color="#f87171" />
           </View>
-          <Text className="text-white text-xl font-bold mt-4">
+          <Text className="mt-4 text-xl font-bold text-white">
             Receipt Not Found
           </Text>
-          <Text className="text-slate-400 text-center mt-2">
+          <Text className="mt-2 text-center text-sm text-slate-400">
             The order you're looking for doesn't exist or hasn't been synced
             yet.
           </Text>
           <TouchableOpacity
-            className="mt-6 bg-sky-500 px-6 py-3 rounded-xl"
+            className="mt-6 rounded-xl bg-sky-500 px-6 py-3"
             onPress={() => router.back()}
           >
-            <Text className="text-white font-bold">Go Back</Text>
+            <Text className="font-bold text-white">Go Back</Text>
           </TouchableOpacity>
         </View>
       </Screen>
@@ -463,17 +668,41 @@ export default function ReceiptScreen() {
                     tone={offline.isOnline ? "emerald" : "rose"}
                   />
                   <TouchableOpacity
-                    onPress={handleRefresh}
-                    className="mt-1 bg-white/10 p-1.5 rounded-full"
+                    onPress={refetch}
+                    className="mt-1 rounded-full bg-white/10 p-1.5"
                   >
                     <MaterialIcons name="refresh" size={14} color="#94a3b8" />
                   </TouchableOpacity>
-                  <Text className="text-slate-500 text-[10px] mt-1">
+                  <Text className="mt-1 text-[10px] text-slate-500">
                     {new Date(order.createdAt).toLocaleTimeString()}
                   </Text>
                 </View>
               }
             />
+          </View>
+
+          {/* Printer Status */}
+          <View className="mb-3 flex-row items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2">
+            <View className="flex-row items-center">
+              <MaterialIcons
+                name={
+                  connectedDevice ? "bluetooth-connected" : "bluetooth-disabled"
+                }
+                size={20}
+                color={connectedDevice ? "#34d399" : "#94a3b8"}
+              />
+              <Text className="ml-2 text-xs text-slate-300">
+                {connectedDevice ? connectedDevice.name : "No printer"}
+              </Text>
+            </View>
+            <TouchableOpacity
+              className="rounded-full bg-sky-500/20 px-3 py-1"
+              onPress={() => setBluetoothModalVisible(true)}
+            >
+              <Text className="text-xs font-bold text-sky-300">
+                {connectedDevice ? "Change" : "Connect"}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Success Status */}
@@ -509,7 +738,7 @@ export default function ReceiptScreen() {
           </Card>
 
           {/* QR Code */}
-          <Card className="mb-4">
+          {/* <Card className="mb-4">
             <View className="items-center py-4">
               <Text className="text-[10px] font-bold uppercase tracking-[4px] text-slate-500">
                 Receipt QR
@@ -526,27 +755,27 @@ export default function ReceiptScreen() {
               <Text className="mt-4 text-sm font-semibold text-white">
                 {receiptNumber}
               </Text>
-              <Text className="mt-2 text-center text-xs text-slate-400 max-w-xs">
+              <Text className="mt-2 max-w-xs text-center text-xs text-slate-400">
                 Scan to reopen this receipt quickly
               </Text>
             </View>
-          </Card>
+          </Card> */}
 
           {/* Items */}
           <SectionTitle title="Items" />
           <Card className="mb-4">
             {order.items?.length ? (
               order.items.map((item: any, index: number) => (
-                <View key={item.id}>
+                <View key={item.id || index}>
                   <RowItem
                     title={item.productName || "Item"}
                     subtitle={`${item.quantity} x $${Number(item.unitPrice || item.price).toFixed(2)}`}
                     right={`$${(item.quantity * Number(item.unitPrice || item.price)).toFixed(2)}`}
                     icon="shopping-bag"
                   />
-                  {index < order.items.length - 1 ? (
+                  {index < order.items.length - 1 && (
                     <View className="my-3 h-px bg-white/8" />
-                  ) : null}
+                  )}
                 </View>
               ))
             ) : (
@@ -586,7 +815,6 @@ export default function ReceiptScreen() {
             <StatRow
               label="Change"
               value={`$${Number(order.changeAmount ?? 0).toFixed(2)}`}
-              valueColor="#94a3b8"
             />
           </Card>
 
@@ -601,9 +829,9 @@ export default function ReceiptScreen() {
                       label={tender.method}
                       value={`$${Number(tender.amount).toFixed(2)}`}
                     />
-                    {index < order.paymentBreakdown.length - 1 ? (
+                    {index < order.paymentBreakdown.length - 1 && (
                       <View className="my-2 h-px bg-white/8" />
-                    ) : null}
+                    )}
                   </View>
                 ))}
               </Card>
@@ -611,7 +839,7 @@ export default function ReceiptScreen() {
           )}
 
           {/* Actions */}
-          <View className="flex-row gap-3 mt-2">
+          <View className="mt-2 flex-row gap-3">
             <ActionButton
               title="New Sale"
               icon="add-shopping-cart"
@@ -622,7 +850,9 @@ export default function ReceiptScreen() {
               title={isPrinting ? "Printing..." : "Print"}
               icon="print"
               accent="sky"
-              onPress={printThermalReceipt}
+              onPress={
+                connectedDevice ? printViaBluetooth : printThermalReceipt
+              }
               disabled={isPrinting}
             />
           </View>
@@ -656,23 +886,110 @@ export default function ReceiptScreen() {
                   offline.isOnline ? "bg-emerald-400" : "bg-amber-400"
                 }`}
               />
-              <Text className="text-slate-500 text-xs">
+              <Text className="text-xs text-slate-500">
                 {offline.isOnline
                   ? "This receipt is synced with the server"
                   : "This receipt is stored locally and will sync when online"}
               </Text>
             </View>
-            <Text className="text-slate-600 text-[10px] mt-1">
+            <Text className="mt-1 text-[10px] text-slate-600">
               {offline.isSyncing
                 ? "⏳ Syncing..."
                 : `Last synced: ${offline.lastSyncAt ? new Date(offline.lastSyncAt).toLocaleString() : "Never"}`}
             </Text>
           </View>
         </ScrollView>
+
+        {/* Bluetooth Printer Selection Modal */}
+        <Modal
+          visible={bluetoothModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setBluetoothModalVisible(false)}
+        >
+          <View className="flex-1 justify-end bg-black/60">
+            <View className="max-h-[80%] rounded-t-3xl bg-slate-900 p-6">
+              <View className="mb-4 flex-row items-center justify-between">
+                <Text className="text-xl font-bold text-white">
+                  Bluetooth Printers
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setBluetoothModalVisible(false)}
+                >
+                  <MaterialIcons name="close" size={24} color="#94a3b8" />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                className="mb-4 flex-row items-center justify-center rounded-xl bg-sky-500/20 p-3"
+                onPress={startScan}
+                disabled={scanning}
+              >
+                <MaterialIcons
+                  name="bluetooth-search"
+                  size={20}
+                  color="#38bdf8"
+                />
+                <Text className="ml-2 font-bold text-sky-300">
+                  {scanning ? "Scanning..." : "Scan for Printers"}
+                </Text>
+              </TouchableOpacity>
+
+              {scanning && (
+                <View className="items-center py-4">
+                  <ActivityIndicator color="#38bdf8" />
+                  <Text className="mt-2 text-xs text-slate-400">
+                    Searching...
+                  </Text>
+                </View>
+              )}
+
+              <FlatList
+                data={devices}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    className="mb-2 flex-row items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4"
+                    onPress={() => connectToDevice(item)}
+                    disabled={connecting}
+                  >
+                    <View>
+                      <Text className="font-semibold text-white">
+                        {item.name || "Unnamed"}
+                      </Text>
+                      <Text className="text-xs text-slate-400">{item.id}</Text>
+                      {item.rssi !== undefined && (
+                        <Text className="text-[10px] text-slate-500">
+                          Signal: {item.rssi} dBm
+                        </Text>
+                      )}
+                    </View>
+                    {connecting && (
+                      <ActivityIndicator size="small" color="#38bdf8" />
+                    )}
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text className="py-8 text-center text-slate-400">
+                    {scanning
+                      ? "No printers found yet"
+                      : "Tap scan to find printers"}
+                  </Text>
+                }
+              />
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </Screen>
   );
-}
+};
+
+export default ReceiptScreen;
+
+// ============================================
+// HTML ESCAPE UTILITY
+// ============================================
 
 function escapeHtml(value: string) {
   if (!value) return "";
@@ -680,6 +997,5 @@ function escapeHtml(value: string) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/"/g, "&quot;");
 }

@@ -102,6 +102,10 @@ function RootNavigator() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="(auth)" />
+          <Stack.Screen
+            name="receipt/[id]"
+            options={{ presentation: "card", headerShown: false }}
+          />
         </Stack>
         <OfflineSyncStatus />
       </PreventRemoveContext.Provider>

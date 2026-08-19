@@ -2587,18 +2587,18 @@ export const remoteApi = createApi({
 // ================================================================
 
 export const {
-  // Auth
-  useRegisterMutation,
-  useLoginMutation,
-  useVerifyEmailMutation,
-  useResendOtpMutation,
-  useForgotPasswordMutation,
-  useResetPasswordMutation,
-  useGetMeQuery,
-  useGoogleAuthQuery,
-  useGoogleAuthCallbackQuery,
-  usePlatformLoginMutation,
-  usePlatformGetMeQuery,
+  // // Auth
+  // useRegisterMutation,
+  // useLoginMutation,
+  // useVerifyEmailMutation,
+  // useResendOtpMutation,
+  // useForgotPasswordMutation,
+  // useResetPasswordMutation,
+  // useGetMeQuery,
+  // useGoogleAuthQuery,
+  // useGoogleAuthCallbackQuery,
+  // usePlatformLoginMutation,
+  // usePlatformGetMeQuery,
 
   // Sync
   useGetSyncOrdersQuery,

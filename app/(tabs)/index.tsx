@@ -56,7 +56,9 @@ export default function POSScreen() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedProductForVariants, setSelectedProductForVariants] =
     useState<any>(null);
-  const [scannerMode, setScannerMode] = useState<"single" | "continuous">("single");
+  const [scannerMode, setScannerMode] = useState<"single" | "continuous">(
+    "single",
+  );
   const [scannedPreviewItems, setScannedPreviewItems] = useState<any[]>([]);
 
   // Animations
@@ -166,13 +168,11 @@ export default function POSScreen() {
     return inventory && inventory.quantity < item.qty;
   });
 
-
   const hasUnallocatedVariantStock = cartItems.some(
     (item) =>
       !!item.variantId &&
       !hasSeparatedVariantInventory(item.productId || item.id, item.variantId),
   );
-
 
   // Handlers
   const handleAddToCart = (product: any) => {
@@ -230,13 +230,16 @@ export default function POSScreen() {
         v.remoteId === data,
     );
     if (variant) {
-      scannedItem = saleItems.find((item: any) => item.variantId === variant.id);
+      scannedItem = saleItems.find(
+        (item: any) => item.variantId === variant.id,
+      );
     } else {
       const product = productsData?.find(
         (p: any) => p.barcode === data || p.sku === data || p.id === data,
       );
       if (product) {
-        scannedItem = saleItems.find((item: any) => item.id === product.id) || product;
+        scannedItem =
+          saleItems.find((item: any) => item.id === product.id) || product;
       }
     }
 
@@ -251,7 +254,7 @@ export default function POSScreen() {
             return prev.map((item) =>
               item.id === scannedItem.id
                 ? { ...item, previewQty: (item.previewQty || 1) + 1 }
-                : item
+                : item,
             );
           }
           return [...prev, { ...scannedItem, previewQty: 1 }];
@@ -990,12 +993,17 @@ export default function POSScreen() {
               <View className="bg-black/90 p-4 border-t border-white/20 rounded-t-3xl h-full pb-8">
                 <View className="flex-row justify-between items-center mb-4">
                   <Text className="text-white font-bold text-lg">
-                    Scanned Items ({scannedPreviewItems.reduce((acc, i) => acc + (i.previewQty || 1), 0)})
+                    Scanned Items (
+                    {scannedPreviewItems.reduce(
+                      (acc, i) => acc + (i.previewQty || 1),
+                      0,
+                    )}
+                    )
                   </Text>
                   <TouchableOpacity
                     className="bg-sky-500 px-6 py-2 rounded-full"
                     onPress={() => {
-                      scannedPreviewItems.forEach(item => {
+                      scannedPreviewItems.forEach((item) => {
                         for (let i = 0; i < (item.previewQty || 1); i++) {
                           handleAddToCart(item);
                         }
@@ -1013,15 +1021,21 @@ export default function POSScreen() {
                   renderItem={({ item }) => (
                     <View className="flex-row justify-between items-center py-3 border-b border-white/10">
                       <View className="flex-1 pr-2">
-                        <Text className="text-white font-bold">{item.name}</Text>
-                        <Text className="text-white/60 text-xs mt-1">SKU: {item.sku || "N/A"}</Text>
+                        <Text className="text-white font-bold">
+                          {item.name}
+                        </Text>
+                        <Text className="text-white/60 text-xs mt-1">
+                          SKU: {item.sku || "N/A"}
+                        </Text>
                       </View>
                       <View className="flex-row items-center">
                         <Text className="text-white font-bold mr-4">
                           ${(item.sellingPrice || 0).toFixed(2)}
                         </Text>
                         <View className="bg-white/20 px-3 py-1 rounded-full">
-                          <Text className="text-white font-bold">x{item.previewQty || 1}</Text>
+                          <Text className="text-white font-bold">
+                            x{item.previewQty || 1}
+                          </Text>
                         </View>
                       </View>
                     </View>

@@ -28,21 +28,23 @@ export function Header({
   right,
 }: {
   eyebrow: string;
-  title: string;
+  title?: string;
   subtitle?: string;
   right?: ReactNode;
 }) {
   return (
-    <View className="mb-5 flex-row items-start justify-between">
+    <View className="mb-2 flex-row items-start justify-between">
       <View className="flex-1 pr-3">
         <Text className="text-[11px] font-bold uppercase tracking-[4px] text-sky-300/80">
           {eyebrow}
         </Text>
-        <Text className="mt-2 text-3xl font-black tracking-tight text-white">
-          {title}
-        </Text>
+        {title ? (
+          <Text className="mt-1 text-2xl font-black tracking-tight text-white">
+            {title}
+          </Text>
+        ) : null}
         {subtitle ? (
-          <Text className="mt-2 text-sm leading-5 text-slate-300">
+          <Text className="mt-1 text-sm leading-5 text-slate-300">
             {subtitle}
           </Text>
         ) : null}

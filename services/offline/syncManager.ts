@@ -185,7 +185,9 @@ export async function syncNow(
     const state = store.getState();
     const tenantId = state.auth?.user?.tenantId;
     if (!tenantId) {
-      throw new Error("No tenantId found in Redux state. Cannot sync.");
+      if (!silent) console.log("🔒 User not logged in (no tenantId). Skipping sync.");
+      dispatch(setSyncing(false));
+      return { skipped: true, message: "User not logged in" };
     }
 
     // --- PULL Stores ---

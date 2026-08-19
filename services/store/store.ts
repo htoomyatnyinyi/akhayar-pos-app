@@ -23,10 +23,43 @@ import { posApi } from "@/services/api/posApi";
 import { localApi } from "../features/offline/localApi";
 import { remoteApi } from "../api/remoteApi";
 
+// Safe storage wrapper for redux-persist
+const safeStorage = {
+  getItem: async (key: string) => {
+    try {
+      if (AsyncStorage?.getItem) {
+        return await AsyncStorage.getItem(key);
+      }
+      return null;
+    } catch (e) {
+      console.warn("Storage getItem fallback:", e);
+      return null;
+    }
+  },
+  setItem: async (key: string, value: string) => {
+    try {
+      if (AsyncStorage?.setItem) {
+        await AsyncStorage.setItem(key, value);
+      }
+    } catch (e) {
+      console.warn("Storage setItem fallback:", e);
+    }
+  },
+  removeItem: async (key: string) => {
+    try {
+      if (AsyncStorage?.removeItem) {
+        await AsyncStorage.removeItem(key);
+      }
+    } catch (e) {
+      console.warn("Storage removeItem fallback:", e);
+    }
+  },
+};
+
 const persistConfig = {
   key: "root",
   version: 1,
-  storage: AsyncStorage,
+  storage: safeStorage,
   whitelist: ["auth", "settings"], // Persist auth and settings
 };
 
