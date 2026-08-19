@@ -31,9 +31,12 @@ import {
   ActivityIndicator,
   FlatList,
   NativeModules,
+  PermissionsAndroid,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Buffer } from "buffer";
 
 // Safely access BleManager without crashing if native module is not compiled yet
 let BleManager: any = null;
@@ -46,6 +49,36 @@ try {
   }
 } catch {
   // Not available in current runtime
+}
+
+// POS-5890U-L printers use Android Bluetooth Classic (RFCOMM/SPP), not BLE.
+let BluetoothClassic: any = null;
+try {
+  if (Platform.OS === "android" && NativeModules.RNBluetoothClassic) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ClassicModule = require("react-native-bluetooth-classic");
+    BluetoothClassic = ClassicModule.default || ClassicModule;
+  }
+} catch {
+  // Not available in the current native build.
+}
+
+async function requestBluetoothPermissions(): Promise<boolean> {
+  if (Platform.OS !== "android") return true;
+
+  const permissions =
+    Number(Platform.Version) >= 31
+      ? [
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        ]
+      : [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
+  const results = await PermissionsAndroid.requestMultiple(permissions);
+
+  return permissions.every(
+    (permission) =>
+      results[permission] === PermissionsAndroid.RESULTS.GRANTED,
+  );
 }
 
 // ============================================
@@ -311,7 +344,7 @@ const ReceiptScreen = () => {
   // ============================================
 
   const startScan = async () => {
-    if (!BleManager) {
+    if (!BleManager && !BluetoothClassic) {
       Alert.alert(
         "Bluetooth Unavailable",
         "Direct Bluetooth printing requires a native build with Bluetooth enabled. Use Print or PDF instead.",
@@ -319,9 +352,47 @@ const ReceiptScreen = () => {
       return;
     }
     if (scanning) return;
-    setScanning(true);
-    setDevices([]);
     try {
+      const hasPermission = await requestBluetoothPermissions();
+      if (!hasPermission) {
+        Alert.alert(
+          "Bluetooth permission needed",
+          "Allow Nearby devices (and Location on older Android devices) to scan for BLE printers.",
+        );
+        return;
+      }
+
+      setScanning(true);
+      setDevices([]);
+
+      if (Platform.OS === "android" && BluetoothClassic) {
+        const isEnabled = await BluetoothClassic.isBluetoothEnabled();
+        if (!isEnabled) {
+          await BluetoothClassic.requestBluetoothEnabled();
+        }
+
+        const toClassicDevice = (device: any) => ({
+          id: device.address || device.id,
+          address: device.address || device.id,
+          name: device.name || "Unnamed Bluetooth printer",
+          bonded: device.bonded,
+          transport: "classic",
+        });
+        const pairedDevices = await BluetoothClassic.getBondedDevices();
+        const discoveredDevices = await BluetoothClassic.startDiscovery();
+        const printerDevices = [...pairedDevices, ...discoveredDevices].map(
+          toClassicDevice,
+        );
+        setDevices(
+          printerDevices.filter(
+            (device, index, allDevices) =>
+              allDevices.findIndex((item) => item.id === device.id) === index,
+          ),
+        );
+        setScanning(false);
+        return;
+      }
+
       if (BleManager.start) {
         await BleManager.start({ showAlert: false }).catch(() => {});
       }
@@ -329,13 +400,15 @@ const ReceiptScreen = () => {
       scanSubscriptions.current = [
         BleManager.onDiscoverPeripheral((device: any) => {
           const name = device.name || device.advertising?.localName;
-          if (!name) return;
 
           setDevices((previousDevices) => {
             const existingIndex = previousDevices.findIndex(
               (item) => item.id === device.id,
             );
-            const nextDevice = { ...device, name };
+            const nextDevice = {
+              ...device,
+              name: name || "Unnamed BLE device",
+            };
             if (existingIndex === -1) return [...previousDevices, nextDevice];
 
             const nextDevices = [...previousDevices];
@@ -360,6 +433,38 @@ const ReceiptScreen = () => {
   };
 
   const connectToDevice = async (device: any) => {
+    if (device.transport === "classic") {
+      if (!BluetoothClassic) return;
+      setConnecting(true);
+      try {
+        let printer = device;
+        if (!device.bonded) {
+          printer = await BluetoothClassic.pairDevice(device.address || device.id);
+        }
+        const connectedPrinter = await BluetoothClassic.connectToDevice(
+          printer.address || printer.id,
+        );
+        await savePrinter({
+          id: connectedPrinter.address || printer.address || device.id,
+          name: connectedPrinter.name || printer.name || device.name,
+          transport: "classic",
+        });
+        setBluetoothModalVisible(false);
+        Alert.alert(
+          "Connected",
+          `Connected to ${connectedPrinter.name || device.name || "Bluetooth printer"}`,
+        );
+      } catch (error: any) {
+        Alert.alert(
+          "Connection Error",
+          error.message || "Pair or connect to the printer in Android Settings first.",
+        );
+      } finally {
+        setConnecting(false);
+      }
+      return;
+    }
+
     if (!BleManager) return;
     setConnecting(true);
     try {
@@ -407,6 +512,38 @@ const ReceiptScreen = () => {
         "Please connect to a Bluetooth printer first.",
         [{ text: "Scan", onPress: () => setBluetoothModalVisible(true) }],
       );
+      return;
+    }
+    if (connectedDevice.transport === "classic") {
+      if (!BluetoothClassic) {
+        Alert.alert(
+          "Bluetooth Unavailable",
+          "Rebuild the Android development app to enable Bluetooth Classic printing.",
+        );
+        return;
+      }
+      setIsPrinting(true);
+      try {
+        const printerId = connectedDevice.id;
+        const isConnected = await BluetoothClassic.isDeviceConnected(printerId);
+        if (!isConnected) {
+          await BluetoothClassic.connectToDevice(printerId);
+        }
+        await BluetoothClassic.writeToDevice(
+          printerId,
+          Buffer.from(
+            buildEscPosReceipt(order, customer, store, receiptNumber),
+          ),
+        );
+        Alert.alert("Success", "Receipt printed successfully.");
+      } catch (error: any) {
+        Alert.alert(
+          "Print Error",
+          error.message || "Could not send the receipt to the Bluetooth printer.",
+        );
+      } finally {
+        setIsPrinting(false);
+      }
       return;
     }
     const writeCharacteristic = connectedDevice.writeCharacteristic;
