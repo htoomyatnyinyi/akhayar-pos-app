@@ -1077,7 +1077,11 @@ async function resolveRemoteTransactionReferences(payload: any) {
       .from(sessions)
       .where(eq(sessions.id, String(resolved.sessionId)))
       .limit(1);
-    if (sessionRow?.remoteId) resolved.sessionId = sessionRow.remoteId;
+    if (sessionRow?.remoteId) {
+      resolved.sessionId = sessionRow.remoteId;
+    } else {
+      resolved.sessionId = undefined;
+    }
   }
 
   if (resolved.customerId) {
@@ -1278,20 +1282,16 @@ async function processOutboxItem(
                 .where(eq(sessions.id, payload.sessionId))
                 .limit(1)
             : [];
-          if (session?.status === "OPEN" && !session.remoteId) {
-            return {
-              success: false,
-              error: `Session ${payload.sessionId} is waiting for server sync; retrying order later.`,
-            };
-          }
 
-          // Session open – proceed
+          const resolvedSessionId =
+            session?.status === "OPEN" && session.remoteId
+              ? session.remoteId
+              : undefined;
+
+          // Proceed with order creation
           const remoteOrderPayload = await resolveRemoteTransactionReferences({
             ...payload,
-            sessionId:
-              session?.status === "OPEN" && session.remoteId
-                ? session.remoteId
-                : undefined,
+            sessionId: resolvedSessionId,
             items: payload.items,
           });
           const { data, error } = await store.dispatch(

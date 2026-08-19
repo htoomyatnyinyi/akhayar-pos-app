@@ -108,6 +108,19 @@ export default function TabLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+          name="session"
+          options={{
+            title: "Session",
+            tabBarIcon: ({ color, focused }) => (
+              <MaterialIcons
+                name="settings"
+                size={22}
+                color={focused ? "#34d399" : color}
+              />
+            ),
+          }}
+        />
       </Tabs>
 
       {/* Absolute positioning wrapper around this component is completely fine here */}

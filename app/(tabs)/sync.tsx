@@ -38,10 +38,13 @@ import {
 import { clearAllOutboxItems } from "@/services/offline/repository";
 import { useDispatch } from "react-redux";
 import { useRouter } from "expo-router";
+import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
+import { getLocalActiveSession } from "@/services/offline/repository";
 
 export default function SyncScreen() {
   const dispatch = useDispatch();
   const router = useRouter();
+  const { user, currentStoreId } = useAppSelector((state) => state.auth);
 
   const {
     isOnline,
@@ -143,6 +146,19 @@ export default function SyncScreen() {
   };
 
   const handleSignOut = async () => {
+    // Check for open session first
+    if (user?.id) {
+      const activeSession = await getLocalActiveSession(user.id, currentStoreId || undefined);
+      if (activeSession) {
+        Alert.alert(
+          "Open Session Detected",
+          "You must close your current cash register session before signing out.",
+          [{ text: "OK", style: "default" }]
+        );
+        return;
+      }
+    }
+
     Alert.alert(
       "Sign Out",
       "Are you sure you want to sign out? Offline data will be cleared.",

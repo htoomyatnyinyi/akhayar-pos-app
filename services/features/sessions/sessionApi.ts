@@ -40,7 +40,8 @@ export const sessionApi = posApi.injectEndpoints({
             );
 
             if (!result.error) {
-              const session = result.data as Session | null;
+              const resData = result.data as any;
+              const session = (resData?.session || resData) as Session | null;
 
               // Save to SQLite if found
               if (session?.id) {
@@ -102,7 +103,7 @@ export const sessionApi = posApi.injectEndpoints({
 
             if (!result.error) {
               return {
-                data: result.data as Session,
+                data: (result.data as any)?.session || result.data as Session,
               };
             }
 
