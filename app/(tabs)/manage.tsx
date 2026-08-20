@@ -1221,6 +1221,12 @@ export default function ManageScreen() {
                               tone={isActive ? "emerald" : "rose"}
                             />
                           </View>
+
+                          <Text className="text-slate-400 text-xs mt-1">
+                            Opening Balance: $
+                            {Number(session.openingBalance).toFixed(2)}
+                          </Text>
+
                           <Text className="mt-1 text-xs text-slate-400">
                             Opened:{" "}
                             {new Date(session.openedAt).toLocaleString()}

@@ -257,10 +257,14 @@ export default function SyncScreen() {
           title="Synchronization"
           subtitle="Manage offline data and connectivity"
           right={
-            <View className="mt-2">
+            <View className="mt-2 items-end gap-2">
               <Pill
                 label={isOnline ? "ONLINE" : "OFFLINE"}
                 tone={isOnline ? "emerald" : "rose"}
+              />
+              <Pill
+                label="INCREMENTAL"
+                tone="sky"
               />
             </View>
           }

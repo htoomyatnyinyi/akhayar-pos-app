@@ -886,7 +886,7 @@ export default function DashboardScreen() {
             </Card>
 
             {/* Recent Orders Snippet */}
-            {/* <SectionTitle title="Recent Transactions" />
+            <SectionTitle title="Recent Transactions" />
             <Card className="mb-6">
               {metrics.recentOrders.length === 0 ? (
                 <View className="py-6 items-center">
@@ -943,7 +943,7 @@ export default function DashboardScreen() {
                   </TouchableOpacity>
                 </View>
               )}
-            </Card> */}
+            </Card>
           </ScrollView>
         )}
       </SafeAreaView>

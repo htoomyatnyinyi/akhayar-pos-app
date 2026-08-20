@@ -77,7 +77,10 @@ export default function SessionsScreen() {
 
   const handleOpenSession = async () => {
     if (!canManageSession) {
-      Alert.alert("Permission required", "You cannot open or close register sessions.");
+      Alert.alert(
+        "Permission required",
+        "You cannot open or close register sessions.",
+      );
       return;
     }
     if (!user?.id) {
@@ -113,7 +116,10 @@ export default function SessionsScreen() {
 
   const handleCloseSession = async () => {
     if (!canManageSession) {
-      Alert.alert("Permission required", "You cannot open or close register sessions.");
+      Alert.alert(
+        "Permission required",
+        "You cannot open or close register sessions.",
+      );
       return;
     }
     if (!selectedSession) return;
@@ -182,6 +188,11 @@ export default function SessionsScreen() {
                 tone={isActive ? "emerald" : "rose"}
               />
             </View>
+            {/* open session amount */}
+            <Text className="text-slate-400 text-xs mt-1">
+              Opening Balance: ${Number(session.openingBalance).toFixed(2)}
+            </Text>
+
             <Text className="text-slate-400 text-xs mt-1">
               Opened: {new Date(session.openedAt).toLocaleString()}
             </Text>
