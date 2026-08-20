@@ -1568,7 +1568,8 @@ async function processOutboxItem(
             remoteApi.endpoints.createRemoteProduct.initiate(productPayload),
           );
           if (error) throw new Error(JSON.stringify(error));
-          const remoteProduct = (data as any)?.product ?? (data as any);
+          let remoteProduct =
+            (data as any)?.product ?? (data as any)?.data ?? (data as any);
           await db
             .update(products)
             .set({
@@ -1577,6 +1578,71 @@ async function processOutboxItem(
               syncError: null,
             })
             .where(eq(products.id, item.entityId));
+
+          // Product creation may create its options atomically. Persist the
+          // server option IDs immediately so queued checkout/movement records
+          // can resolve local variant IDs before the next pull runs.
+          // Some backend deployments return only the product ID from POST.
+          // Read the created product once so its atomically-created variants
+          // get their remote IDs before queued checkout records are pushed.
+          if (
+            remoteProduct?.id &&
+            !Array.isArray(remoteProduct?.variants)
+          ) {
+            try {
+              const fetched = await store.dispatch(
+                remoteApi.endpoints.getRemoteProductById.initiate(
+                  String(remoteProduct.id),
+                  { forceRefetch: true },
+                ),
+              );
+              remoteProduct =
+                (fetched.data as any)?.product ??
+                (fetched.data as any)?.data ??
+                fetched.data ??
+                remoteProduct;
+            } catch {
+              // The normal pull will reconcile the variants on the next cycle.
+            }
+          }
+          const remoteVariants = Array.isArray(remoteProduct?.variants)
+            ? remoteProduct.variants
+            : [];
+          for (const remoteVariant of remoteVariants) {
+            const remoteVariantId = remoteVariant?.id ?? remoteVariant?._id;
+            if (!remoteVariantId) continue;
+            const remoteSku = String(remoteVariant.sku ?? "").trim();
+            const remoteName = String(remoteVariant.name ?? "").trim();
+            const candidates = await db
+              .select({ id: productVariants.id })
+              .from(productVariants)
+              .where(
+                and(
+                  eq(productVariants.productId, item.entityId),
+                  remoteSku
+                    ? eq(productVariants.sku, remoteSku)
+                    : eq(productVariants.name, remoteName),
+                ),
+              )
+              .limit(1);
+            const localVariant = candidates[0];
+            if (!localVariant) continue;
+            await db
+              .update(productVariants)
+              .set({
+                remoteId: String(remoteVariantId),
+                name: remoteVariant.name ?? undefined,
+                sku: remoteVariant.sku ?? undefined,
+                barcode: remoteVariant.barcode ?? undefined,
+                price: Number(remoteVariant.price ?? 0),
+                costPrice: Number(remoteVariant.costPrice ?? remoteVariant.cost_price ?? 0),
+                syncStatus: "synced",
+                syncError: null,
+                updatedAt: new Date().toISOString(),
+                lastSyncedAt: new Date().toISOString(),
+              })
+              .where(eq(productVariants.id, localVariant.id));
+          }
         } else if (item.operation === "update") {
           const remoteProductId = await resolveEntityRemoteId("products", item.entityId);
           const productPayload = await resolveProductReferences(payload);

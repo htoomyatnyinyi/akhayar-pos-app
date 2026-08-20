@@ -1,12 +1,13 @@
-// FILE: components/offline-sync-status.tsx
-
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Pressable, Text, View } from "react-native";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+// import { useAppDispatch, useAppSelector } from "@/hooks/redux-hooks";
 import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { syncNow } from "@/services/offline/syncManager";
 import { store } from "@/services/store/store";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useEffect, useRef, useState } from "react";
-import { Animated, Pressable, Text, View } from "react-native";
+
+type BannerReason = "offline" | "syncing" | "error" | "queued";
 
 export function OfflineSyncStatus() {
   const dispatch = useAppDispatch();
@@ -15,23 +16,82 @@ export function OfflineSyncStatus() {
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [dismissedReason, setDismissedReason] = useState<BannerReason | null>(
+    null,
+  );
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Logic: Show if there's an issue or sync activity, unless the user manually dismissed it.
-  const needsAttention =
-    !isOnline || isSyncing || !!syncError || queuedCount > 0;
-  const shouldBeVisible = needsAttention && !isDismissed;
+  // Determine current reason (hook – must be before any return)
+  const currentReason = useMemo<BannerReason | null>(() => {
+    if (isSyncing) return "syncing";
+    if (syncError) return "error";
+    if (!isOnline) return "offline";
+    if (queuedCount > 0) return "queued";
+    return null;
+  }, [isSyncing, syncError, isOnline, queuedCount]);
 
+  // Compute UI properties (also a hook – move before return)
+  const uiProps = useMemo(() => {
+    if (isSyncing) {
+      return {
+        label: "Syncing...",
+        iconName: "sync" as const,
+        iconColor: "#38bdf8",
+        bgColor: "bg-sky-950/95 border-sky-500/30",
+        message: "Synchronizing data...",
+      };
+    }
+    if (syncError) {
+      return {
+        label: "Sync Error",
+        iconName: "error-outline" as const,
+        iconColor: "#fb7185",
+        bgColor: "bg-rose-950/95 border-rose-500/30",
+        message: syncError,
+      };
+    }
+    if (!isOnline) {
+      return {
+        label: `Offline${queuedCount > 0 ? ` (${queuedCount})` : ""}`,
+        iconName: "cloud-off" as const,
+        iconColor: "#fb7185",
+        bgColor: "bg-rose-950/95 border-rose-500/30",
+        message:
+          queuedCount > 0
+            ? "Changes stored locally."
+            : "No internet connection.",
+      };
+    }
+    if (queuedCount > 0) {
+      return {
+        label: `${queuedCount} queued`,
+        iconName: "sync" as const,
+        iconColor: "#fbbf24",
+        bgColor: "bg-amber-950/95 border-amber-500/30",
+        message: "Tap to sync now.",
+      };
+    }
+    // Fallback (should not happen when visible, but safe)
+    return {
+      label: "Online",
+      iconName: "cloud-done" as const,
+      iconColor: "#34d399",
+      bgColor: "bg-emerald-950/95 border-emerald-500/30",
+      message: "Everything is synced.",
+    };
+  }, [isSyncing, syncError, isOnline, queuedCount]);
+
+  const shouldShow =
+    currentReason !== null && currentReason !== dismissedReason;
+
+  // Effect to handle show/hide animation (hook)
   useEffect(() => {
-    // If state changes significantly (e.g., more items queued), re-enable visibility
-    if (needsAttention && isDismissed) {
-      setIsDismissed(false);
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
     }
 
-    if (shouldBeVisible) {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-
+    if (shouldShow) {
       setIsVisible(true);
       Animated.spring(slideAnim, {
         toValue: 1,
@@ -39,8 +99,7 @@ export function OfflineSyncStatus() {
         tension: 50,
         friction: 7,
       }).start();
-    } else if (isVisible) {
-      // Auto-hide after 3 seconds if conditions clear
+    } else if (isVisible && !shouldShow) {
       hideTimerRef.current = setTimeout(() => {
         Animated.spring(slideAnim, {
           toValue: 0,
@@ -54,39 +113,37 @@ export function OfflineSyncStatus() {
     return () => {
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, [shouldBeVisible, isVisible, needsAttention]);
+  }, [shouldShow, isVisible, slideAnim]);
 
+  // Callbacks (hooks)
+  const handleSync = useCallback(() => {
+    if (isOnline && !isSyncing && (queuedCount > 0 || syncError)) {
+      syncNow(dispatch, store.getState);
+    }
+  }, [isOnline, isSyncing, queuedCount, syncError, dispatch]);
+
+  const handleDismiss = useCallback(() => {
+    if (currentReason) {
+      setDismissedReason(currentReason);
+    }
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start(() => setIsVisible(false));
+  }, [currentReason, slideAnim]);
+
+  // Early return – now safe because all hooks are above
   if (!isVisible) return null;
 
-  // UI Logic
-  let statusLabel = isSyncing
-    ? "Syncing..."
-    : syncError
-      ? "Sync Error"
-      : !isOnline
-        ? "Offline"
-        : `${queuedCount} queued`;
-  let bgColor = isSyncing
-    ? "bg-sky-950/95 border-sky-500/30"
-    : syncError || !isOnline
-      ? "bg-rose-950/95 border-rose-500/30"
-      : "bg-amber-950/95 border-amber-500/30";
-  let iconName: keyof typeof MaterialIcons.glyphMap = isSyncing
-    ? "sync"
-    : syncError
-      ? "error-outline"
-      : !isOnline
-        ? "cloud-off"
-        : "sync";
-  let iconColor = isSyncing
-    ? "#38bdf8"
-    : syncError || !isOnline
-      ? "#fb7185"
-      : "#fbbf24";
+  // Destructure UI props
+  const { label, iconName, iconColor, bgColor, message } = uiProps;
+  const isPressable =
+    isOnline && !isSyncing && (queuedCount > 0 || !!syncError);
 
   return (
     <Animated.View
-      className="absolute left-4 right-4 top-3 z-50"
       style={{
         opacity: slideAnim,
         transform: [
@@ -98,40 +155,44 @@ export function OfflineSyncStatus() {
           },
         ],
       }}
+      className="absolute left-4 right-4 top-3 z-50"
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
     >
       <Pressable
-        onPress={() => {
-          if (isOnline && !isSyncing && (queuedCount > 0 || syncError)) {
-            syncNow(dispatch, store.getState);
-          } else {
-            setIsDismissed(true); // Dismiss on tap
-          }
-        }}
+        onPress={isPressable ? handleSync : undefined}
         className={`rounded-[20px] border px-4 py-3 ${bgColor}`}
       >
         <View className="flex-row items-start gap-3">
           <View className="h-10 w-10 items-center justify-center rounded-2xl bg-black/20">
             <MaterialIcons name={iconName} size={20} color={iconColor} />
           </View>
+
           <View className="flex-1">
             <Text className="text-[11px] font-bold uppercase tracking-[3px] text-slate-300">
-              {statusLabel}
+              {label}
             </Text>
-            <Text className="mt-1 text-sm text-white">
-              {syncError ||
-                (isSyncing
-                  ? "Syncing in progress..."
-                  : queuedCount > 0
-                    ? "Changes waiting to sync. Tap to sync now."
-                    : "You are offline.")}
-            </Text>
+            <Text className="mt-1 text-sm text-white">{message}</Text>
+            {lastSyncAt && (
+              <Text className="mt-2 text-[11px] text-slate-500">
+                Last sync {new Date(lastSyncAt).toLocaleTimeString()}
+              </Text>
+            )}
           </View>
+
+          {/* Dismiss button */}
+          <Pressable
+            onPress={handleDismiss}
+            className="self-start rounded-full p-1"
+            accessibilityLabel="Dismiss status"
+          >
+            <MaterialIcons name="close" size={18} color="#94a3b8" />
+          </Pressable>
         </View>
       </Pressable>
     </Animated.View>
   );
 }
-// // FILE: components/offline-sync-status.tsx
 
 // import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 // import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
@@ -148,32 +209,23 @@ export function OfflineSyncStatus() {
 
 //   const slideAnim = useRef(new Animated.Value(0)).current;
 //   const [isVisible, setIsVisible] = useState(false);
-
-//   // FIX: Use ReturnType to handle the environment-specific return type of setTimeout
+//   const [isDismissed, setIsDismissed] = useState(false);
 //   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-//   const shouldBeVisible =
-//     !isOnline || isSyncing || queuedCount > 0 || !!syncError;
+//   // Logic: Show if there's an issue or sync activity, unless the user manually dismissed it.
+//   const needsAttention =
+//     !isOnline || isSyncing || !!syncError || queuedCount > 0;
+//   const shouldBeVisible = needsAttention && !isDismissed;
 
 //   useEffect(() => {
-//     console.log("Effect triggered:", {
-//       isOnline,
-//       isSyncing,
-//       queuedCount,
-//       syncError,
-//       isVisible,
-//     });
-
-//     // Helper to clear existing timer
-//     const clearHideTimer = () => {
-//       if (hideTimerRef.current) {
-//         clearTimeout(hideTimerRef.current);
-//         hideTimerRef.current = null;
-//       }
-//     };
+//     // If state changes significantly (e.g., more items queued), re-enable visibility
+//     if (needsAttention && isDismissed) {
+//       setIsDismissed(false);
+//     }
 
 //     if (shouldBeVisible) {
-//       clearHideTimer();
+//       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+
 //       setIsVisible(true);
 //       Animated.spring(slideAnim, {
 //         toValue: 1,
@@ -182,67 +234,49 @@ export function OfflineSyncStatus() {
 //         friction: 7,
 //       }).start();
 //     } else if (isVisible) {
-//       // Start the hide timer
+//       // Auto-hide after 3 seconds if conditions clear
 //       hideTimerRef.current = setTimeout(() => {
 //         Animated.spring(slideAnim, {
 //           toValue: 0,
 //           useNativeDriver: true,
 //           tension: 50,
 //           friction: 7,
-//         }).start(() => {
-//           setIsVisible(false);
-//         });
+//         }).start(() => setIsVisible(false));
 //       }, 3000);
 //     }
 
-//     return () => clearHideTimer();
-//   }, [isOnline, isSyncing, queuedCount, syncError, isVisible]);
+//     return () => {
+//       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+//     };
+//   }, [shouldBeVisible, isVisible, needsAttention]);
 
 //   if (!isVisible) return null;
 
-//   // ... (Rest of your component logic remains the same)
-//   let statusLabel = "";
-//   let iconName: keyof typeof MaterialIcons.glyphMap = "cloud-off";
-//   let iconColor = "#fb7185";
-//   let bgColor = "bg-rose-950/95 border-rose-500/30";
-
-//   if (isSyncing) {
-//     statusLabel = "Syncing...";
-//     iconName = "sync";
-//     iconColor = "#38bdf8";
-//     bgColor = "bg-sky-950/95 border-sky-500/30";
-//   } else if (!isOnline) {
-//     statusLabel = `${queuedCount} offline`;
-//     iconName = "cloud-off";
-//     iconColor = "#fb7185";
-//     bgColor = "bg-rose-950/95 border-rose-500/30";
-//   } else if (syncError) {
-//     statusLabel = "Sync Error";
-//     iconName = "error-outline";
-//     iconColor = "#fb7185";
-//     bgColor = "bg-rose-950/95 border-rose-500/30";
-//   } else if (queuedCount > 0) {
-//     statusLabel = `${queuedCount} queued`;
-//     iconName = "sync";
-//     iconColor = "#fbbf24";
-//     bgColor = "bg-amber-950/95 border-amber-500/30";
-//   } else {
-//     statusLabel = "Online";
-//     iconName = "cloud-done";
-//     iconColor = "#34d399";
-//     bgColor = "bg-emerald-950/95 border-emerald-500/30";
-//   }
-
-//   const statusMessage = syncError
-//     ? syncError
-//     : isSyncing
-//       ? "Synchronizing data..."
+//   // UI Logic
+//   let statusLabel = isSyncing
+//     ? "Syncing..."
+//     : syncError
+//       ? "Sync Error"
 //       : !isOnline
-//         ? "Working offline."
-//         : "Everything is synced.";
-
-//   const isPressable =
-//     isOnline && !isSyncing && (queuedCount > 0 || !!syncError);
+//         ? "Offline"
+//         : `${queuedCount} queued`;
+//   let bgColor = isSyncing
+//     ? "bg-sky-950/95 border-sky-500/30"
+//     : syncError || !isOnline
+//       ? "bg-rose-950/95 border-rose-500/30"
+//       : "bg-amber-950/95 border-amber-500/30";
+//   let iconName: keyof typeof MaterialIcons.glyphMap = isSyncing
+//     ? "sync"
+//     : syncError
+//       ? "error-outline"
+//       : !isOnline
+//         ? "cloud-off"
+//         : "sync";
+//   let iconColor = isSyncing
+//     ? "#38bdf8"
+//     : syncError || !isOnline
+//       ? "#fb7185"
+//       : "#fbbf24";
 
 //   return (
 //     <Animated.View
@@ -260,23 +294,40 @@ export function OfflineSyncStatus() {
 //       }}
 //     >
 //       <Pressable
-//         onPress={() => isPressable && syncNow(dispatch, store.getState)}
+//         onPress={() => {
+//           if (isOnline && !isSyncing && (queuedCount > 0 || syncError)) {
+//             syncNow(dispatch, store.getState);
+//           } else {
+//             setIsDismissed(true); // Dismiss on tap
+//           }
+//         }}
 //         className={`rounded-[20px] border px-4 py-3 ${bgColor}`}
 //       >
-//         <View className="flex-row items-center gap-3">
-//           <MaterialIcons name={iconName} size={20} color={iconColor} />
+//         <View className="flex-row items-start gap-3">
+//           <View className="h-10 w-10 items-center justify-center rounded-2xl bg-black/20">
+//             <MaterialIcons name={iconName} size={20} color={iconColor} />
+//           </View>
 //           <View className="flex-1">
-//             <Text className="text-white font-bold">{statusLabel}</Text>
-//             <Text className="text-slate-300 text-xs">{statusMessage}</Text>
+//             <Text className="text-[11px] font-bold uppercase tracking-[3px] text-slate-300">
+//               {statusLabel}
+//             </Text>
+//             <Text className="mt-1 text-sm text-white">
+//               {syncError ||
+//                 (isSyncing
+//                   ? "Syncing in progress..."
+//                   : queuedCount > 0
+//                     ? "Changes waiting to sync. Tap to sync now."
+//                     : "You are offline.")}
+//             </Text>
 //           </View>
 //         </View>
 //       </Pressable>
 //     </Animated.View>
 //   );
 // }
-// // // ============================================
+
+// // // good
 // // // FILE: components/offline-sync-status.tsx
-// // // ============================================
 
 // // import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 // // import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
@@ -291,38 +342,44 @@ export function OfflineSyncStatus() {
 // //   const { isOnline, isSyncing, queuedCount, syncError, lastSyncAt } =
 // //     useAppSelector((state) => state.offline);
 
-// //   // Animation for smooth enter/exit
 // //   const slideAnim = useRef(new Animated.Value(0)).current;
-
-// //   // Control visibility state
 // //   const [isVisible, setIsVisible] = useState(false);
-// //   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-// //   // Monitor state changes to show/hide the popup
+// //   // FIX: Use ReturnType to handle the environment-specific return type of setTimeout
+// //   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+// //   const shouldBeVisible =
+// //     !isOnline || isSyncing || queuedCount > 0 || !!syncError;
+
 // //   useEffect(() => {
-// //     // Clear any pending hide timer
-// //     if (hideTimerRef.current) {
-// //       clearTimeout(hideTimerRef.current);
-// //       hideTimerRef.current = null;
-// //     }
+// //     console.log("Effect triggered:", {
+// //       isOnline,
+// //       isSyncing,
+// //       queuedCount,
+// //       syncError,
+// //       isVisible,
+// //     });
 
-// //     // Show if offline, syncing, or has pending items
-// //     const shouldShow = !isOnline || isSyncing || queuedCount > 0 || syncError;
+// //     // Helper to clear existing timer
+// //     const clearHideTimer = () => {
+// //       if (hideTimerRef.current) {
+// //         clearTimeout(hideTimerRef.current);
+// //         hideTimerRef.current = null;
+// //       }
+// //     };
 
-// //     if (shouldShow) {
+// //     if (shouldBeVisible) {
+// //       clearHideTimer();
 // //       setIsVisible(true);
-// //       // Animate in
 // //       Animated.spring(slideAnim, {
 // //         toValue: 1,
 // //         useNativeDriver: true,
 // //         tension: 50,
 // //         friction: 7,
 // //       }).start();
-// //     } else if (isVisible && !shouldShow && lastSyncAt) {
-// //       // If online, not syncing, no pending items, and has synced before
-// //       // Keep visible for 3 seconds then hide
+// //     } else if (isVisible) {
+// //       // Start the hide timer
 // //       hideTimerRef.current = setTimeout(() => {
-// //         // Animate out
 // //         Animated.spring(slideAnim, {
 // //           toValue: 0,
 // //           useNativeDriver: true,
@@ -334,18 +391,12 @@ export function OfflineSyncStatus() {
 // //       }, 3000);
 // //     }
 
-// //     return () => {
-// //       if (hideTimerRef.current) {
-// //         clearTimeout(hideTimerRef.current);
-// //         hideTimerRef.current = null;
-// //       }
-// //     };
-// //   }, [isOnline, isSyncing, queuedCount, syncError, lastSyncAt]);
+// //     return () => clearHideTimer();
+// //   }, [isOnline, isSyncing, queuedCount, syncError, isVisible]);
 
-// //   // If not visible, render nothing
 // //   if (!isVisible) return null;
 
-// //   // Determine status label and icon
+// //   // ... (Rest of your component logic remains the same)
 // //   let statusLabel = "";
 // //   let iconName: keyof typeof MaterialIcons.glyphMap = "cloud-off";
 // //   let iconColor = "#fb7185";
@@ -378,25 +429,16 @@ export function OfflineSyncStatus() {
 // //     bgColor = "bg-emerald-950/95 border-emerald-500/30";
 // //   }
 
-// //   // Get status message
-// //   let statusMessage = "";
-// //   if (syncError) {
-// //     statusMessage = syncError;
-// //   } else if (isSyncing) {
-// //     statusMessage = "Synchronizing data with server...";
-// //   } else if (!isOnline) {
-// //     statusMessage =
-// //       queuedCount > 0
-// //         ? "Working offline. Changes will sync when online."
-// //         : "You are offline. No pending changes.";
-// //   } else if (queuedCount > 0) {
-// //     statusMessage =
-// //       "Pending changes will be pushed to the server automatically.";
-// //   } else {
-// //     statusMessage = "Everything is synced and up to date.";
-// //   }
+// //   const statusMessage = syncError
+// //     ? syncError
+// //     : isSyncing
+// //       ? "Synchronizing data..."
+// //       : !isOnline
+// //         ? "Working offline."
+// //         : "Everything is synced.";
 
-// //   const isPressable = isOnline && !isSyncing && (queuedCount > 0 || syncError);
+// //   const isPressable =
+// //     isOnline && !isSyncing && (queuedCount > 0 || !!syncError);
 
 // //   return (
 // //     <Animated.View
@@ -414,140 +456,199 @@ export function OfflineSyncStatus() {
 // //       }}
 // //     >
 // //       <Pressable
-// //         accessibilityRole="button"
-// //         accessibilityLabel="Sync offline changes"
-// //         disabled={!isPressable}
-// //         onPress={() => {
-// //           if (isPressable) {
-// //             syncNow(dispatch, store.getState);
-// //           }
-// //         }}
+// //         onPress={() => isPressable && syncNow(dispatch, store.getState)}
 // //         className={`rounded-[20px] border px-4 py-3 ${bgColor}`}
 // //       >
-// //         <View className="flex-row items-start gap-3">
-// //           <View
-// //             className={`h-10 w-10 items-center justify-center rounded-2xl ${isOnline ? "bg-emerald-500/10" : "bg-rose-500/10"}`}
-// //           >
-// //             <MaterialIcons name={iconName} size={20} color={iconColor} />
-// //           </View>
-
+// //         <View className="flex-row items-center gap-3">
+// //           <MaterialIcons name={iconName} size={20} color={iconColor} />
 // //           <View className="flex-1">
-// //             <Text className="text-[11px] font-bold uppercase tracking-[3px] text-slate-400">
-// //               {statusLabel}
-// //             </Text>
-// //             <Text className="mt-1 text-sm text-white">{statusMessage}</Text>
-// //             {lastSyncAt && (
-// //               <Text className="mt-2 text-[11px] text-slate-500">
-// //                 Last sync {new Date(lastSyncAt).toLocaleTimeString()}
-// //               </Text>
-// //             )}
+// //             <Text className="text-white font-bold">{statusLabel}</Text>
+// //             <Text className="text-slate-300 text-xs">{statusMessage}</Text>
 // //           </View>
-
-// //           {isPressable && (
-// //             <MaterialIcons name="arrow-forward-ios" size={14} color="#94a3b8" />
-// //           )}
 // //         </View>
 // //       </Pressable>
 // //     </Animated.View>
 // //   );
 // // }
+// // // // ============================================
+// // // // FILE: components/offline-sync-status.tsx
+// // // // ============================================
 
-// // // import { useState, useEffect } from "react"; // 1. Import hooks
-// // // import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-// // // import { Pressable, Text, View } from "react-native";
 // // // import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 // // // import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 // // // import { syncNow } from "@/services/offline/syncManager";
 // // // import { store } from "@/services/store/store";
+// // // import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+// // // import { useEffect, useRef, useState } from "react";
+// // // import { Animated, Pressable, Text, View } from "react-native";
 
 // // // export function OfflineSyncStatus() {
 // // //   const dispatch = useAppDispatch();
-// // //   const { isOnline, isSyncing, queuedCount, lastError, lastSyncedAt } =
+// // //   const { isOnline, isSyncing, queuedCount, syncError, lastSyncAt } =
 // // //     useAppSelector((state) => state.offline);
 
-// // //   // 2. Control visibility state
+// // //   // Animation for smooth enter/exit
+// // //   const slideAnim = useRef(new Animated.Value(0)).current;
+
+// // //   // Control visibility state
 // // //   const [isVisible, setIsVisible] = useState(false);
+// // //   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-// // //   // 3. Monitor state changes to show/hide the popup
+// // //   // Monitor state changes to show/hide the popup
 // // //   useEffect(() => {
-// // //     if (!isOnline || queuedCount > 0 || isSyncing) {
-// // //       // Show it if they are offline, syncing, or have items queued
-// // //       setIsVisible(true);
-// // //     } else if (isOnline && queuedCount === 0 && lastSyncedAt) {
-// // //       // If they just finished syncing successfully, keep it up for 3 seconds, then hide
-// // //       const timer = setTimeout(() => {
-// // //         setIsVisible(false);
-// // //       }, 3000);
-
-// // //       return () => clearTimeout(timer);
+// // //     // Clear any pending hide timer
+// // //     if (hideTimerRef.current) {
+// // //       clearTimeout(hideTimerRef.current);
+// // //       hideTimerRef.current = null;
 // // //     }
-// // //   }, [isOnline, queuedCount, isSyncing, lastSyncedAt]);
 
-// // //   // 4. If not visible, render nothing
+// // //     // Show if offline, syncing, or has pending items
+// // //     const shouldShow = !isOnline || isSyncing || queuedCount > 0 || syncError;
+
+// // //     if (shouldShow) {
+// // //       setIsVisible(true);
+// // //       // Animate in
+// // //       Animated.spring(slideAnim, {
+// // //         toValue: 1,
+// // //         useNativeDriver: true,
+// // //         tension: 50,
+// // //         friction: 7,
+// // //       }).start();
+// // //     } else if (isVisible && !shouldShow && lastSyncAt) {
+// // //       // If online, not syncing, no pending items, and has synced before
+// // //       // Keep visible for 3 seconds then hide
+// // //       hideTimerRef.current = setTimeout(() => {
+// // //         // Animate out
+// // //         Animated.spring(slideAnim, {
+// // //           toValue: 0,
+// // //           useNativeDriver: true,
+// // //           tension: 50,
+// // //           friction: 7,
+// // //         }).start(() => {
+// // //           setIsVisible(false);
+// // //         });
+// // //       }, 3000);
+// // //     }
+
+// // //     return () => {
+// // //       if (hideTimerRef.current) {
+// // //         clearTimeout(hideTimerRef.current);
+// // //         hideTimerRef.current = null;
+// // //       }
+// // //     };
+// // //   }, [isOnline, isSyncing, queuedCount, syncError, lastSyncAt]);
+
+// // //   // If not visible, render nothing
 // // //   if (!isVisible) return null;
 
-// // //   const label = isSyncing
-// // //     ? "Syncing queue"
-// // //     : isOnline
-// // //       ? queuedCount > 0
-// // //         ? `${queuedCount} queued`
-// // //         : "Online"
-// // //       : `${queuedCount} offline`;
+// // //   // Determine status label and icon
+// // //   let statusLabel = "";
+// // //   let iconName: keyof typeof MaterialIcons.glyphMap = "cloud-off";
+// // //   let iconColor = "#fb7185";
+// // //   let bgColor = "bg-rose-950/95 border-rose-500/30";
+
+// // //   if (isSyncing) {
+// // //     statusLabel = "Syncing...";
+// // //     iconName = "sync";
+// // //     iconColor = "#38bdf8";
+// // //     bgColor = "bg-sky-950/95 border-sky-500/30";
+// // //   } else if (!isOnline) {
+// // //     statusLabel = `${queuedCount} offline`;
+// // //     iconName = "cloud-off";
+// // //     iconColor = "#fb7185";
+// // //     bgColor = "bg-rose-950/95 border-rose-500/30";
+// // //   } else if (syncError) {
+// // //     statusLabel = "Sync Error";
+// // //     iconName = "error-outline";
+// // //     iconColor = "#fb7185";
+// // //     bgColor = "bg-rose-950/95 border-rose-500/30";
+// // //   } else if (queuedCount > 0) {
+// // //     statusLabel = `${queuedCount} queued`;
+// // //     iconName = "sync";
+// // //     iconColor = "#fbbf24";
+// // //     bgColor = "bg-amber-950/95 border-amber-500/30";
+// // //   } else {
+// // //     statusLabel = "Online";
+// // //     iconName = "cloud-done";
+// // //     iconColor = "#34d399";
+// // //     bgColor = "bg-emerald-950/95 border-emerald-500/30";
+// // //   }
+
+// // //   // Get status message
+// // //   let statusMessage = "";
+// // //   if (syncError) {
+// // //     statusMessage = syncError;
+// // //   } else if (isSyncing) {
+// // //     statusMessage = "Synchronizing data with server...";
+// // //   } else if (!isOnline) {
+// // //     statusMessage =
+// // //       queuedCount > 0
+// // //         ? "Working offline. Changes will sync when online."
+// // //         : "You are offline. No pending changes.";
+// // //   } else if (queuedCount > 0) {
+// // //     statusMessage =
+// // //       "Pending changes will be pushed to the server automatically.";
+// // //   } else {
+// // //     statusMessage = "Everything is synced and up to date.";
+// // //   }
+
+// // //   const isPressable = isOnline && !isSyncing && (queuedCount > 0 || syncError);
 
 // // //   return (
-// // //     <View className="absolute left-4 right-4 top-3 z-50">
+// // //     <Animated.View
+// // //       className="absolute left-4 right-4 top-3 z-50"
+// // //       style={{
+// // //         opacity: slideAnim,
+// // //         transform: [
+// // //           {
+// // //             translateY: slideAnim.interpolate({
+// // //               inputRange: [0, 1],
+// // //               outputRange: [-20, 0],
+// // //             }),
+// // //           },
+// // //         ],
+// // //       }}
+// // //     >
 // // //       <Pressable
 // // //         accessibilityRole="button"
 // // //         accessibilityLabel="Sync offline changes"
-// // //         disabled={!isOnline || isSyncing}
-// // //         onPress={() => syncNow(dispatch, store.getState)}
-// // //         className={`rounded-[20px] border px-4 py-3 ${
-// // //           isOnline
-// // //             ? "bg-slate-900/95 border-emerald-500/20"
-// // //             : "bg-rose-950/95 border-rose-500/30"
-// // //         }`}
+// // //         disabled={!isPressable}
+// // //         onPress={() => {
+// // //           if (isPressable) {
+// // //             syncNow(dispatch, store.getState);
+// // //           }
+// // //         }}
+// // //         className={`rounded-[20px] border px-4 py-3 ${bgColor}`}
 // // //       >
 // // //         <View className="flex-row items-start gap-3">
 // // //           <View
 // // //             className={`h-10 w-10 items-center justify-center rounded-2xl ${isOnline ? "bg-emerald-500/10" : "bg-rose-500/10"}`}
 // // //           >
-// // //             <MaterialIcons
-// // //               name={
-// // //                 isOnline
-// // //                   ? queuedCount > 0
-// // //                     ? "sync"
-// // //                     : "cloud-done"
-// // //                   : "cloud-off"
-// // //               }
-// // //               size={20}
-// // //               color={isOnline ? "#34d399" : "#fb7185"}
-// // //             />
+// // //             <MaterialIcons name={iconName} size={20} color={iconColor} />
 // // //           </View>
+
 // // //           <View className="flex-1">
 // // //             <Text className="text-[11px] font-bold uppercase tracking-[3px] text-slate-400">
-// // //               {label}
+// // //               {statusLabel}
 // // //             </Text>
-// // //             <Text className="mt-1 text-sm text-white">
-// // //               {lastError
-// // //                 ? lastError
-// // //                 : isOnline
-// // //                   ? queuedCount > 0
-// // //                     ? "Queued actions will be pushed automatically."
-// // //                     : "Everything is synced."
-// // //                   : "Working offline. Changes are stored locally."}
-// // //             </Text>
-// // //             <Text className="mt-2 text-[11px] text-slate-500">
-// // //               {lastSyncedAt
-// // //                 ? `Last sync ${new Date(lastSyncedAt).toLocaleTimeString()}`
-// // //                 : "No sync yet"}
-// // //             </Text>
+// // //             <Text className="mt-1 text-sm text-white">{statusMessage}</Text>
+// // //             {lastSyncAt && (
+// // //               <Text className="mt-2 text-[11px] text-slate-500">
+// // //                 Last sync {new Date(lastSyncAt).toLocaleTimeString()}
+// // //               </Text>
+// // //             )}
 // // //           </View>
-// // //           <MaterialIcons name="arrow-forward-ios" size={14} color="#94a3b8" />
+
+// // //           {isPressable && (
+// // //             <MaterialIcons name="arrow-forward-ios" size={14} color="#94a3b8" />
+// // //           )}
 // // //         </View>
 // // //       </Pressable>
-// // //     </View>
+// // //     </Animated.View>
 // // //   );
 // // // }
+
+// // // // import { useState, useEffect } from "react"; // 1. Import hooks
 // // // // import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 // // // // import { Pressable, Text, View } from "react-native";
 // // // // import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
@@ -559,6 +660,27 @@ export function OfflineSyncStatus() {
 // // // //   const dispatch = useAppDispatch();
 // // // //   const { isOnline, isSyncing, queuedCount, lastError, lastSyncedAt } =
 // // // //     useAppSelector((state) => state.offline);
+
+// // // //   // 2. Control visibility state
+// // // //   const [isVisible, setIsVisible] = useState(false);
+
+// // // //   // 3. Monitor state changes to show/hide the popup
+// // // //   useEffect(() => {
+// // // //     if (!isOnline || queuedCount > 0 || isSyncing) {
+// // // //       // Show it if they are offline, syncing, or have items queued
+// // // //       setIsVisible(true);
+// // // //     } else if (isOnline && queuedCount === 0 && lastSyncedAt) {
+// // // //       // If they just finished syncing successfully, keep it up for 3 seconds, then hide
+// // // //       const timer = setTimeout(() => {
+// // // //         setIsVisible(false);
+// // // //       }, 3000);
+
+// // // //       return () => clearTimeout(timer);
+// // // //     }
+// // // //   }, [isOnline, queuedCount, isSyncing, lastSyncedAt]);
+
+// // // //   // 4. If not visible, render nothing
+// // // //   if (!isVisible) return null;
 
 // // // //   const label = isSyncing
 // // // //     ? "Syncing queue"
@@ -622,3 +744,77 @@ export function OfflineSyncStatus() {
 // // // //     </View>
 // // // //   );
 // // // // }
+// // // // // import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+// // // // // import { Pressable, Text, View } from "react-native";
+// // // // // import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
+// // // // // import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
+// // // // // import { syncNow } from "@/services/offline/syncManager";
+// // // // // import { store } from "@/services/store/store";
+
+// // // // // export function OfflineSyncStatus() {
+// // // // //   const dispatch = useAppDispatch();
+// // // // //   const { isOnline, isSyncing, queuedCount, lastError, lastSyncedAt } =
+// // // // //     useAppSelector((state) => state.offline);
+
+// // // // //   const label = isSyncing
+// // // // //     ? "Syncing queue"
+// // // // //     : isOnline
+// // // // //       ? queuedCount > 0
+// // // // //         ? `${queuedCount} queued`
+// // // // //         : "Online"
+// // // // //       : `${queuedCount} offline`;
+
+// // // // //   return (
+// // // // //     <View className="absolute left-4 right-4 top-3 z-50">
+// // // // //       <Pressable
+// // // // //         accessibilityRole="button"
+// // // // //         accessibilityLabel="Sync offline changes"
+// // // // //         disabled={!isOnline || isSyncing}
+// // // // //         onPress={() => syncNow(dispatch, store.getState)}
+// // // // //         className={`rounded-[20px] border px-4 py-3 ${
+// // // // //           isOnline
+// // // // //             ? "bg-slate-900/95 border-emerald-500/20"
+// // // // //             : "bg-rose-950/95 border-rose-500/30"
+// // // // //         }`}
+// // // // //       >
+// // // // //         <View className="flex-row items-start gap-3">
+// // // // //           <View
+// // // // //             className={`h-10 w-10 items-center justify-center rounded-2xl ${isOnline ? "bg-emerald-500/10" : "bg-rose-500/10"}`}
+// // // // //           >
+// // // // //             <MaterialIcons
+// // // // //               name={
+// // // // //                 isOnline
+// // // // //                   ? queuedCount > 0
+// // // // //                     ? "sync"
+// // // // //                     : "cloud-done"
+// // // // //                   : "cloud-off"
+// // // // //               }
+// // // // //               size={20}
+// // // // //               color={isOnline ? "#34d399" : "#fb7185"}
+// // // // //             />
+// // // // //           </View>
+// // // // //           <View className="flex-1">
+// // // // //             <Text className="text-[11px] font-bold uppercase tracking-[3px] text-slate-400">
+// // // // //               {label}
+// // // // //             </Text>
+// // // // //             <Text className="mt-1 text-sm text-white">
+// // // // //               {lastError
+// // // // //                 ? lastError
+// // // // //                 : isOnline
+// // // // //                   ? queuedCount > 0
+// // // // //                     ? "Queued actions will be pushed automatically."
+// // // // //                     : "Everything is synced."
+// // // // //                   : "Working offline. Changes are stored locally."}
+// // // // //             </Text>
+// // // // //             <Text className="mt-2 text-[11px] text-slate-500">
+// // // // //               {lastSyncedAt
+// // // // //                 ? `Last sync ${new Date(lastSyncedAt).toLocaleTimeString()}`
+// // // // //                 : "No sync yet"}
+// // // // //             </Text>
+// // // // //           </View>
+// // // // //           <MaterialIcons name="arrow-forward-ios" size={14} color="#94a3b8" />
+// // // // //         </View>
+// // // // //       </Pressable>
+// // // // //     </View>
+// // // // //   );
+// // // // // }

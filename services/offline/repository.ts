@@ -428,10 +428,25 @@ export async function upsertProductVariants(
   const db = getOfflineDb();
 
   const variantsToInsert: Array<typeof productVariants.$inferInsert> = [];
+  const seenVariantIds = new Set<string>();
   for (const variant of remoteVariants) {
     const normalized = normalizeProductVariant(variant);
     if (!normalized.tenantId) normalized.tenantId = defaultTenantId;
     const remoteId = String(normalized.id);
+
+    // The API returns server product IDs while the offline row uses a local
+    // product ID. Resolve that boundary before trying to match the variant.
+    const [localProduct] = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(
+        or(
+          eq(products.id, String(normalized.productId)),
+          eq(products.remoteId, String(normalized.productId)),
+        ),
+      )
+      .limit(1);
+    if (localProduct) normalized.productId = localProduct.id;
 
     // Like products, variants created offline have a local primary key. Once
     // the parent product is pushed, the next pull returns server variant IDs.
@@ -444,25 +459,62 @@ export async function upsertProductVariants(
         .where(eq(productVariants.remoteId, remoteId))
         .limit(1)
     )[0];
-    const existingByProductAndSku = existingByRemoteId
-      ? undefined
-      : (
-          await db
-            .select({ id: productVariants.id })
-            .from(productVariants)
-            .where(
-              and(
-                eq(productVariants.productId, String(normalized.productId)),
-                eq(productVariants.sku, String(normalized.sku)),
-              ),
-            )
-            .limit(1)
-        )[0];
-    const existing = existingByRemoteId ?? existingByProductAndSku;
+    const skuCandidates = await db
+      .select({ id: productVariants.id })
+      .from(productVariants)
+      .where(
+        and(
+          eq(productVariants.productId, String(normalized.productId)),
+          eq(productVariants.sku, String(normalized.sku)),
+        ),
+      )
+      .limit(10);
+    const existingByProductAndSku =
+      skuCandidates.find((candidate) => candidate.id.startsWith("var_")) ??
+      skuCandidates[0];
+    const nameCandidates = await db
+      .select({ id: productVariants.id })
+      .from(productVariants)
+      .where(
+        and(
+          eq(productVariants.productId, String(normalized.productId)),
+          eq(productVariants.name, String(normalized.name)),
+        ),
+      )
+      .limit(10);
+    const existingByProductAndName =
+      nameCandidates.find((candidate) => candidate.id.startsWith("var_")) ??
+      nameCandidates[0];
+    // Prefer the stable offline SKU/name identity over a server ID. This is
+    // important for devices that previously pulled a server option as a
+    // second row before the offline row received its remoteId.
+    const existing = existingByProductAndSku ?? existingByProductAndName ?? existingByRemoteId;
     if (existing && existing.id !== normalized.id) {
+      await db
+        .update(inventory)
+        .set({ variantId: existing.id, updatedAt: new Date().toISOString() })
+        .where(eq(inventory.variantId, normalized.id));
+      await db
+        .update(orderItems)
+        .set({ variantId: existing.id })
+        .where(eq(orderItems.variantId, normalized.id));
+      await db
+        .update(syncOutbox)
+        .set({ status: "synced", lastError: null, updatedAt: new Date().toISOString() })
+        .where(
+          and(
+            eq(syncOutbox.entity, "product_variants"),
+            eq(syncOutbox.entityId, normalized.id),
+          ),
+        );
+      await db
+        .delete(productVariants)
+        .where(eq(productVariants.id, normalized.id));
       normalized.id = existing.id;
       normalized.remoteId = remoteId;
     }
+    if (seenVariantIds.has(String(normalized.id))) continue;
+    seenVariantIds.add(String(normalized.id));
     variantsToInsert.push(normalized);
   }
 
@@ -478,6 +530,8 @@ export async function upsertProductVariants(
           name: sql`excluded.name`,
           price: sql`excluded.price`,
           costPrice: sql`excluded.cost_price`,
+          remoteId: sql`excluded.remote_id`,
+          productId: sql`excluded.product_id`,
           color: sql`excluded.color`,
           size: sql`excluded.size`,
           weight: sql`excluded.weight`,
