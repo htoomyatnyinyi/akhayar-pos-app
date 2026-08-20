@@ -23,6 +23,44 @@ import type { CloseSessionPayload } from "@/services/features/sessions/sessionTy
 import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 
+async function hydrateOrderItems(db: ReturnType<typeof getOfflineDb>, items: any[]) {
+  return Promise.all(
+    items.map(async (item) => {
+      const productId = String(item.productId ?? "");
+      const variantId = item.variantId ? String(item.variantId) : null;
+      const [product] = productId
+        ? await db
+            .select({ id: products.id, name: products.name })
+            .from(products)
+            .where(or(eq(products.id, productId), eq(products.remoteId, productId)))
+            .limit(1)
+        : [];
+      const [variant] = variantId
+        ? await db
+            .select({ id: productVariants.id, name: productVariants.name })
+            .from(productVariants)
+            .where(
+              or(
+                eq(productVariants.id, variantId),
+                eq(productVariants.remoteId, variantId),
+              ),
+            )
+            .limit(1)
+        : [];
+      const baseName = item.productName || product?.name || "Item";
+      const variantName = variant?.name || item.variantName || null;
+      return {
+        ...item,
+        productName:
+          variantName && !baseName.includes(variantName)
+            ? `${baseName} — ${variantName}`
+            : baseName,
+        variantName,
+      };
+    }),
+  );
+}
+
 // ============================================
 // TAG TYPES
 // ============================================
@@ -1504,10 +1542,13 @@ export const localApi = createApi({
           const ordersWithItems = await Promise.all(
             result.map(async (order: any) => ({
               ...order,
-              items: await db
-                .select()
-                .from(orderItems)
-                .where(eq(orderItems.orderId, order.id)),
+              items: await hydrateOrderItems(
+                db,
+                await db
+                  .select()
+                  .from(orderItems)
+                  .where(eq(orderItems.orderId, order.id)),
+              ),
             })),
           );
           return { data: ordersWithItems };
@@ -1537,7 +1578,7 @@ export const localApi = createApi({
             .from(orderItems)
             .where(eq(orderItems.orderId, id));
 
-          return { data: { ...order, items } };
+          return { data: { ...order, items: await hydrateOrderItems(db, items) } };
         } catch (error) {
           return { error: { message: (error as Error).message } };
         }

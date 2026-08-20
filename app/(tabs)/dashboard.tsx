@@ -289,7 +289,7 @@ function EnhancedSvgChart({
 
 export default function DashboardScreen() {
   const { currentStoreId, user } = useAppSelector((state) => state.auth);
-  const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
+  // const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
   const [chartType, setChartType] = useState<ChartType>("area");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -564,7 +564,7 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <ScrollView
-            className="px-5"
+            className="px-5 mb-10"
             contentContainerStyle={{ paddingBottom: 60 }}
             refreshControl={
               <RefreshControl
@@ -575,46 +575,6 @@ export default function DashboardScreen() {
             }
             showsVerticalScrollIndicator={false}
           >
-            {/* Quick Actions Row */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="mb-6"
-              contentContainerStyle={{ gap: 12, paddingRight: 20 }}
-            >
-              <ActionButton
-                title="New Sale"
-                icon="point-of-sale"
-                accent="sky"
-                onPress={() => router.push("/")}
-              />
-              <ActionButton
-                title="View Orders"
-                icon="receipt-long"
-                accent="emerald"
-                onPress={() => router.push("/orders")}
-              />
-              <ActionButton
-                title="Inventory"
-                icon="inventory"
-                accent="amber"
-                onPress={() => router.push("/inventory")}
-              />
-              {canManageInventory && (
-                <ActionButton
-                  title="Product CSV"
-                  icon="import-export"
-                  accent="emerald"
-                  onPress={() =>
-                    router.push({
-                      pathname: "/manage",
-                      params: { module: "products" },
-                    })
-                  }
-                />
-              )}
-            </ScrollView>
-
             {/* KPIs Row */}
             <View className="flex-row flex-wrap gap-3 mb-6">
               <View className="w-[48%]">
@@ -635,94 +595,26 @@ export default function DashboardScreen() {
                   tone={metrics.ordersTrendTone as any}
                 />
               </View>
+              <View className="w-[48%]">
+                <MetricCard
+                  label="Avg. Order"
+                  value={`$${metrics.avgOrderValue.toFixed(2)}`}
+                  delta="All completed sales"
+                  tone="sky"
+                />
+              </View>
+              <View className="w-[48%]">
+                <MetricCard
+                  label="Low Stock"
+                  value={String(metrics.lowStockCount)}
+                  delta={`${metrics.outOfStockCount} out of stock`}
+                  tone={metrics.outOfStockCount > 0 ? "rose" : "amber"}
+                />
+              </View>
             </View>
-
-            {/* Operational health */}
-            <SectionTitle title="Operational Health" />
-            <View className="flex-row flex-wrap gap-3 mb-6">
-              <TouchableOpacity
-                className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
-                onPress={() => router.push("/inventory")}
-              >
-                <View className="flex-row items-center justify-between">
-                  <MaterialIcons name="inventory-2" size={20} color="#fbbf24" />
-                  <MaterialIcons
-                    name="chevron-right"
-                    size={18}
-                    color="#64748b"
-                  />
-                </View>
-                <Text className="text-white text-xl font-black mt-3">
-                  {metrics.lowStockCount}
-                </Text>
-                <Text className="text-slate-400 text-xs mt-1">
-                  Low stock items
-                </Text>
-                {metrics.outOfStockCount > 0 && (
-                  <Text className="text-rose-400 text-[10px] font-bold mt-2">
-                    {metrics.outOfStockCount} out of stock
-                  </Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
-                onPress={() => router.push("/sessions")}
-              >
-                <View className="flex-row items-center justify-between">
-                  <MaterialIcons
-                    name="point-of-sale"
-                    size={20}
-                    color={metrics.activeSession ? "#34d399" : "#f87171"}
-                  />
-                  <MaterialIcons
-                    name="chevron-right"
-                    size={18}
-                    color="#64748b"
-                  />
-                </View>
-                <Text className="text-white text-xl font-black mt-3">
-                  {metrics.activeSession ? "Open" : "Closed"}
-                </Text>
-                <Text className="text-slate-400 text-xs mt-1">
-                  Register session
-                </Text>
-                <Text
-                  className={`text-[10px] font-bold mt-2 ${metrics.activeSession ? "text-emerald-400" : "text-rose-400"}`}
-                >
-                  {metrics.activeSession
-                    ? `Opening $${Number(metrics.activeSession.openingBalance || 0).toFixed(2)}`
-                    : "Open a session to sell"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <SectionTitle title="Today's Payment Mix" />
-            <Card className="mb-6">
-              {Object.keys(metrics.paymentMix).length === 0 ? (
-                <Text className="text-slate-500 text-sm text-center py-4">
-                  No completed payments today.
-                </Text>
-              ) : (
-                Object.entries(metrics.paymentMix)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([method, amount]) => (
-                    <View
-                      key={method}
-                      className="flex-row justify-between py-2 border-b border-white/5 last:border-b-0"
-                    >
-                      <Text className="text-slate-300 text-sm font-semibold">
-                        {method.replace(/_/g, " ")}
-                      </Text>
-                      <Text className="text-emerald-400 text-sm font-bold">
-                        ${amount.toFixed(2)}
-                      </Text>
-                    </View>
-                  ))
-              )}
-            </Card>
 
             {/* Revenue Trend Chart with Graph Type Switcher */}
-            <View className="flex-row items-center justify-between mb-2">
+            <View className="flex-col items-center justify-between mb-2">
               <SectionTitle title="Revenue Trend (7 Days)" />
               <View className="flex-row bg-slate-900 border border-slate-800 rounded-lg p-0.5">
                 <TouchableOpacity
@@ -816,6 +708,79 @@ export default function DashboardScreen() {
               )}
             </Card>
 
+            <SectionTitle title="Operational Health" />
+            <View className="flex-row flex-wrap gap-3 mb-6">
+              <TouchableOpacity
+                className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                onPress={() => router.push("/inventory")}
+              >
+                <View className="flex-row items-center justify-between">
+                  <MaterialIcons name="inventory-2" size={20} color="#fbbf24" />
+                  <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                </View>
+                <Text className="text-white text-xl font-black mt-3">
+                  {metrics.lowStockCount}
+                </Text>
+                <Text className="text-slate-400 text-xs mt-1">Low-stock items</Text>
+                {metrics.outOfStockCount > 0 && (
+                  <Text className="text-rose-400 text-[10px] font-bold mt-2">
+                    {metrics.outOfStockCount} out of stock
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                onPress={() => router.push("/manage")}
+              >
+                <View className="flex-row items-center justify-between">
+                  <MaterialIcons
+                    name="point-of-sale"
+                    size={20}
+                    color={metrics.activeSession ? "#34d399" : "#f87171"}
+                  />
+                  <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                </View>
+                <Text className="text-white text-xl font-black mt-3">
+                  {metrics.activeSession ? "Open" : "Closed"}
+                </Text>
+                <Text className="text-slate-400 text-xs mt-1">Register session</Text>
+                <Text
+                  className={`text-[10px] font-bold mt-2 ${metrics.activeSession ? "text-emerald-400" : "text-rose-400"}`}
+                >
+                  {metrics.activeSession ? "Ready for checkout" : "Open a session to sell"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <SectionTitle title="Recent Orders" />
+            <Card className="mb-6">
+              {metrics.recentOrders.length === 0 ? (
+                <Text className="text-slate-500 text-sm text-center py-4">
+                  No orders yet.
+                </Text>
+              ) : (
+                metrics.recentOrders.map((order: any) => (
+                  <TouchableOpacity
+                    key={order.id}
+                    className="flex-row items-center justify-between py-3 border-b border-white/5 last:border-b-0"
+                    onPress={() => router.push("/orders")}
+                  >
+                    <View className="flex-1">
+                      <Text className="text-white text-sm font-semibold">
+                        {order.orderNumber || `#${String(order.id).slice(-6)}`}
+                      </Text>
+                      <Text className="text-slate-500 text-[10px] mt-1">
+                        {new Date(order.createdAt).toLocaleString()} • {order.status}
+                      </Text>
+                    </View>
+                    <Text className="text-emerald-400 font-bold">
+                      ${Number(order.grandTotal || 0).toFixed(2)}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </Card>
+
             {/* Status Breakdown (Today) */}
             <SectionTitle title="Today's Order Status" />
             <Card className="mb-6">
@@ -885,63 +850,93 @@ export default function DashboardScreen() {
               )}
             </Card>
 
-            {/* Recent Orders Snippet */}
-            <SectionTitle title="Recent Transactions" />
-            <Card className="mb-6">
-              {metrics.recentOrders.length === 0 ? (
-                <View className="py-6 items-center">
-                  <MaterialIcons name="receipt" size={32} color="#334155" />
-                  <Text className="text-slate-500 text-sm mt-3 font-medium">
-                    No recent transactions.
+            {/* Operational health */}
+            {/* <SectionTitle title="Operational Health" /> */}
+            {/* <View className="flex-row flex-wrap gap-3 mb-6">
+              <TouchableOpacity
+                className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                onPress={() => router.push("/inventory")}
+              >
+                <View className="flex-row items-center justify-between">
+                  <MaterialIcons name="inventory-2" size={20} color="#fbbf24" />
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={18}
+                    color="#64748b"
+                  />
+                </View>
+                <Text className="text-white text-xl font-black mt-3">
+                  {metrics.lowStockCount}
+                </Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  Low stock items
+                </Text>
+                {metrics.outOfStockCount > 0 && (
+                  <Text className="text-rose-400 text-[10px] font-bold mt-2">
+                    {metrics.outOfStockCount} out of stock
                   </Text>
+                )}
+              </TouchableOpacity>
+              
+
+              <TouchableOpacity
+                className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                onPress={() => router.push("/manage")}
+              >
+                <View className="flex-row items-center justify-between">
+                  <MaterialIcons
+                    name="point-of-sale"
+                    size={20}
+                    color={metrics.activeSession ? "#34d399" : "#f87171"}
+                  />
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={18}
+                    color="#64748b"
+                  />
                 </View>
+                <Text className="text-white text-xl font-black mt-3">
+                  {metrics.activeSession ? "Open" : "Closed"}
+                </Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  Register session
+                </Text>
+                <Text
+                  className={`text-[10px] font-bold mt-2 ${
+                    metrics.activeSession ? "text-emerald-400" : "text-rose-400"
+                  }`}
+                >
+                  {metrics.activeSession
+                    ? `Opening $${Number(
+                        metrics.activeSession.openingBalance || 0,
+                      ).toFixed(2)}`
+                    : "Open a session to sell"}
+                </Text>
+              </TouchableOpacity>
+            </View> */}
+
+            <SectionTitle title="Today's Payment Mix" />
+            <Card className="mb-6">
+              {Object.keys(metrics.paymentMix).length === 0 ? (
+                <Text className="text-slate-500 text-sm text-center py-4">
+                  No completed payments today.
+                </Text>
               ) : (
-                <View>
-                  {metrics.recentOrders.map((order: any, idx: number) => {
-                    const isLast = idx === metrics.recentOrders.length - 1;
-                    return (
-                      <View
-                        key={order.id}
-                        className={`py-3 flex-row justify-between items-center ${!isLast ? "border-b border-white/5" : ""}`}
-                      >
-                        <View>
-                          <Text className="text-white font-bold">
-                            #{order.orderNumber || order.id.slice(-6)}
-                          </Text>
-                          <Text className="text-slate-400 text-xs mt-0.5">
-                            {new Date(order.createdAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </Text>
-                        </View>
-                        <View className="items-end">
-                          <Text className="text-emerald-400 font-bold mb-1">
-                            ${order.grandTotal?.toFixed(2) || "0.00"}
-                          </Text>
-                          <Pill
-                            label={order.status}
-                            tone={
-                              order.status === "COMPLETED"
-                                ? "emerald"
-                                : order.status === "PENDING"
-                                  ? "amber"
-                                  : "rose"
-                            }
-                          />
-                        </View>
-                      </View>
-                    );
-                  })}
-                  <TouchableOpacity
-                    className="mt-4 py-3 bg-white/5 rounded-xl border border-white/10 items-center"
-                    onPress={() => router.push("/orders")}
-                  >
-                    <Text className="text-slate-300 font-bold text-xs uppercase tracking-wider">
-                      View All Orders
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                Object.entries(metrics.paymentMix)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([method, amount]) => (
+                    <View
+                      key={method}
+                      className="flex-row justify-between py-2 border-b border-white/5 last:border-b-0"
+                    >
+                      <Text className="text-slate-300 text-sm font-semibold">
+                        {method.replace(/_/g, " ")}
+                      </Text>
+                      <Text className="text-emerald-400 text-sm font-bold">
+                        ${amount.toFixed(2)}
+                      </Text>
+                    </View>
+                  ))
               )}
             </Card>
           </ScrollView>

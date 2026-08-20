@@ -350,6 +350,7 @@ export default function POSScreen() {
         items: cartItems.map((item) => ({
           productId: item.productId || item.id,
           variantId: item.variantId,
+          productName: item.name,
           quantity: item.qty,
           unitPrice: item.price,
           subTotal: item.price * item.qty,
@@ -358,6 +359,7 @@ export default function POSScreen() {
         syncItems: cartItems.map((item) => ({
           productId: item.productId || item.id,
           variantId: item.variantId,
+          productName: item.name,
           quantity: item.qty,
           unitPrice: item.price,
           subTotal: item.price * item.qty,

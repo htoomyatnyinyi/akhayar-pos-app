@@ -46,6 +46,13 @@ import {
 
 type ActiveTab = "stock" | "movements";
 
+const formatInventoryDate = (value: unknown) => {
+  if (!value) return "";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString();
+};
+
 export default function InventoryScreen() {
   const { currentStoreId, user } = useAppSelector((state) => state.auth);
   const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
@@ -53,7 +60,7 @@ export default function InventoryScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState(false);
-  const [showProductModal, setShowProductModal] = useState(false);
+  // const [showProductModal, setShowProductModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [showAllocationModal, setShowAllocationModal] = useState(false);
   const [selectedAllocationProduct, setSelectedAllocationProduct] =
@@ -84,6 +91,7 @@ export default function InventoryScreen() {
     // Load all local products so a valid inventory row is never shown as
     // "Unknown" only because product.storeId differs.
     useGetLocalProductsQuery({});
+  // console.log(productsData, "inventory products data at inventory screen");
   const { data: variantsData } = useGetLocalVariantsQuery(undefined);
   const { data: categories } = useGetLocalCategoriesQuery({});
   const { data: stores = [] } = useGetLocalStoresQuery({ isActive: true });
@@ -134,6 +142,13 @@ export default function InventoryScreen() {
         barcode: variant?.barcode || product?.barcode || null,
         sellingPrice: variant?.price ?? product?.sellingPrice ?? 0,
         costPrice: variant?.costPrice ?? product?.costPrice ?? 0,
+        manufacturingDate:
+          variant?.manufacturingDate ??
+          product?.manufacturingDate ??
+          inv.manufacturingDate,
+        expiryDate:
+          variant?.expiryDate ?? product?.expiryDate ?? inv.expiryDate,
+        isActive: variant?.isActive ?? product?.isActive ?? inv.isActive,
         categoryId: product?.categoryId,
         brandName: brand?.name || null,
         brandId: product?.brandId || null,
@@ -311,7 +326,7 @@ export default function InventoryScreen() {
           ...payload,
           storeId: "default", // TODO: Get from context
         }).unwrap();
-        setShowProductModal(false);
+        // setShowProductModal(false);
         refetchInventory();
         refetchProducts();
         refetchBrands();
@@ -429,6 +444,7 @@ export default function InventoryScreen() {
               <Text className="text-white font-bold text-sm" numberOfLines={1}>
                 {item.name}
               </Text>
+
               <Text className="text-slate-400 text-[10px] mt-1">
                 {item.variantOptions?.length || item.rows.length} variants • tap
                 a row to adjust stock
@@ -484,6 +500,27 @@ export default function InventoryScreen() {
                   <Text className="text-slate-400 text-[10px] mt-1">
                     SKU: {variantRow.sku}
                   </Text>
+                  <View className="flex-row flex-wrap gap-x-2 mt-1">
+                    {variantRow.manufacturingDate && (
+                      <Text className="text-slate-500 text-[9px]">
+                        Made:{" "}
+                        {formatInventoryDate(variantRow.manufacturingDate)}
+                      </Text>
+                    )}
+                    {variantRow.expiryDate && (
+                      <Text className="text-amber-300/80 text-[9px]">
+                        Expires: {formatInventoryDate(variantRow.expiryDate)}
+                      </Text>
+                    )}
+                    {variantRow.isActive !== undefined &&
+                      variantRow.isActive !== null && (
+                        <Text
+                          className={`text-[9px] font-semibold ${variantRow.isActive ? "text-emerald-300" : "text-rose-300"}`}
+                        >
+                          {variantRow.isActive ? "Active" : "Inactive"}
+                        </Text>
+                      )}
+                  </View>
                 </View>
                 <View className="items-end">
                   <Text className="text-white font-black text-base">
@@ -537,6 +574,25 @@ export default function InventoryScreen() {
                       {item.brandName}
                     </Text>
                   </>
+                )}
+              </View>
+              <View className="flex-row flex-wrap gap-x-2 mt-1">
+                {row.manufacturingDate && (
+                  <Text className="text-slate-500 text-[9px]">
+                    Made: {formatInventoryDate(row.manufacturingDate)}
+                  </Text>
+                )}
+                {row.expiryDate && (
+                  <Text className="text-amber-300/80 text-[9px]">
+                    Expires: {formatInventoryDate(row.expiryDate)}
+                  </Text>
+                )}
+                {row.isActive !== undefined && row.isActive !== null && (
+                  <Text
+                    className={`text-[9px] font-semibold ${row.isActive ? "text-emerald-300" : "text-rose-300"}`}
+                  >
+                    {row.isActive ? "Active" : "Inactive"}
+                  </Text>
                 )}
               </View>
             </View>
@@ -620,19 +676,19 @@ export default function InventoryScreen() {
           eyebrow="Warehouse"
           title="Inventory"
           subtitle="Track stock levels and movements"
-          right={
-            canManageInventory ? (
-              <TouchableOpacity
-                className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30 flex-row items-center"
-                onPress={() => setShowProductModal(true)}
-              >
-                <MaterialIcons name="add" size={16} color="#38bdf8" />
-                <Text className="text-sky-400 font-bold text-xs ml-1">
-                  Product
-                </Text>
-              </TouchableOpacity>
-            ) : undefined
-          }
+          // right={
+          //   canManageInventory ? (
+          //     <TouchableOpacity
+          //       className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30 flex-row items-center"
+          //       // onPress={() => setShowProductModal(true)}
+          //     >
+          //       <MaterialIcons name="add" size={16} color="#38bdf8" />
+          //       <Text className="text-sky-400 font-bold text-xs ml-1">
+          //         Product
+          //       </Text>
+          //     </TouchableOpacity>
+          //   ) : undefined
+          // }
         />
       </View>
 
@@ -831,7 +887,7 @@ export default function InventoryScreen() {
       {/* ============================================ */}
       {/* NEW PRODUCT MODAL (with Brand support) */}
       {/* ============================================ */}
-      <NewProductModal
+      {/* <NewProductModal
         visible={showProductModal}
         categories={categories ?? []}
         brands={brands ?? []}
@@ -839,7 +895,7 @@ export default function InventoryScreen() {
         onClose={() => setShowProductModal(false)}
         onSubmit={handleCreateProduct}
         onBrandCreated={refetchBrands}
-      />
+      /> */}
 
       {/* ============================================ */}
       {/* SCANNER MODAL */}
@@ -987,6 +1043,7 @@ function StockAllocationModal({
                   {product?.name} • Total: {totalStock}
                 </Text>
               </View>
+
               <TouchableOpacity
                 onPress={onClose}
                 className="bg-white/10 p-2 rounded-full"
@@ -1537,342 +1594,342 @@ function NewMovementModal({
   );
 }
 
-// ============================================
-// NEW PRODUCT MODAL COMPONENT (with Brand)
-// ============================================
-function NewProductModal({
-  visible,
-  categories,
-  brands,
-  isLoading,
-  onClose,
-  onSubmit,
-  onBrandCreated,
-}: {
-  visible: boolean;
-  categories: any[];
-  brands: any[];
-  isLoading: boolean;
-  onClose: () => void;
-  onSubmit: (payload: {
-    name: string;
-    sku: string;
-    barcode: string;
-    costPrice: number;
-    sellingPrice: number;
-    stockQuantity: number;
-    categoryId: string;
-    brandId?: string;
-  }) => void;
-  onBrandCreated: () => void;
-}) {
-  const [name, setName] = useState("");
-  const [sku, setSku] = useState("");
-  const [barcode, setBarcode] = useState("");
-  const [costPrice, setCostPrice] = useState("");
-  const [sellingPrice, setSellingPrice] = useState("");
-  const [stockQuantity, setStockQuantity] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [brandId, setBrandId] = useState("");
-  const [showCreateBrand, setShowCreateBrand] = useState(false);
-  const [newBrandName, setNewBrandName] = useState("");
-  const [newBrandDescription, setNewBrandDescription] = useState("");
-  const [isCreatingBrand, setIsCreatingBrand] = useState(false);
-  const [createBrand] = useCreateLocalBrandMutation();
+// // ============================================
+// // NEW PRODUCT MODAL COMPONENT (with Brand)
+// // ============================================
+// function NewProductModal({
+//   visible,
+//   categories,
+//   brands,
+//   isLoading,
+//   onClose,
+//   onSubmit,
+//   onBrandCreated,
+// }: {
+//   visible: boolean;
+//   categories: any[];
+//   brands: any[];
+//   isLoading: boolean;
+//   onClose: () => void;
+//   onSubmit: (payload: {
+//     name: string;
+//     sku: string;
+//     barcode: string;
+//     costPrice: number;
+//     sellingPrice: number;
+//     stockQuantity: number;
+//     categoryId: string;
+//     brandId?: string;
+//   }) => void;
+//   onBrandCreated: () => void;
+// }) {
+//   const [name, setName] = useState("");
+//   const [sku, setSku] = useState("");
+//   const [barcode, setBarcode] = useState("");
+//   const [costPrice, setCostPrice] = useState("");
+//   const [sellingPrice, setSellingPrice] = useState("");
+//   const [stockQuantity, setStockQuantity] = useState("");
+//   const [categoryId, setCategoryId] = useState("");
+//   const [brandId, setBrandId] = useState("");
+//   const [showCreateBrand, setShowCreateBrand] = useState(false);
+//   const [newBrandName, setNewBrandName] = useState("");
+//   const [newBrandDescription, setNewBrandDescription] = useState("");
+//   const [isCreatingBrand, setIsCreatingBrand] = useState(false);
+//   const [createBrand] = useCreateLocalBrandMutation();
 
-  const handleOpen = useCallback(() => {
-    setName("");
-    setSku("");
-    setBarcode("");
-    setCostPrice("");
-    setSellingPrice("");
-    setStockQuantity("");
-    setCategoryId("");
-    setBrandId("");
-    setShowCreateBrand(false);
-    setNewBrandName("");
-    setNewBrandDescription("");
-  }, []);
+//   const handleOpen = useCallback(() => {
+//     setName("");
+//     setSku("");
+//     setBarcode("");
+//     setCostPrice("");
+//     setSellingPrice("");
+//     setStockQuantity("");
+//     setCategoryId("");
+//     setBrandId("");
+//     setShowCreateBrand(false);
+//     setNewBrandName("");
+//     setNewBrandDescription("");
+//   }, []);
 
-  const handleCreateBrand = async () => {
-    if (!newBrandName.trim()) {
-      Alert.alert("Error", "Brand name is required");
-      return;
-    }
-    setIsCreatingBrand(true);
-    try {
-      const result = await createBrand({
-        tenantId: "default",
-        name: newBrandName.trim(),
-        description: newBrandDescription.trim() || undefined,
-        isActive: true,
-      }).unwrap();
-      await onBrandCreated();
-      setBrandId(result.id);
-      setShowCreateBrand(false);
-      setNewBrandName("");
-      setNewBrandDescription("");
-      Alert.alert("Success", "Brand created successfully");
-    } catch (err: any) {
-      Alert.alert("Error", err?.message || "Failed to create brand");
-    } finally {
-      setIsCreatingBrand(false);
-    }
-  };
+//   const handleCreateBrand = async () => {
+//     if (!newBrandName.trim()) {
+//       Alert.alert("Error", "Brand name is required");
+//       return;
+//     }
+//     setIsCreatingBrand(true);
+//     try {
+//       const result = await createBrand({
+//         tenantId: "default",
+//         name: newBrandName.trim(),
+//         description: newBrandDescription.trim() || undefined,
+//         isActive: true,
+//       }).unwrap();
+//       await onBrandCreated();
+//       setBrandId(result.id);
+//       setShowCreateBrand(false);
+//       setNewBrandName("");
+//       setNewBrandDescription("");
+//       Alert.alert("Success", "Brand created successfully");
+//     } catch (err: any) {
+//       Alert.alert("Error", err?.message || "Failed to create brand");
+//     } finally {
+//       setIsCreatingBrand(false);
+//     }
+//   };
 
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onShow={handleOpen}
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
-        <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-slate-900 rounded-t-4xl border-t border-white/10 p-6 max-h-[90%]">
-            <View className="flex-row items-center justify-between mb-6">
-              <Text className="text-white font-black text-xl">New Product</Text>
-              <TouchableOpacity
-                onPress={onClose}
-                className="bg-white/10 p-2 rounded-full"
-              >
-                <MaterialIcons name="close" size={18} color="#94a3b8" />
-              </TouchableOpacity>
-            </View>
+//   return (
+//     <Modal
+//       visible={visible}
+//       transparent
+//       animationType="slide"
+//       onShow={handleOpen}
+//       onRequestClose={onClose}
+//     >
+//       <KeyboardAvoidingView
+//         behavior={Platform.OS === "ios" ? "padding" : "height"}
+//         className="flex-1"
+//       >
+//         <View className="flex-1 justify-end bg-black/60">
+//           <View className="bg-slate-900 rounded-t-4xl border-t border-white/10 p-6 max-h-[90%]">
+//             <View className="flex-row items-center justify-between mb-6">
+//               <Text className="text-white font-black text-xl">New Product</Text>
+//               <TouchableOpacity
+//                 onPress={onClose}
+//                 className="bg-white/10 p-2 rounded-full"
+//               >
+//                 <MaterialIcons name="close" size={18} color="#94a3b8" />
+//               </TouchableOpacity>
+//             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                Name *
-              </Text>
-              <TextInput
-                className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
-                value={name}
-                onChangeText={setName}
-                placeholder="Product Name"
-                placeholderTextColor="#64748b"
-              />
+//             <ScrollView showsVerticalScrollIndicator={false}>
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Name *
+//               </Text>
+//               <TextInput
+//                 className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                 value={name}
+//                 onChangeText={setName}
+//                 placeholder="Product Name"
+//                 placeholderTextColor="#64748b"
+//               />
 
-              <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                Barcode / QR (Optional)
-              </Text>
-              <TextInput
-                className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
-                value={barcode}
-                onChangeText={setBarcode}
-                placeholder="Scan or leave empty to auto-generate"
-                placeholderTextColor="#64748b"
-              />
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Barcode / QR (Optional)
+//               </Text>
+//               <TextInput
+//                 className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                 value={barcode}
+//                 onChangeText={setBarcode}
+//                 placeholder="Scan or leave empty to auto-generate"
+//                 placeholderTextColor="#64748b"
+//               />
 
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                    SKU (Optional)
-                  </Text>
-                  <TextInput
-                    className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
-                    value={sku}
-                    onChangeText={setSku}
-                    placeholder="Auto-generated"
-                    placeholderTextColor="#64748b"
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                    Initial Stock
-                  </Text>
-                  <TextInput
-                    className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
-                    keyboardType="number-pad"
-                    value={stockQuantity}
-                    onChangeText={setStockQuantity}
-                    placeholder="0"
-                    placeholderTextColor="#64748b"
-                  />
-                </View>
-              </View>
+//               <View className="flex-row gap-3">
+//                 <View className="flex-1">
+//                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                     SKU (Optional)
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                     value={sku}
+//                     onChangeText={setSku}
+//                     placeholder="Auto-generated"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                 </View>
+//                 <View className="flex-1">
+//                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                     Initial Stock
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                     keyboardType="number-pad"
+//                     value={stockQuantity}
+//                     onChangeText={setStockQuantity}
+//                     placeholder="0"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                 </View>
+//               </View>
 
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                    Cost Price
-                  </Text>
-                  <TextInput
-                    className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
-                    keyboardType="decimal-pad"
-                    value={costPrice}
-                    onChangeText={setCostPrice}
-                    placeholder="0.00"
-                    placeholderTextColor="#64748b"
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                    Selling Price *
-                  </Text>
-                  <TextInput
-                    className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
-                    keyboardType="decimal-pad"
-                    value={sellingPrice}
-                    onChangeText={setSellingPrice}
-                    placeholder="0.00"
-                    placeholderTextColor="#64748b"
-                  />
-                </View>
-              </View>
+//               <View className="flex-row gap-3">
+//                 <View className="flex-1">
+//                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                     Cost Price
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                     keyboardType="decimal-pad"
+//                     value={costPrice}
+//                     onChangeText={setCostPrice}
+//                     placeholder="0.00"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                 </View>
+//                 <View className="flex-1">
+//                   <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                     Selling Price *
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base font-bold rounded-2xl px-4 py-3 border border-white/10 mb-4"
+//                     keyboardType="decimal-pad"
+//                     value={sellingPrice}
+//                     onChangeText={setSellingPrice}
+//                     placeholder="0.00"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                 </View>
+//               </View>
 
-              {/* Category Selection */}
-              <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                Category
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                className="mb-4"
-                contentContainerStyle={{ paddingRight: 20 }}
-              >
-                {categories.map((cat: any) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    className={`mr-2 px-4 py-2 rounded-full border ${
-                      categoryId === cat.id
-                        ? "bg-sky-500/20 border-sky-500/40"
-                        : "bg-white/5 border-white/10"
-                    }`}
-                    onPress={() => setCategoryId(cat.id)}
-                  >
-                    <Text
-                      className={`font-semibold text-sm ${
-                        categoryId === cat.id
-                          ? "text-sky-400"
-                          : "text-slate-300"
-                      }`}
-                    >
-                      {cat.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+//               {/* Category Selection */}
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Category
+//               </Text>
+//               <ScrollView
+//                 horizontal
+//                 showsHorizontalScrollIndicator={false}
+//                 className="mb-4"
+//                 contentContainerStyle={{ paddingRight: 20 }}
+//               >
+//                 {categories.map((cat: any) => (
+//                   <TouchableOpacity
+//                     key={cat.id}
+//                     className={`mr-2 px-4 py-2 rounded-full border ${
+//                       categoryId === cat.id
+//                         ? "bg-sky-500/20 border-sky-500/40"
+//                         : "bg-white/5 border-white/10"
+//                     }`}
+//                     onPress={() => setCategoryId(cat.id)}
+//                   >
+//                     <Text
+//                       className={`font-semibold text-sm ${
+//                         categoryId === cat.id
+//                           ? "text-sky-400"
+//                           : "text-slate-300"
+//                       }`}
+//                     >
+//                       {cat.name}
+//                     </Text>
+//                   </TouchableOpacity>
+//                 ))}
+//               </ScrollView>
 
-              {/* Brand Selection */}
-              <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
-                Brand (Optional)
-              </Text>
-              {showCreateBrand ? (
-                <View className="mb-4 rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4">
-                  <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-purple-400">
-                    Create New Brand
-                  </Text>
-                  <TextInput
-                    className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-3"
-                    value={newBrandName}
-                    onChangeText={setNewBrandName}
-                    placeholder="Brand Name"
-                    placeholderTextColor="#64748b"
-                  />
-                  <TextInput
-                    className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-3"
-                    value={newBrandDescription}
-                    onChangeText={setNewBrandDescription}
-                    placeholder="Description (optional)"
-                    placeholderTextColor="#64748b"
-                  />
-                  <View className="flex-row gap-3">
-                    <TouchableOpacity
-                      className="flex-1 bg-white/10 rounded-2xl py-3 items-center"
-                      onPress={() => setShowCreateBrand(false)}
-                    >
-                      <Text className="text-white font-bold">Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      className={`flex-1 bg-purple-500 rounded-2xl py-3 items-center ${
-                        isCreatingBrand ? "opacity-50" : ""
-                      }`}
-                      onPress={handleCreateBrand}
-                      disabled={isCreatingBrand}
-                    >
-                      {isCreatingBrand ? (
-                        <ActivityIndicator color="white" />
-                      ) : (
-                        <Text className="text-white font-bold">Create</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    className="mb-2"
-                    contentContainerStyle={{ paddingRight: 20 }}
-                  >
-                    {brands.map((brand: any) => (
-                      <TouchableOpacity
-                        key={brand.id}
-                        className={`mr-2 px-4 py-2 rounded-full border ${
-                          brandId === brand.id
-                            ? "bg-purple-500/20 border-purple-500/40"
-                            : "bg-white/5 border-white/10"
-                        }`}
-                        onPress={() => setBrandId(brand.id)}
-                      >
-                        <Text
-                          className={`font-semibold text-sm ${
-                            brandId === brand.id
-                              ? "text-purple-400"
-                              : "text-slate-300"
-                          }`}
-                        >
-                          {brand.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  <TouchableOpacity
-                    onPress={() => setShowCreateBrand(true)}
-                    className="border border-dashed border-purple-500/30 rounded-2xl py-3 items-center mb-4"
-                  >
-                    <Text className="text-purple-400">+ Create New Brand</Text>
-                  </TouchableOpacity>
-                </>
-              )}
+//               {/* Brand Selection */}
+//               <Text className="text-slate-400 font-semibold text-xs uppercase tracking-widest mb-2 ml-1">
+//                 Brand (Optional)
+//               </Text>
+//               {showCreateBrand ? (
+//                 <View className="mb-4 rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4">
+//                   <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-purple-400">
+//                     Create New Brand
+//                   </Text>
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-3"
+//                     value={newBrandName}
+//                     onChangeText={setNewBrandName}
+//                     placeholder="Brand Name"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                   <TextInput
+//                     className="bg-white/5 text-white text-base rounded-2xl px-4 py-3 border border-white/10 mb-3"
+//                     value={newBrandDescription}
+//                     onChangeText={setNewBrandDescription}
+//                     placeholder="Description (optional)"
+//                     placeholderTextColor="#64748b"
+//                   />
+//                   <View className="flex-row gap-3">
+//                     <TouchableOpacity
+//                       className="flex-1 bg-white/10 rounded-2xl py-3 items-center"
+//                       onPress={() => setShowCreateBrand(false)}
+//                     >
+//                       <Text className="text-white font-bold">Cancel</Text>
+//                     </TouchableOpacity>
+//                     <TouchableOpacity
+//                       className={`flex-1 bg-purple-500 rounded-2xl py-3 items-center ${
+//                         isCreatingBrand ? "opacity-50" : ""
+//                       }`}
+//                       onPress={handleCreateBrand}
+//                       disabled={isCreatingBrand}
+//                     >
+//                       {isCreatingBrand ? (
+//                         <ActivityIndicator color="white" />
+//                       ) : (
+//                         <Text className="text-white font-bold">Create</Text>
+//                       )}
+//                     </TouchableOpacity>
+//                   </View>
+//                 </View>
+//               ) : (
+//                 <>
+//                   <ScrollView
+//                     horizontal
+//                     showsHorizontalScrollIndicator={false}
+//                     className="mb-2"
+//                     contentContainerStyle={{ paddingRight: 20 }}
+//                   >
+//                     {brands.map((brand: any) => (
+//                       <TouchableOpacity
+//                         key={brand.id}
+//                         className={`mr-2 px-4 py-2 rounded-full border ${
+//                           brandId === brand.id
+//                             ? "bg-purple-500/20 border-purple-500/40"
+//                             : "bg-white/5 border-white/10"
+//                         }`}
+//                         onPress={() => setBrandId(brand.id)}
+//                       >
+//                         <Text
+//                           className={`font-semibold text-sm ${
+//                             brandId === brand.id
+//                               ? "text-purple-400"
+//                               : "text-slate-300"
+//                           }`}
+//                         >
+//                           {brand.name}
+//                         </Text>
+//                       </TouchableOpacity>
+//                     ))}
+//                   </ScrollView>
+//                   <TouchableOpacity
+//                     onPress={() => setShowCreateBrand(true)}
+//                     className="border border-dashed border-purple-500/30 rounded-2xl py-3 items-center mb-4"
+//                   >
+//                     <Text className="text-purple-400">+ Create New Brand</Text>
+//                   </TouchableOpacity>
+//                 </>
+//               )}
 
-              {/* Submit */}
-              <TouchableOpacity
-                className={`bg-sky-500 rounded-2xl py-4 items-center border border-sky-400 mb-6 ${
-                  isLoading || !name || !sellingPrice ? "opacity-50" : ""
-                }`}
-                onPress={() =>
-                  onSubmit({
-                    name,
-                    sku,
-                    barcode,
-                    costPrice: Number(costPrice) || 0,
-                    sellingPrice: Number(sellingPrice) || 0,
-                    stockQuantity: Number(stockQuantity) || 0,
-                    categoryId,
-                    brandId: brandId || undefined,
-                  })
-                }
-                disabled={isLoading || !name || !sellingPrice}
-                activeOpacity={0.8}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text className="text-white font-bold text-lg">
-                    Create Product
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
+//               {/* Submit */}
+//               <TouchableOpacity
+//                 className={`bg-sky-500 rounded-2xl py-4 items-center border border-sky-400 mb-6 ${
+//                   isLoading || !name || !sellingPrice ? "opacity-50" : ""
+//                 }`}
+//                 onPress={() =>
+//                   onSubmit({
+//                     name,
+//                     sku,
+//                     barcode,
+//                     costPrice: Number(costPrice) || 0,
+//                     sellingPrice: Number(sellingPrice) || 0,
+//                     stockQuantity: Number(stockQuantity) || 0,
+//                     categoryId,
+//                     brandId: brandId || undefined,
+//                   })
+//                 }
+//                 disabled={isLoading || !name || !sellingPrice}
+//                 activeOpacity={0.8}
+//               >
+//                 {isLoading ? (
+//                   <ActivityIndicator color="white" />
+//                 ) : (
+//                   <Text className="text-white font-bold text-lg">
+//                     Create Product
+//                   </Text>
+//                 )}
+//               </TouchableOpacity>
+//             </ScrollView>
+//           </View>
+//         </View>
+//       </KeyboardAvoidingView>
+//     </Modal>
+//   );
+// }

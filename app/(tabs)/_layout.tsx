@@ -8,7 +8,6 @@ import { hasAnyPermission } from "@/utils/auth/permissions";
 
 export default function TabLayout() {
   const user = useAppSelector((state) => state.auth.user);
-  // const userRole = useAppSelector((state) => state.auth.role);
 
   const showManagement = hasAnyPermission(user, [
     "MANAGE_STAFF",
@@ -114,20 +113,6 @@ export default function TabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <MaterialIcons
                 name="sync"
-                size={22}
-                color={focused ? "#34d399" : color}
-              />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="sessions"
-          options={{
-            title: "Sessions",
-            // tabBarButton: userRole === "admin" ? undefined : () => null,
-            tabBarIcon: ({ color, focused }) => (
-              <MaterialIcons
-                name="schedule"
                 size={22}
                 color={focused ? "#34d399" : color}
               />

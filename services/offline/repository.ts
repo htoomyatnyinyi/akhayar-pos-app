@@ -328,7 +328,7 @@ export async function upsertProducts(
     const existing = existingByRemoteId ?? (normalized.barcode
       ? (
           await db
-            .select({ id: products.id })
+            .select({ id: products.id, name: products.name })
             .from(products)
             .where(
               and(
@@ -1193,15 +1193,66 @@ export async function upsertOrders(
         });
 
       if (Array.isArray(order.items)) {
+        // The server response contains the complete authoritative item list.
+        // Replace the local list before inserting it; otherwise an offline
+        // item plus its server-created copy remains duplicated because the
+        // local schema has no remoteId column for order items.
+        await tx.delete(orderItems).where(eq(orderItems.orderId, localId));
+        const seenItemKeys = new Set<string>();
         for (const item of order.items as (OrderItem & Record<string, any>)[]) {
+          const remoteProductId = String(
+            item.productId ?? item.product_id ?? item.product?.id ?? "",
+          );
+          const [localProduct] = await tx
+            .select({ id: products.id, name: products.name })
+            .from(products)
+            .where(
+              or(
+                eq(products.id, remoteProductId),
+                eq(products.remoteId, remoteProductId),
+              ),
+            )
+            .limit(1);
+          const remoteVariantId = item.variantId ?? item.variant_id ?? item.variant?.id;
+          const itemKey = [
+            remoteProductId,
+            remoteVariantId ?? "",
+            Number(item.quantity ?? 0),
+            Number(item.unitPrice ?? item.price ?? 0),
+            Number(item.discountAmount ?? 0),
+          ].join(":");
+          if (seenItemKeys.has(itemKey)) continue;
+          seenItemKeys.add(itemKey);
+          const [localVariant] = remoteVariantId
+            ? await tx
+                .select({ id: productVariants.id, name: productVariants.name })
+                .from(productVariants)
+                .where(
+                  or(
+                    eq(productVariants.id, String(remoteVariantId)),
+                    eq(productVariants.remoteId, String(remoteVariantId)),
+                  ),
+                )
+                .limit(1)
+            : [];
           await tx
             .insert(orderItems)
             .values({
               id: item.id ?? createLocalId("item"),
               orderId: localId,
-              productId: item.productId,
-              variantId: item.variantId,
-              productName: item.productName ?? item.product?.name ?? null,
+              productId: localProduct?.id ?? remoteProductId,
+              variantId: localVariant?.id ?? null,
+              productName:
+                item.productName ??
+                (localProduct?.name
+                  ? localVariant?.name
+                    ? `${localProduct.name} — ${localVariant.name}`
+                    : localProduct.name
+                  : item.product?.name
+                    ? item.variant?.name
+                      ? `${item.product.name} — ${item.variant.name}`
+                      : item.product.name
+                    : item.variant?.name ?? null),
               quantity: item.quantity,
               unitPrice: Number(item.unitPrice ?? item.price ?? 0),
               discountAmount: Number(item.discountAmount ?? 0),
@@ -2134,7 +2185,7 @@ export async function createOfflineOrder(
           orderId,
           item.productId,
           item.variantId ?? null,
-          null,
+          item.productName ?? item.name ?? item.variantName ?? null,
           item.quantity,
           item.unitPrice,
           item.discountAmount ?? 0,
