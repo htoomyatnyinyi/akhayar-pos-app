@@ -68,11 +68,13 @@ export function getRightLabel(moduleKey: ModuleKey, item: any) {
   if (moduleKey === "staff") return item.isActive ? "Active" : "Inactive";
   if (moduleKey === "products") {
     const variants = Array.isArray(item.variants) ? item.variants : [];
+    const stockInfo =
+      item.totalStock !== undefined ? ` • 📦 ${item.totalStock}` : "";
     if (variants.length) {
       const prices = variants.map((v: any) => Number(v.price ?? 0));
-      return `From $${Math.min(...prices).toFixed(2)}`;
+      return `From $${Math.min(...prices).toFixed(2)}${stockInfo}`;
     }
-    return `$${Number(item.sellingPrice ?? 0).toFixed(2)}`;
+    return `$${Number(item.sellingPrice ?? 0).toFixed(2)}${stockInfo}`;
   }
   if (moduleKey === "stores") return item.isActive ? "Open" : "Closed";
   if (moduleKey === "categories") return item.isActive ? "Live" : "Off";

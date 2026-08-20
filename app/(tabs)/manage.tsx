@@ -44,6 +44,7 @@ import {
   useGetLocalBrandsQuery,
   useGetLocalCategoriesQuery,
   useGetLocalCustomersQuery,
+  useGetLocalInventoryQuery,
   useGetLocalProductsQuery,
   useGetLocalVariantsQuery,
   useGetLocalStaffQuery,
@@ -134,18 +135,23 @@ export default function ManageScreen() {
     data: products = [],
     refetch: refetchProducts,
     isFetching: fetchingProducts,
-  } = useGetLocalProductsQuery({ storeId: scopedStoreId });
+  } = useGetLocalProductsQuery({});
   const { data: variants = [] } = useGetLocalVariantsQuery(undefined);
+  const {
+    data: inventory = [],
+    refetch: refetchInventory,
+    isFetching: fetchingInventory,
+  } = useGetLocalInventoryQuery({ storeId: scopedStoreId });
   const {
     data: categories = [],
     refetch: refetchCategories,
     isFetching: fetchingCategories,
-  } = useGetLocalCategoriesQuery({ storeId: scopedStoreId });
+  } = useGetLocalCategoriesQuery({});
   const {
     data: suppliers = [],
     refetch: refetchSuppliers,
     isFetching: fetchingSuppliers,
-  } = useGetLocalSuppliersQuery({ storeId: scopedStoreId });
+  } = useGetLocalSuppliersQuery({});
 
   // Mutations
   const [createStaff, { isLoading: creatingStaff }] =
@@ -256,14 +262,37 @@ export default function ManageScreen() {
     );
   }
 
-  const productsWithVariants = products.map((product: any) => ({
-    ...product,
-    variants: variants.filter(
+  const productsWithVariants = products.map((product: any) => {
+    const productVariants = variants.filter(
       (variant: any) =>
         variant.productId === product.id ||
         variant.productId === product.remoteId,
-    ),
-  }));
+    );
+    const productInventory = inventory.filter(
+      (inv: any) =>
+        inv.productId === product.id || inv.productId === product.remoteId,
+    );
+    const totalStock = productInventory.reduce(
+      (sum: number, inv: any) => sum + Number(inv.quantity ?? 0),
+      0,
+    );
+
+    return {
+      ...product,
+      totalStock,
+      variants: productVariants.map((variant: any) => {
+        const variantInv = productInventory.find(
+          (inv: any) =>
+            inv.variantId === variant.id ||
+            inv.variantId === variant.remoteId,
+        );
+        return {
+          ...variant,
+          stock: variantInv ? Number(variantInv.quantity ?? 0) : 0,
+        };
+      }),
+    };
+  });
 
   const list = getModuleList({
     moduleKey,
@@ -639,63 +668,136 @@ export default function ManageScreen() {
           </Card>
 
           <SectionTitle title="Modules" />
-          <View className="mb-4 flex-row flex-wrap gap-2">
-            {(
-              [
-                "products",
-                "staff",
-                "stores",
-                "categories",
-                "customers",
-                "suppliers",
-                "brands",
-                "sessions",
-              ] as ModuleKey[]
-            ).map((key) => {
-              const isActive = moduleKey === key;
-              const count =
-                key === "sessions"
-                  ? sessions.length
-                  : key === "staff"
-                    ? staff.length
-                    : key === "products"
+          <View className="mb-4 gap-3">
+            {/* Store Operations */}
+            <View>
+              <Text className="mb-2 text-[11px] font-bold uppercase tracking-[2px] text-slate-400">
+                🏪 Store Operations
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {(["sessions", "staff", "stores"] as ModuleKey[]).map((key) => {
+                  const isActive = moduleKey === key;
+                  const count =
+                    key === "sessions"
+                      ? sessions.length
+                      : key === "staff"
+                        ? staff.length
+                        : stores.length;
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={() => setModuleKey(key)}
+                      className={`rounded-full border px-4 py-2.5 flex-row items-center ${
+                        isActive
+                          ? "border-emerald-400/40 bg-emerald-500/20"
+                          : "border-white/10 bg-white/5"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-bold uppercase tracking-[1.5px] ${
+                          isActive ? "text-emerald-200" : "text-slate-300"
+                        }`}
+                      >
+                        {key}
+                      </Text>
+                      <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
+                        <Text className="text-[10px] font-bold text-slate-300">
+                          {count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Catalog & Supply */}
+            <View>
+              <Text className="mb-2 text-[11px] font-bold uppercase tracking-[2px] text-slate-400">
+                📦 Catalog & Supply (Shared)
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {(
+                  [
+                    "products",
+                    "categories",
+                    "brands",
+                    "suppliers",
+                  ] as ModuleKey[]
+                ).map((key) => {
+                  const isActive = moduleKey === key;
+                  const count =
+                    key === "products"
                       ? products.length
-                      : key === "stores"
-                        ? stores.length
-                        : key === "categories"
-                          ? categories.length
-                          : key === "customers"
-                            ? customers.length
-                            : key === "suppliers"
-                              ? suppliers.length
-                              : key === "brands"
-                                ? brands.length
-                                : 0;
-              return (
-                <Pressable
-                  key={key}
-                  onPress={() => setModuleKey(key)}
-                  className={`rounded-full border px-4 py-3 flex-row items-center ${
-                    isActive
-                      ? "border-emerald-400/30 bg-emerald-500/15"
-                      : "border-white/10 bg-white/5"
-                  }`}
-                >
-                  <Text
-                    className={`text-xs font-bold uppercase tracking-[2px] ${
-                      isActive ? "text-emerald-200" : "text-slate-300"
-                    }`}
-                  >
-                    {key}
-                  </Text>
-                  <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
-                    <Text className="text-[10px] font-bold text-slate-300">
-                      {count}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
+                      : key === "categories"
+                        ? categories.length
+                        : key === "brands"
+                          ? brands.length
+                          : suppliers.length;
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={() => setModuleKey(key)}
+                      className={`rounded-full border px-4 py-2.5 flex-row items-center ${
+                        isActive
+                          ? "border-sky-400/40 bg-sky-500/20"
+                          : "border-white/10 bg-white/5"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-bold uppercase tracking-[1.5px] ${
+                          isActive ? "text-sky-200" : "text-slate-300"
+                        }`}
+                      >
+                        {key}
+                      </Text>
+                      <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
+                        <Text className="text-[10px] font-bold text-slate-300">
+                          {count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* CRM */}
+            <View>
+              <Text className="mb-2 text-[11px] font-bold uppercase tracking-[2px] text-slate-400">
+                👥 CRM (Shared)
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {(["customers"] as ModuleKey[]).map((key) => {
+                  const isActive = moduleKey === key;
+                  const count = customers.length;
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={() => setModuleKey(key)}
+                      className={`rounded-full border px-4 py-2.5 flex-row items-center ${
+                        isActive
+                          ? "border-amber-400/40 bg-amber-500/20"
+                          : "border-white/10 bg-white/5"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-bold uppercase tracking-[1.5px] ${
+                          isActive ? "text-amber-200" : "text-slate-300"
+                        }`}
+                      >
+                        {key}
+                      </Text>
+                      <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
+                        <Text className="text-[10px] font-bold text-slate-300">
+                          {count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
           </View>
 
           <View className="mb-4 flex-row gap-3">
@@ -926,6 +1028,9 @@ export default function ManageScreen() {
                                   <Text className="text-[10px] font-semibold text-amber-200">
                                     {variant.name} • $
                                     {Number(variant.price ?? 0).toFixed(2)}
+                                    {variant.stock !== undefined
+                                      ? ` • 📦 ${variant.stock}`
+                                      : ""}
                                   </Text>
                                 </View>
                               ))}
