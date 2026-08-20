@@ -524,6 +524,9 @@ export default function SyncScreen() {
           <Text className="text-slate-600 text-xs">
             Offline Mode v2.0 • Data stored locally
           </Text>
+          <Text className="text-slate-600 text-xs">
+            ERP/POS • Dev Htoo Myat Nyi Nyi (MM)
+          </Text>
           {isLoadingDetails && (
             <ActivityIndicator size="small" color="#38bdf8" className="mt-2" />
           )}

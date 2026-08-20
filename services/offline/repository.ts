@@ -2912,6 +2912,24 @@ export async function clearAllOutboxItems() {
   return result.length;
 }
 
+/** Remove failed/dead queue entries while preserving cached business data. */
+export async function clearFailedOutboxItems() {
+  const result = await getOfflineDb()
+    .delete(syncOutbox)
+    .where(inArray(syncOutbox.status, ["failed", "dead"]))
+    .returning();
+  return result.length;
+}
+
+/** Discard one invalid queued change without clearing the local cache. */
+export async function discardOutboxItem(id: string) {
+  const [item] = await getOfflineDb()
+    .delete(syncOutbox)
+    .where(eq(syncOutbox.id, id))
+    .returning();
+  return item;
+}
+
 // ============================================
 // SYNC STATUS FUNCTIONS
 // ============================================
