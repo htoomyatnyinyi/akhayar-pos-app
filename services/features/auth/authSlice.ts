@@ -27,7 +27,7 @@ const authSlice = createSlice({
         state.lastTenantCode = action.payload.tenant.code;
       }
     },
-    setStore: (state, action: PayloadAction<string>) => {
+    setStore: (state, action: PayloadAction<string | null>) => {
       state.currentStoreId = action.payload;
     },
     setLastTenantCode: (state, action: PayloadAction<string>) => {

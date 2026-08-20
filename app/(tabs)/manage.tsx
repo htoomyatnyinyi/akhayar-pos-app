@@ -10,10 +10,17 @@ import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { setStore } from "@/services/features/auth/authSlice";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useState } from "react";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+import { useLocalSearchParams } from "expo-router";
+import QRCode from "react-native-qrcode-svg";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -75,11 +82,21 @@ import {
 } from "@/utils/manage/helpers";
 import { buildPayload } from "@/utils/manage/buildPayload";
 import { useSync } from "@/services/offline/syncManager";
-import { canUseSessions, hasAnyPermission, hasPermission } from "@/utils/auth/permissions";
+import {
+  canUseSessions,
+  hasAnyPermission,
+  hasPermission,
+} from "@/utils/auth/permissions";
+import {
+  parseProductCsv,
+  productImportTemplateCsv,
+  productsToCsv,
+} from "@/utils/productTransfer";
 
 export default function ManageScreen() {
   const dispatch = useAppDispatch();
   const { user, currentStoreId } = useAppSelector((state) => state.auth);
+  const { module } = useLocalSearchParams<{ module?: string }>();
   const { isOnline, isSyncing, queueCount, failedCount, sync } = useSync();
   const isAdmin = user?.role === "ADMIN";
   const [moduleKey, setModuleKey] = useState<ModuleKey>("products");
@@ -93,6 +110,12 @@ export default function ManageScreen() {
     null,
   );
   const [refreshing, setRefreshing] = useState(false);
+  const [labelProduct, setLabelProduct] = useState<any | null>(null);
+  const qrRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (module === "products") setModuleKey("products");
+  }, [module]);
 
   // Store-scoped filter (if currentStoreId is null, shows all stores for admins)
   const scopedStoreId = currentStoreId || undefined;
@@ -211,7 +234,10 @@ export default function ManageScreen() {
 
   const refetchers = {
     staff: refetchStaff,
-    products: refetchProducts,
+    products: () => {
+      refetchProducts();
+      refetchInventory();
+    },
     stores: refetchStores,
     categories: refetchCategories,
     customers: refetchCustomers,
@@ -223,7 +249,10 @@ export default function ManageScreen() {
     },
   } as const;
 
-  const isPrivileged = hasAnyPermission(user, ["MANAGE_STAFF", "MANAGE_INVENTORY"]);
+  const isPrivileged = hasAnyPermission(user, [
+    "MANAGE_STAFF",
+    "MANAGE_INVENTORY",
+  ]);
   const canManageStaff = hasPermission(user, "MANAGE_STAFF");
   const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
   const canEditPrices = hasPermission(user, "EDIT_PRICES");
@@ -243,8 +272,224 @@ export default function ManageScreen() {
     try {
       await sync({ force: true });
     } catch (error: any) {
-      Alert.alert("Sync unavailable", error?.message || "Changes will retry automatically.");
+      Alert.alert(
+        "Sync unavailable",
+        error?.message || "Changes will retry automatically.",
+      );
     }
+  };
+
+  const shareProductCsv = async (
+    csv: string,
+    filename: string,
+    dialogTitle: string,
+  ) => {
+    const directory = FileSystem.cacheDirectory;
+    if (!directory)
+      throw new Error("Temporary storage is unavailable on this device.");
+    const uri = `${directory}${filename}`;
+    await FileSystem.writeAsStringAsync(uri, csv, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: "text/csv",
+        dialogTitle,
+        UTI: "public.comma-separated-values-text",
+      });
+    } else {
+      Alert.alert("File ready", `CSV saved to ${uri}`);
+    }
+  };
+
+  const handleExportProducts = async () => {
+    try {
+      const csv = productsToCsv(productsWithVariants);
+      await shareProductCsv(
+        csv,
+        `products-${new Date().toISOString().slice(0, 10)}.csv`,
+        "Export products",
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Export failed",
+        error?.message || "Could not export products.",
+      );
+    }
+  };
+
+  const handleDownloadProductTemplate = async () => {
+    try {
+      await shareProductCsv(
+        productImportTemplateCsv,
+        "product-import-template.csv",
+        "Save product import template",
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Template failed",
+        error?.message || "Could not create the CSV template.",
+      );
+    }
+  };
+
+  const handleImportProducts = async () => {
+    if (!canManageInventory) {
+      Alert.alert(
+        "Permission required",
+        "Only inventory managers can import products.",
+      );
+      return;
+    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          "text/csv",
+          "text/comma-separated-values",
+          "application/vnd.ms-excel",
+          "text/plain",
+        ],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      const csv = await FileSystem.readAsStringAsync(asset.uri);
+      const rows = parseProductCsv(csv);
+      if (!rows.length) {
+        Alert.alert("Nothing to import", "The CSV contains no product rows.");
+        return;
+      }
+      const existingSkus = new Set(
+        products.map((product: any) => String(product.sku || "").toLowerCase()),
+      );
+      const existingBarcodes = new Set(
+        products.map((product: any) =>
+          String(product.barcode || "").toLowerCase(),
+        ),
+      );
+      const categoryIds = new Map(
+        categories.map((category: any) => [
+          String(category.name || "")
+            .trim()
+            .toLowerCase(),
+          category.id,
+        ]),
+      );
+      const seen = new Set<string>();
+      let imported = 0;
+      let skipped = 0;
+      const importErrors: string[] = [];
+      for (const row of rows) {
+        const name = row.name.trim();
+        const sku = row.sku.trim();
+        const barcode = row.barcode.trim();
+        if (
+          !name ||
+          !sku ||
+          existingSkus.has(sku.toLowerCase()) ||
+          (barcode && existingBarcodes.has(barcode.toLowerCase())) ||
+          seen.has(sku.toLowerCase())
+        ) {
+          skipped += 1;
+          continue;
+        }
+        try {
+          const categoryName = row.categoryName.trim() || "General";
+          const categoryKey = categoryName.toLowerCase();
+          let categoryId = categoryIds.get(categoryKey);
+          if (!categoryId) {
+            const createdCategory = await createCategory(
+              buildPayload(
+                "categories",
+                {
+                  name: categoryName,
+                  slug: categoryName
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-")
+                    .replace(/^-|-$/g, ""),
+                },
+                currentStoreId,
+                user?.tenantId,
+                "create",
+              ),
+            ).unwrap();
+            categoryId = createdCategory?.id;
+            if (!categoryId)
+              throw new Error(`Could not create category "${categoryName}".`);
+            categoryIds.set(categoryKey, categoryId);
+          }
+          await createProduct(
+            buildPayload(
+              "products",
+              {
+                ...row,
+                name,
+                sku,
+                barcode,
+                categoryId,
+                categoryName,
+                sellingPrice: Number(row.sellingPrice || 0),
+                costPrice: Number(row.costPrice || 0),
+                wholesalePrice: Number(row.wholesalePrice || 0),
+                initialStock: Number(row.initialStock || 0),
+              },
+              currentStoreId,
+              user?.tenantId,
+              "create",
+            ),
+          ).unwrap();
+          seen.add(sku.toLowerCase());
+          imported += 1;
+        } catch (error: any) {
+          skipped += 1;
+          importErrors.push(
+            `${sku}: ${error?.data?.message || error?.message || "invalid row"}`,
+          );
+        }
+      }
+      await Promise.all([
+        refetchProducts(),
+        refetchCategories(),
+        refetchInventory(),
+      ]);
+      Alert.alert(
+        "Import complete",
+        `${imported} products imported.${skipped ? ` ${skipped} skipped (missing, duplicate, or invalid).` : ""}${importErrors.length ? `\n${importErrors.slice(0, 3).join("\n")}` : ""}`,
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Import failed",
+        error?.message || "Use a CSV exported from this screen.",
+      );
+    }
+  };
+
+  const handlePrintProductLabel = () => {
+    if (!labelProduct || !qrRef.current?.toDataURL) return;
+    const escapeHtml = (value: unknown) =>
+      String(value ?? "").replace(
+        /[&<>"']/g,
+        (character) =>
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          })[character]!,
+      );
+    qrRef.current.toDataURL(async (data: string) => {
+      try {
+        await Print.printAsync({
+          html: `<html><body style="font-family:Arial;text-align:center;padding:24px"><h2>${escapeHtml(labelProduct.name)}</h2><img src="data:image/png;base64,${data}" style="width:220px;height:220px"/><h3>${escapeHtml(labelProduct.barcode || labelProduct.sku)}</h3><p>SKU: ${escapeHtml(labelProduct.sku)}</p></body></html>`,
+        });
+      } catch (error: any) {
+        Alert.alert(
+          "Print failed",
+          error?.message || "Could not print this label.",
+        );
+      }
+    });
   };
 
   if (!isPrivileged) {
@@ -287,8 +532,7 @@ export default function ManageScreen() {
       variants: productVariants.map((variant: any) => {
         const variantInv = productInventory.find(
           (inv: any) =>
-            inv.variantId === variant.id ||
-            inv.variantId === variant.remoteId,
+            inv.variantId === variant.id || inv.variantId === variant.remoteId,
         );
         return {
           ...variant,
@@ -461,7 +705,10 @@ export default function ManageScreen() {
         ? canManageStaff
         : canManageInventory || canEditPrices;
     if (!allowed) {
-      Alert.alert("Permission required", "You do not have permission to manage this module.");
+      Alert.alert(
+        "Permission required",
+        "You do not have permission to manage this module.",
+      );
       return;
     }
     setEditor({ open: true, mode, item });
@@ -547,6 +794,7 @@ export default function ManageScreen() {
     await Promise.all([
       refetchStaff(),
       refetchProducts(),
+      refetchInventory(),
       refetchStores(),
       refetchCategories(),
       refetchCustomers(),
@@ -561,7 +809,11 @@ export default function ManageScreen() {
   const isLoading = {
     staff: fetchingStaff || creatingStaff || updatingStaff || deletingStaff,
     products:
-      fetchingProducts || creatingProduct || updatingProduct || deletingProduct,
+      fetchingProducts ||
+      fetchingInventory ||
+      creatingProduct ||
+      updatingProduct ||
+      deletingProduct,
     stores: fetchingStores || creatingStore || updatingStore || deletingStore,
     categories:
       fetchingCategories ||
@@ -604,12 +856,15 @@ export default function ManageScreen() {
             right={
               <View className="items-end">
                 <Pill
-                  label={isOnline ? (isSyncing ? "SYNCING" : "ONLINE") : "OFFLINE"}
+                  label={
+                    isOnline ? (isSyncing ? "SYNCING" : "ONLINE") : "OFFLINE"
+                  }
                   tone={isOnline ? "emerald" : "amber"}
                 />
                 {(queueCount > 0 || failedCount > 0) && (
                   <Text className="mt-1 text-[10px] text-slate-400">
-                    {queueCount} pending{failedCount ? ` • ${failedCount} failed` : ""}
+                    {queueCount} pending
+                    {failedCount ? ` • ${failedCount} failed` : ""}
                   </Text>
                 )}
               </View>
@@ -705,37 +960,37 @@ export default function ManageScreen() {
                     key === "sessions" ? canUseSessions(user) : canManageStaff,
                   )
                   .map((key) => {
-                  const isActive = moduleKey === key;
-                  const count =
-                    key === "sessions"
-                      ? sessions.length
-                      : key === "staff"
-                        ? staff.length
-                        : stores.length;
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => setModuleKey(key)}
-                      className={`rounded-full border px-4 py-2.5 flex-row items-center ${
-                        isActive
-                          ? "border-emerald-400/40 bg-emerald-500/20"
-                          : "border-white/10 bg-white/5"
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-bold uppercase tracking-[1.5px] ${
-                          isActive ? "text-emerald-200" : "text-slate-300"
+                    const isActive = moduleKey === key;
+                    const count =
+                      key === "sessions"
+                        ? sessions.length
+                        : key === "staff"
+                          ? staff.length
+                          : stores.length;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() => setModuleKey(key)}
+                        className={`rounded-full border px-4 py-2.5 flex-row items-center ${
+                          isActive
+                            ? "border-emerald-400/40 bg-emerald-500/20"
+                            : "border-white/10 bg-white/5"
                         }`}
                       >
-                        {key}
-                      </Text>
-                      <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
-                        <Text className="text-[10px] font-bold text-slate-300">
-                          {count}
+                        <Text
+                          className={`text-xs font-bold uppercase tracking-[1.5px] ${
+                            isActive ? "text-emerald-200" : "text-slate-300"
+                          }`}
+                        >
+                          {key}
                         </Text>
-                      </View>
-                    </Pressable>
-                  );
+                        <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
+                          <Text className="text-[10px] font-bold text-slate-300">
+                            {count}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
                   })}
               </View>
             </View>
@@ -756,39 +1011,39 @@ export default function ManageScreen() {
                 )
                   .filter(() => canManageInventory || canEditPrices)
                   .map((key) => {
-                  const isActive = moduleKey === key;
-                  const count =
-                    key === "products"
-                      ? products.length
-                      : key === "categories"
-                        ? categories.length
-                        : key === "brands"
-                          ? brands.length
-                          : suppliers.length;
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => setModuleKey(key)}
-                      className={`rounded-full border px-4 py-2.5 flex-row items-center ${
-                        isActive
-                          ? "border-sky-400/40 bg-sky-500/20"
-                          : "border-white/10 bg-white/5"
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-bold uppercase tracking-[1.5px] ${
-                          isActive ? "text-sky-200" : "text-slate-300"
+                    const isActive = moduleKey === key;
+                    const count =
+                      key === "products"
+                        ? products.length
+                        : key === "categories"
+                          ? categories.length
+                          : key === "brands"
+                            ? brands.length
+                            : suppliers.length;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() => setModuleKey(key)}
+                        className={`rounded-full border px-4 py-2.5 flex-row items-center ${
+                          isActive
+                            ? "border-sky-400/40 bg-sky-500/20"
+                            : "border-white/10 bg-white/5"
                         }`}
                       >
-                        {key}
-                      </Text>
-                      <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
-                        <Text className="text-[10px] font-bold text-slate-300">
-                          {count}
+                        <Text
+                          className={`text-xs font-bold uppercase tracking-[1.5px] ${
+                            isActive ? "text-sky-200" : "text-slate-300"
+                          }`}
+                        >
+                          {key}
                         </Text>
-                      </View>
-                    </Pressable>
-                  );
+                        <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
+                          <Text className="text-[10px] font-bold text-slate-300">
+                            {count}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
                   })}
               </View>
             </View>
@@ -802,32 +1057,32 @@ export default function ManageScreen() {
                 {(["customers"] as ModuleKey[])
                   .filter(() => canManageInventory)
                   .map((key) => {
-                  const isActive = moduleKey === key;
-                  const count = customers.length;
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => setModuleKey(key)}
-                      className={`rounded-full border px-4 py-2.5 flex-row items-center ${
-                        isActive
-                          ? "border-amber-400/40 bg-amber-500/20"
-                          : "border-white/10 bg-white/5"
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-bold uppercase tracking-[1.5px] ${
-                          isActive ? "text-amber-200" : "text-slate-300"
+                    const isActive = moduleKey === key;
+                    const count = customers.length;
+                    return (
+                      <Pressable
+                        key={key}
+                        onPress={() => setModuleKey(key)}
+                        className={`rounded-full border px-4 py-2.5 flex-row items-center ${
+                          isActive
+                            ? "border-amber-400/40 bg-amber-500/20"
+                            : "border-white/10 bg-white/5"
                         }`}
                       >
-                        {key}
-                      </Text>
-                      <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
-                        <Text className="text-[10px] font-bold text-slate-300">
-                          {count}
+                        <Text
+                          className={`text-xs font-bold uppercase tracking-[1.5px] ${
+                            isActive ? "text-amber-200" : "text-slate-300"
+                          }`}
+                        >
+                          {key}
                         </Text>
-                      </View>
-                    </Pressable>
-                  );
+                        <View className="ml-2 rounded-full bg-slate-700/50 px-2 py-0.5">
+                          <Text className="text-[10px] font-bold text-slate-300">
+                            {count}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
                   })}
               </View>
             </View>
@@ -855,6 +1110,29 @@ export default function ManageScreen() {
                 }
               />
             )}
+            {/* {moduleKey === "products" && (
+              <>
+                <ActionButton
+                  title="Export CSV"
+                  icon="file-download"
+                  accent="emerald"
+                  onPress={() => void handleExportProducts()}
+                />
+                <ActionButton
+                  title="Import CSV"
+                  icon="file-upload"
+                  accent="amber"
+                  onPress={() => void handleImportProducts()}
+                  disabled={!canManageInventory}
+                />
+                <ActionButton
+                  title="CSV Template"
+                  icon="description"
+                  accent="slate"
+                  onPress={() => void handleDownloadProductTemplate()}
+                />
+              </>
+            )} */}
             {moduleKey === "sessions" ? (
               <ActionButton
                 title={activeSession ? "Close Session" : "Open Session"}
@@ -876,6 +1154,30 @@ export default function ManageScreen() {
             )}
           </View>
 
+          {moduleKey === "products" && (
+            <View className="mb-4 flex-row gap-3">
+              <ActionButton
+                title="Export CSV"
+                icon="file-download"
+                accent="emerald"
+                onPress={() => void handleExportProducts()}
+              />
+              <ActionButton
+                title="Import CSV"
+                icon="file-upload"
+                accent="amber"
+                onPress={() => void handleImportProducts()}
+                disabled={!canManageInventory}
+              />
+              <ActionButton
+                title="CSV Template"
+                icon="description"
+                accent="slate"
+                onPress={() => void handleDownloadProductTemplate()}
+              />
+            </View>
+          )}
+
           <SectionTitle
             title={`${moduleKey} list`}
             action="Tap an item to edit"
@@ -893,10 +1195,12 @@ export default function ManageScreen() {
                   const sessionOrders = orders.filter(
                     (o: any) => o.sessionId === session.id,
                   );
-                  const totalSales = sessionOrders.filter(isCountedSale).reduce(
-                    (sum: number, o: any) => sum + (o.grandTotal || 0),
-                    0,
-                  );
+                  const totalSales = sessionOrders
+                    .filter(isCountedSale)
+                    .reduce(
+                      (sum: number, o: any) => sum + (o.grandTotal || 0),
+                      0,
+                    );
                   const orderCount = sessionOrders.length;
 
                   return (
@@ -1076,9 +1380,24 @@ export default function ManageScreen() {
                           )}
                       </View>
                     </View>
-                    <Text className="text-sm font-medium text-slate-300">
-                      {getRightLabel(moduleKey, item)}
-                    </Text>
+                    <View className="ml-2 items-end">
+                      <Text className="text-sm font-medium text-slate-300">
+                        {getRightLabel(moduleKey, item)}
+                      </Text>
+                      {moduleKey === "products" && (
+                        <TouchableOpacity
+                          className="mt-2 rounded-full bg-sky-500/15 p-2"
+                          onPress={() => setLabelProduct(item)}
+                          accessibilityLabel={`Print label for ${item.name}`}
+                        >
+                          <MaterialIcons
+                            name="qr-code-2"
+                            size={18}
+                            color="#38bdf8"
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </TouchableOpacity>
                   {index < list.length - 1 && (
                     <View className="mx-4 my-2 h-px bg-white/8" />
@@ -1126,6 +1445,61 @@ export default function ManageScreen() {
           onCloseSession={handleCloseSession}
           isSubmitting={openingSession || closingSession}
         />
+
+        <Modal
+          visible={Boolean(labelProduct)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setLabelProduct(null)}
+        >
+          <View className="flex-1 items-center justify-center bg-black/75 px-6">
+            <View className="w-full max-w-sm items-center rounded-3xl border border-white/10 bg-slate-900 p-6">
+              <Text className="text-xl font-black text-white">
+                Product label
+              </Text>
+              <Text
+                className="mt-1 text-center text-sm text-slate-400"
+                numberOfLines={1}
+              >
+                {labelProduct?.name}
+              </Text>
+              {labelProduct && (
+                <View className="my-6 rounded-2xl bg-white p-4">
+                  <QRCode
+                    getRef={(ref: any) => {
+                      qrRef.current = ref;
+                    }}
+                    value={String(
+                      labelProduct.barcode ||
+                        labelProduct.sku ||
+                        labelProduct.id,
+                    )}
+                    size={190}
+                    backgroundColor="white"
+                    color="black"
+                  />
+                </View>
+              )}
+              <Text className="text-base font-bold text-sky-300">
+                {labelProduct?.barcode || labelProduct?.sku}
+              </Text>
+              <View className="mt-5 w-full flex-row gap-3">
+                <ActionButton
+                  title="Close"
+                  icon="close"
+                  accent="slate"
+                  onPress={() => setLabelProduct(null)}
+                />
+                <ActionButton
+                  title="Print"
+                  icon="print"
+                  accent="sky"
+                  onPress={handlePrintProductLabel}
+                />
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </Screen>
   );

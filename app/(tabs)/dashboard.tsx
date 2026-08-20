@@ -8,9 +8,12 @@ import {
   ActionButton,
 } from "@/components/app-ui";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
+import { hasPermission } from "@/utils/auth/permissions";
 import {
   useGetLocalOrdersQuery,
   useGetLocalProductsQuery,
+  useGetLocalInventoryQuery,
+  useGetLocalSessionsQuery,
 } from "@/services/features/offline/localApi";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -285,15 +288,17 @@ function EnhancedSvgChart({
 //
 
 export default function DashboardScreen() {
-  const { currentStoreId } = useAppSelector((state) => state.auth);
+  const { currentStoreId, user } = useAppSelector((state) => state.auth);
+  const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
   const [chartType, setChartType] = useState<ChartType>("area");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const {
     data: orders = [],
     isLoading: ordersLoading,
     refetch: refetchOrders,
   } = useGetLocalOrdersQuery(
-    { storeId: currentStoreId || undefined },
+    { storeId: currentStoreId || undefined, includeItems: true },
     { pollingInterval: 10000 },
   );
 
@@ -305,10 +310,37 @@ export default function DashboardScreen() {
     storeId: currentStoreId || undefined,
   });
 
-  const isLoading = ordersLoading || productsLoading;
+  const {
+    data: inventory = [],
+    isLoading: inventoryLoading,
+    refetch: refetchInventory,
+  } = useGetLocalInventoryQuery({
+    storeId: currentStoreId || undefined,
+  });
+
+  const {
+    data: sessions = [],
+    isLoading: sessionsLoading,
+    refetch: refetchSessions,
+  } = useGetLocalSessionsQuery({
+    storeId: currentStoreId || undefined,
+  });
+
+  const isLoading =
+    ordersLoading || productsLoading || inventoryLoading || sessionsLoading;
 
   // Compute metrics
   const metrics = useMemo(() => {
+    const isVoided = (order: any) =>
+      ["VOIDED", "CANCELLED", "CANCELED"].includes(
+        String(order.status || "").toUpperCase(),
+      );
+    const countsAsRevenue = (order: any) =>
+      !isVoided(order) &&
+      ["COMPLETED", "PAID", "CLOSED"].includes(
+        String(order.status || "").toUpperCase(),
+      );
+
     // Helper to get date strings
     const todayStr = new Date().toDateString();
     const yesterdayDate = new Date();
@@ -322,17 +354,17 @@ export default function DashboardScreen() {
       (o: any) => new Date(o.createdAt).toDateString() === yesterdayStr,
     );
 
-    const todayRevenue = todayOrders.reduce(
+    const todayRevenue = todayOrders.filter(countsAsRevenue).reduce(
       (sum: number, o: any) => sum + Number(o.grandTotal || 0),
       0,
     );
-    const yesterdayRevenue = yesterdayOrders.reduce(
+    const yesterdayRevenue = yesterdayOrders.filter(countsAsRevenue).reduce(
       (sum: number, o: any) => sum + Number(o.grandTotal || 0),
       0,
     );
 
     const totalOrders = orders.length;
-    const totalRevenue = orders.reduce(
+    const totalRevenue = orders.filter(countsAsRevenue).reduce(
       (sum: number, o: any) => sum + Number(o.grandTotal || 0),
       0,
     );
@@ -385,7 +417,11 @@ export default function DashboardScreen() {
     const dailyRevenue = last7Days.map((d) => {
       const dayStr = d.toDateString();
       return orders
-        .filter((o: any) => new Date(o.createdAt).toDateString() === dayStr)
+        .filter(
+          (o: any) =>
+            new Date(o.createdAt).toDateString() === dayStr &&
+            countsAsRevenue(o),
+        )
         .reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
     });
 
@@ -417,6 +453,27 @@ export default function DashboardScreen() {
 
     const maxProductQty =
       topProducts.length > 0 ? Math.max(...topProducts.map((p) => p.qty)) : 1;
+
+    const paymentMix = todayOrders.filter(countsAsRevenue).reduce(
+      (acc: Record<string, number>, order: any) => {
+        const method = String(order.paymentMethod || "OTHER").toUpperCase();
+        acc[method] = (acc[method] || 0) + Number(order.grandTotal || 0);
+        return acc;
+      },
+      {},
+    );
+    const lowStockItems = inventory.filter(
+      (item: any) => Number(item.quantity || 0) <= Number(item.reorderPoint || 0),
+    );
+    const outOfStockItems = inventory.filter(
+      (item: any) => Number(item.quantity || 0) <= 0,
+    );
+    const activeSession = sessions.find(
+      (session: any) => String(session.status).toUpperCase() === "OPEN",
+    );
+    const unsyncedCount = [...orders, ...inventory].filter(
+      (item: any) => ["pending", "failed"].includes(String(item.syncStatus)),
+    ).length;
 
     // Recent 5 Orders
     const recentOrders = [...orders]
@@ -453,13 +510,27 @@ export default function DashboardScreen() {
 
       topProducts,
       maxProductQty,
+      paymentMix,
+      lowStockCount: lowStockItems.length,
+      outOfStockCount: outOfStockItems.length,
+      activeSession,
+      unsyncedCount,
       recentOrders,
     };
-  }, [orders, products]);
+  }, [orders, products, inventory, sessions]);
 
-  const onRefresh = () => {
-    refetchOrders();
-    refetchProducts();
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        refetchOrders(),
+        refetchProducts(),
+        refetchInventory(),
+        refetchSessions(),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   return (
@@ -476,6 +547,12 @@ export default function DashboardScreen() {
                   label={currentStoreId ? "Store View" : "Global View"}
                   tone={currentStoreId ? "emerald" : "sky"}
                 />
+                {metrics.unsyncedCount > 0 && (
+                  <Pill
+                    label={`${metrics.unsyncedCount} pending`}
+                    tone="amber"
+                  />
+                )}
               </View>
             }
           />
@@ -494,7 +571,7 @@ export default function DashboardScreen() {
             contentContainerStyle={{ paddingBottom: 60 }}
             refreshControl={
               <RefreshControl
-                refreshing={false}
+                refreshing={isRefreshing}
                 onRefresh={onRefresh}
                 tintColor="#38bdf8"
               />
@@ -502,7 +579,7 @@ export default function DashboardScreen() {
             showsVerticalScrollIndicator={false}
           >
             {/* Quick Actions Row */}
-            {/* <ScrollView
+            <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               className="mb-6"
@@ -512,7 +589,7 @@ export default function DashboardScreen() {
                 title="New Sale"
                 icon="point-of-sale"
                 accent="sky"
-                onPress={() => router.push("/pos")}
+                onPress={() => router.push("/")}
               />
               <ActionButton
                 title="View Orders"
@@ -526,7 +603,20 @@ export default function DashboardScreen() {
                 accent="amber"
                 onPress={() => router.push("/inventory")}
               />
-            </ScrollView> */}
+              {canManageInventory && (
+                <ActionButton
+                  title="Product CSV"
+                  icon="import-export"
+                  accent="emerald"
+                  onPress={() =>
+                    router.push({
+                      pathname: "/manage",
+                      params: { module: "products" },
+                    })
+                  }
+                />
+              )}
+            </ScrollView>
 
             {/* KPIs Row */}
             <View className="flex-row flex-wrap gap-3 mb-6">
@@ -549,6 +639,75 @@ export default function DashboardScreen() {
                 />
               </View>
             </View>
+
+            {/* Operational health */}
+            <SectionTitle title="Operational Health" />
+            <View className="flex-row flex-wrap gap-3 mb-6">
+              <TouchableOpacity
+                className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                onPress={() => router.push("/inventory")}
+              >
+                <View className="flex-row items-center justify-between">
+                  <MaterialIcons name="inventory-2" size={20} color="#fbbf24" />
+                  <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                </View>
+                <Text className="text-white text-xl font-black mt-3">
+                  {metrics.lowStockCount}
+                </Text>
+                <Text className="text-slate-400 text-xs mt-1">Low stock items</Text>
+                {metrics.outOfStockCount > 0 && (
+                  <Text className="text-rose-400 text-[10px] font-bold mt-2">
+                    {metrics.outOfStockCount} out of stock
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="w-[48%] bg-slate-900 border border-slate-800 rounded-2xl p-4"
+                onPress={() => router.push("/sessions")}
+              >
+                <View className="flex-row items-center justify-between">
+                  <MaterialIcons
+                    name="point-of-sale"
+                    size={20}
+                    color={metrics.activeSession ? "#34d399" : "#f87171"}
+                  />
+                  <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                </View>
+                <Text className="text-white text-xl font-black mt-3">
+                  {metrics.activeSession ? "Open" : "Closed"}
+                </Text>
+                <Text className="text-slate-400 text-xs mt-1">Register session</Text>
+                <Text
+                  className={`text-[10px] font-bold mt-2 ${metrics.activeSession ? "text-emerald-400" : "text-rose-400"}`}
+                >
+                  {metrics.activeSession
+                    ? `Opening $${Number(metrics.activeSession.openingBalance || 0).toFixed(2)}`
+                    : "Open a session to sell"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <SectionTitle title="Today's Payment Mix" />
+            <Card className="mb-6">
+              {Object.keys(metrics.paymentMix).length === 0 ? (
+                <Text className="text-slate-500 text-sm text-center py-4">
+                  No completed payments today.
+                </Text>
+              ) : (
+                Object.entries(metrics.paymentMix)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([method, amount]) => (
+                    <View key={method} className="flex-row justify-between py-2 border-b border-white/5 last:border-b-0">
+                      <Text className="text-slate-300 text-sm font-semibold">
+                        {method.replace(/_/g, " ")}
+                      </Text>
+                      <Text className="text-emerald-400 text-sm font-bold">
+                        ${amount.toFixed(2)}
+                      </Text>
+                    </View>
+                  ))
+              )}
+            </Card>
 
             {/* Revenue Trend Chart with Graph Type Switcher */}
             <View className="flex-row items-center justify-between mb-2">
