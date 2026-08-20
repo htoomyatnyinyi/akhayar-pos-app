@@ -3,10 +3,12 @@ import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Platform, View } from "react-native";
+import { hasAnyPermission } from "@/utils/auth/permissions";
 
 export default function TabLayout() {
-  const role = useAppSelector((state) => state.auth.user?.role);
-  const showManagement = role === "ADMIN" || role === "MANAGER";
+  const user = useAppSelector((state) => state.auth.user);
+  const showManagement = hasAnyPermission(user, ["MANAGE_STAFF", "MANAGE_INVENTORY"]);
+  const showDashboard = hasAnyPermission(user, ["VIEW_REPORTS", "VIEW_ANALYTICS"]);
 
   return (
     <View className="flex-1 ">
@@ -71,6 +73,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="dashboard"
           options={{
+            href: showDashboard ? "/(tabs)/dashboard" : null,
             title: "Dashboard",
             tabBarIcon: ({ color, focused }) => (
               <MaterialIcons

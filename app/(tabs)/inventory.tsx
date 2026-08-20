@@ -25,6 +25,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import React, { useCallback, useState } from "react";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { isOnline } from "@/services/offline/network";
+import { hasPermission } from "@/utils/auth/permissions";
 import {
   useAllocateProductStockMutation,
   useCreateStockTransferMutation,
@@ -46,7 +47,8 @@ import {
 type ActiveTab = "stock" | "movements";
 
 export default function InventoryScreen() {
-  const { currentStoreId } = useAppSelector((state) => state.auth);
+  const { currentStoreId, user } = useAppSelector((state) => state.auth);
+  const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
   const [activeTab, setActiveTab] = useState<ActiveTab>("stock");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -176,6 +178,10 @@ export default function InventoryScreen() {
 
   const handleAdjustStock = useCallback(
     async (newQty: number, reason: string) => {
+      if (!canManageInventory) {
+        Alert.alert("Permission required", "Inventory management permission is required.");
+        return;
+      }
       if (!selectedInventory) return;
       try {
         await adjustStock({
@@ -197,6 +203,7 @@ export default function InventoryScreen() {
     },
     [
       selectedInventory,
+      canManageInventory,
       adjustStock,
       refetchInventory,
       refetchMovements,
@@ -216,6 +223,10 @@ export default function InventoryScreen() {
       transferToStoreId?: string;
     }) => {
       try {
+        if (!canManageInventory) {
+          Alert.alert("Permission required", "Inventory management permission is required.");
+          return;
+        }
         if (!payload.tenantId || !payload.storeId) {
           throw new Error("Missing tenant or source store for movement");
         }
@@ -283,6 +294,7 @@ export default function InventoryScreen() {
       refetchInventory,
       refetchMovements,
       selectedInventory,
+      canManageInventory,
     ],
   );
 
@@ -429,7 +441,7 @@ export default function InventoryScreen() {
                 )}
             </View>
           </View>
-          {item.variantOptions?.length > 0 &&
+          {canManageInventory && item.variantOptions?.length > 0 &&
             !item.rows.some((row: any) => row.variantId) && (
               <TouchableOpacity
                 className="mb-3 rounded-xl bg-amber-500/15 border border-amber-400/30 px-3 py-2"
@@ -447,6 +459,7 @@ export default function InventoryScreen() {
             const badge = getStockBadge(variantRow.quantity);
             return (
               <TouchableOpacity
+                disabled={!canManageInventory}
                 key={variantRow.id}
                 className="flex-row items-center py-3 px-3 mb-2 rounded-xl bg-white/5 border border-white/5"
                 onPress={() => {
@@ -482,6 +495,7 @@ export default function InventoryScreen() {
     const badge = getStockBadge(row.quantity);
     return (
       <TouchableOpacity
+        disabled={!canManageInventory}
         activeOpacity={0.8}
         onPress={() => {
           setSelectedInventory(row);
@@ -599,7 +613,7 @@ export default function InventoryScreen() {
           eyebrow="Warehouse"
           title="Inventory"
           subtitle="Track stock levels and movements"
-          right={
+          right={canManageInventory ? (
             <TouchableOpacity
               className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30 flex-row items-center"
               onPress={() => setShowProductModal(true)}
@@ -609,7 +623,7 @@ export default function InventoryScreen() {
                 Product
               </Text>
             </TouchableOpacity>
-          }
+          ) : undefined}
         />
       </View>
 
@@ -736,13 +750,13 @@ export default function InventoryScreen() {
       )}
 
       {/* FAB — New Movement */}
-      <TouchableOpacity
+      {canManageInventory && <TouchableOpacity
         className="absolute bottom-6 right-5 h-14 w-14 bg-sky-500 rounded-full items-center justify-center shadow-lg shadow-sky-500/30 border border-sky-400"
         activeOpacity={0.8}
         onPress={() => setShowMovementModal(true)}
       >
         <MaterialIcons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      </TouchableOpacity>}
 
       {/* ============================================ */}
       {/* ADJUST STOCK MODAL */}

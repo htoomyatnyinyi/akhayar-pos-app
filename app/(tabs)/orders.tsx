@@ -7,6 +7,7 @@ import {
   StatRow,
 } from "@/components/app-ui";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
+import { hasPermission } from "@/utils/auth/permissions";
 import {
   useGetLocalOrdersQuery,
   useGetLocalOrderByIdQuery,
@@ -67,7 +68,9 @@ function SyncBadge({ syncStatus }: { syncStatus?: string }) {
 }
 
 export default function OrdersScreen() {
-  const { currentStoreId } = useAppSelector((state) => state.auth);
+  const { currentStoreId, user } = useAppSelector((state) => state.auth);
+  const canVoidOrders = hasPermission(user, "VOID_ORDERS");
+  const canRefundOrders = hasPermission(user, "REFUND_ORDERS");
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "ALL">("ALL");
   const [search, setSearch] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -102,6 +105,13 @@ export default function OrdersScreen() {
 
   const handleStatusUpdate = useCallback(
     (orderId: string, newStatus: string, label: string) => {
+      if (
+        (newStatus === "VOIDED" && !canVoidOrders) ||
+        (newStatus === "CANCELLED" && !canRefundOrders)
+      ) {
+        Alert.alert("Permission required", "You do not have permission for this order action.");
+        return;
+      }
       Alert.alert(
         `${label} Order?`,
         `Are you sure you want to mark this order as ${newStatus}?`,
@@ -127,7 +137,7 @@ export default function OrdersScreen() {
         ],
       );
     },
-    [updateStatus, refetch],
+    [updateStatus, refetch, canVoidOrders, canRefundOrders],
   );
 
   const renderOrderItem = ({ item }: { item: any }) => (
@@ -370,7 +380,7 @@ export default function OrdersScreen() {
                                     : "COMPLETE"}
                                 </Text>
                               </TouchableOpacity>
-                              <TouchableOpacity
+                              {canRefundOrders && <TouchableOpacity
                                 className="flex-1 bg-rose-500/15 py-3 rounded-xl border border-rose-500/30 flex-row items-center justify-center gap-2"
                                 onPress={() =>
                                   handleStatusUpdate(
@@ -389,10 +399,10 @@ export default function OrdersScreen() {
                                 <Text className="text-rose-400 font-bold text-xs">
                                   CANCEL
                                 </Text>
-                              </TouchableOpacity>
+                              </TouchableOpacity>}
                             </>
                           )}
-                          {orderDetail.status === "COMPLETED" && (
+                          {orderDetail.status === "COMPLETED" && canVoidOrders && (
                             <TouchableOpacity
                               className="flex-1 bg-rose-500/15 py-3 rounded-xl border border-rose-500/30 flex-row items-center justify-center gap-2"
                               onPress={() =>

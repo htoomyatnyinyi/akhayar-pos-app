@@ -30,9 +30,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { canUseSessions } from "@/utils/auth/permissions";
 
 export default function SessionsScreen() {
   const { user, currentStoreId } = useAppSelector((state) => state.auth);
+  const canManageSession = canUseSessions(user);
 
   const {
     data: sessions = [],
@@ -74,6 +76,10 @@ export default function SessionsScreen() {
   const cashDifference = (Number(closingBalance) || 0) - expectedClosingCash;
 
   const handleOpenSession = async () => {
+    if (!canManageSession) {
+      Alert.alert("Permission required", "You cannot open or close register sessions.");
+      return;
+    }
     if (!user?.id) {
       Alert.alert("Error", "User not logged in");
       return;
@@ -106,6 +112,10 @@ export default function SessionsScreen() {
   };
 
   const handleCloseSession = async () => {
+    if (!canManageSession) {
+      Alert.alert("Permission required", "You cannot open or close register sessions.");
+      return;
+    }
     if (!selectedSession) return;
     setIsSubmitting(true);
     try {
@@ -193,7 +203,7 @@ export default function SessionsScreen() {
             <Text className="text-emerald-400 font-bold">
               ${totalSales.toFixed(2)}
             </Text>
-            {isActive && (
+            {isActive && canManageSession && (
               <TouchableOpacity
                 className="mt-2 bg-rose-500/20 px-3 py-1.5 rounded-full border border-rose-500/30"
                 onPress={() => {
@@ -222,7 +232,7 @@ export default function SessionsScreen() {
               <TouchableOpacity
                 className="bg-emerald-500/20 px-3 py-1.5 rounded-full border border-emerald-500/30 flex-row items-center"
                 onPress={() => setShowOpenModal(true)}
-                disabled={!!activeSession}
+                disabled={!!activeSession || !canManageSession}
               >
                 <MaterialIcons
                   name="add"

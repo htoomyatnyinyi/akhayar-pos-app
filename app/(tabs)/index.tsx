@@ -2,6 +2,7 @@ import { Card, Header, Pill, Screen } from "@/components/app-ui";
 import { BarcodeScannerModal } from "@/components/barcode-scanner-modal";
 import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
+import { canCreateOrders } from "@/utils/auth/permissions";
 
 import {
   addToCart,
@@ -41,6 +42,7 @@ const { height } = Dimensions.get("window");
 export default function POSScreen() {
   const dispatch = useAppDispatch();
   const { user, currentStoreId } = useAppSelector((state) => state.auth);
+  const canCheckout = canCreateOrders(user);
 
   // State
   const [searchQuery, setSearchQuery] = useState("");
@@ -292,6 +294,10 @@ export default function POSScreen() {
   };
 
   const handleCheckout = async () => {
+    if (!canCheckout) {
+      Alert.alert("Permission required", "You cannot create sales orders.");
+      return;
+    }
     if (cartItems.length === 0) {
       Alert.alert("Cart Empty", "Please add items to the cart first.");
       return;
@@ -838,6 +844,7 @@ export default function POSScreen() {
 
                   <TouchableOpacity
                     className={`mt-4 py-4 rounded-xl ${
+                      !canCheckout ||
                       cartItems.length === 0 ||
                       isSubmitting ||
                       hasOutOfStockItems

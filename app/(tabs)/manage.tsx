@@ -75,6 +75,7 @@ import {
 } from "@/utils/manage/helpers";
 import { buildPayload } from "@/utils/manage/buildPayload";
 import { useSync } from "@/services/offline/syncManager";
+import { canUseSessions, hasAnyPermission, hasPermission } from "@/utils/auth/permissions";
 
 export default function ManageScreen() {
   const dispatch = useAppDispatch();
@@ -222,7 +223,10 @@ export default function ManageScreen() {
     },
   } as const;
 
-  const isPrivileged = user?.role === "ADMIN" || user?.role === "MANAGER";
+  const isPrivileged = hasAnyPermission(user, ["MANAGE_STAFF", "MANAGE_INVENTORY"]);
+  const canManageStaff = hasPermission(user, "MANAGE_STAFF");
+  const canManageInventory = hasPermission(user, "MANAGE_INVENTORY");
+  const canEditPrices = hasPermission(user, "EDIT_PRICES");
 
   const storeOptions = isAdmin
     ? stores
@@ -377,6 +381,19 @@ export default function ManageScreen() {
           );
           return;
         }
+        if (
+          user?.role !== "ADMIN" &&
+          user?.role !== "SUPER_ADMIN" &&
+          (nextValues.permissions ?? []).some(
+            (permission: string) => !hasPermission(user, permission as any),
+          )
+        ) {
+          Alert.alert(
+            "Permission assignment denied",
+            "You can only grant permissions that you have yourself.",
+          );
+          return;
+        }
       }
 
       if (moduleKey === "staff") {
@@ -439,6 +456,14 @@ export default function ManageScreen() {
   };
 
   const openEditor = (mode: "create" | "edit", item?: any) => {
+    const allowed =
+      moduleKey === "staff" || moduleKey === "stores"
+        ? canManageStaff
+        : canManageInventory || canEditPrices;
+    if (!allowed) {
+      Alert.alert("Permission required", "You do not have permission to manage this module.");
+      return;
+    }
     setEditor({ open: true, mode, item });
   };
 
@@ -675,7 +700,11 @@ export default function ManageScreen() {
                 🏪 Store Operations
               </Text>
               <View className="flex-row flex-wrap gap-2">
-                {(["sessions", "staff", "stores"] as ModuleKey[]).map((key) => {
+                {(["sessions", "staff", "stores"] as ModuleKey[])
+                  .filter((key) =>
+                    key === "sessions" ? canUseSessions(user) : canManageStaff,
+                  )
+                  .map((key) => {
                   const isActive = moduleKey === key;
                   const count =
                     key === "sessions"
@@ -707,7 +736,7 @@ export default function ManageScreen() {
                       </View>
                     </Pressable>
                   );
-                })}
+                  })}
               </View>
             </View>
 
@@ -724,7 +753,9 @@ export default function ManageScreen() {
                     "brands",
                     "suppliers",
                   ] as ModuleKey[]
-                ).map((key) => {
+                )
+                  .filter(() => canManageInventory || canEditPrices)
+                  .map((key) => {
                   const isActive = moduleKey === key;
                   const count =
                     key === "products"
@@ -758,7 +789,7 @@ export default function ManageScreen() {
                       </View>
                     </Pressable>
                   );
-                })}
+                  })}
               </View>
             </View>
 
@@ -768,7 +799,9 @@ export default function ManageScreen() {
                 👥 CRM (Shared)
               </Text>
               <View className="flex-row flex-wrap gap-2">
-                {(["customers"] as ModuleKey[]).map((key) => {
+                {(["customers"] as ModuleKey[])
+                  .filter(() => canManageInventory)
+                  .map((key) => {
                   const isActive = moduleKey === key;
                   const count = customers.length;
                   return (
@@ -795,7 +828,7 @@ export default function ManageScreen() {
                       </View>
                     </Pressable>
                   );
-                })}
+                  })}
               </View>
             </View>
           </View>
@@ -814,7 +847,12 @@ export default function ManageScreen() {
                 icon="add"
                 accent="emerald"
                 onPress={() => openEditor("create")}
-                disabled={isLoading[moduleKey]}
+                disabled={
+                  isLoading[moduleKey] ||
+                  (moduleKey === "staff" || moduleKey === "stores"
+                    ? !canManageStaff
+                    : !canManageInventory && !canEditPrices)
+                }
               />
             )}
             {moduleKey === "sessions" ? (
