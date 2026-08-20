@@ -37,6 +37,7 @@ import {
   upsertCategories,
   upsertCustomers,
   upsertInventory,
+  upsertInventoryMovements,
   upsertPriceHistory,
   upsertProducts,
   upsertProductVariants,
@@ -253,6 +254,8 @@ export async function syncNow(
     // if (!silent) console.log("📥 Pulling inventory...");
     const inventoryResult = await pullInventory(dispatch, tenantId);
     syncedItems += inventoryResult.synced;
+    const movementResult = await pullInventoryMovements(dispatch, tenantId);
+    syncedItems += movementResult.synced;
     dispatch(setSyncProgress(55));
     if (!silent)
       console.log(`✅ Synced ${inventoryResult.synced} inventory items`);
@@ -306,6 +309,7 @@ export async function syncNow(
       await pullSuppliers(dispatch, tenantId),
       await pullProducts(dispatch, tenantId),
       await pullInventory(dispatch, tenantId),
+      await pullInventoryMovements(dispatch, tenantId),
       await pullSessions(dispatch, tenantId),
       await pullOrders(dispatch, tenantId),
       await pullPriceHistory(dispatch, tenantId),
@@ -749,6 +753,46 @@ async function pullInventory(dispatch: AppDispatch, tenantId: string) {
   }
 }
 
+async function pullInventoryMovements(dispatch: AppDispatch, tenantId: string) {
+  try {
+    const state = store.getState();
+    if (!state.auth?.user?.token) return { synced: 0 };
+
+    const movements: any[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= 100; page += 1) {
+      const { data, error } = await store.dispatch(
+        remoteApi.endpoints.getRemoteInventoryMovements.initiate(
+          { page, limit: 100 },
+          { forceRefetch: true },
+        ),
+      );
+      if (error) {
+        const status = (error as any).originalStatus ?? (error as any).status;
+        if (status === 404 || status === "PARSING_ERROR") break;
+        console.error("❌ Inventory movements pull failed:", error);
+        break;
+      }
+      const pageItems = extractCollection(data, ["movements", "items", "results", "data"]);
+      if (!pageItems.length) break;
+      for (const movement of pageItems) {
+        const id = String(movement.id ?? movement._id ?? movement.remoteId ?? "");
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          movements.push(movement);
+        }
+      }
+      if (pageItems.length < 100) break;
+    }
+
+    if (movements.length) await upsertInventoryMovements(movements, tenantId);
+    return { synced: movements.length };
+  } catch (error) {
+    console.error("❌ Failed to pull inventory movements:", error);
+    return { synced: 0 };
+  }
+}
+
 async function pullSessions(dispatch: AppDispatch, tenantId: string) {
   try {
     const state = store.getState();
@@ -879,6 +923,7 @@ export const pullStaffForRead = pullStaff;
 export const pullSuppliersForRead = pullSuppliers;
 export const pullProductsForRead = pullProducts;
 export const pullInventoryForRead = pullInventory;
+export const pullInventoryMovementsForRead = pullInventoryMovements;
 export const pullSessionsForRead = pullSessions;
 export const pullOrdersForRead = pullOrders;
 export const pullPriceHistoryForRead = pullPriceHistory;

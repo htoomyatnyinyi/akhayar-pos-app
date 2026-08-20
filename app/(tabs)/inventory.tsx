@@ -179,7 +179,10 @@ export default function InventoryScreen() {
   const handleAdjustStock = useCallback(
     async (newQty: number, reason: string) => {
       if (!canManageInventory) {
-        Alert.alert("Permission required", "Inventory management permission is required.");
+        Alert.alert(
+          "Permission required",
+          "Inventory management permission is required.",
+        );
         return;
       }
       if (!selectedInventory) return;
@@ -224,7 +227,10 @@ export default function InventoryScreen() {
     }) => {
       try {
         if (!canManageInventory) {
-          Alert.alert("Permission required", "Inventory management permission is required.");
+          Alert.alert(
+            "Permission required",
+            "Inventory management permission is required.",
+          );
           return;
         }
         if (!payload.tenantId || !payload.storeId) {
@@ -441,7 +447,8 @@ export default function InventoryScreen() {
                 )}
             </View>
           </View>
-          {canManageInventory && item.variantOptions?.length > 0 &&
+          {canManageInventory &&
+            item.variantOptions?.length > 0 &&
             !item.rows.some((row: any) => row.variantId) && (
               <TouchableOpacity
                 className="mb-3 rounded-xl bg-amber-500/15 border border-amber-400/30 px-3 py-2"
@@ -613,36 +620,38 @@ export default function InventoryScreen() {
           eyebrow="Warehouse"
           title="Inventory"
           subtitle="Track stock levels and movements"
-          right={canManageInventory ? (
-            <TouchableOpacity
-              className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30 flex-row items-center"
-              onPress={() => setShowProductModal(true)}
-            >
-              <MaterialIcons name="add" size={16} color="#38bdf8" />
-              <Text className="text-sky-400 font-bold text-xs ml-1">
-                Product
-              </Text>
-            </TouchableOpacity>
-          ) : undefined}
+          right={
+            canManageInventory ? (
+              <TouchableOpacity
+                className="bg-sky-500/20 px-3 py-1.5 rounded-full border border-sky-500/30 flex-row items-center"
+                onPress={() => setShowProductModal(true)}
+              >
+                <MaterialIcons name="add" size={16} color="#38bdf8" />
+                <Text className="text-sky-400 font-bold text-xs ml-1">
+                  Product
+                </Text>
+              </TouchableOpacity>
+            ) : undefined
+          }
         />
       </View>
 
       {/* Metrics */}
       <View className="flex-row gap-3 px-5 mb-5">
         <MetricCard
-          icon="inventory"
+          // icon="inventory"
           label="Total"
           value={totalProducts.toString()}
           tone="sky"
         />
         <MetricCard
-          icon="warning"
+          // icon="warning"
           label="Low Stock"
           value={lowStockCount.toString()}
           tone={lowStockCount > 0 ? "amber" : "emerald"}
         />
         <MetricCard
-          icon="remove-shopping-cart"
+          // icon="remove-shopping-cart"
           label="Out"
           value={outOfStockCount.toString()}
           tone={outOfStockCount > 0 ? "rose" : "emerald"}
@@ -674,7 +683,7 @@ export default function InventoryScreen() {
       {/* Search (Stock tab only) */}
       {activeTab === "stock" && (
         <View className="px-5 mb-4">
-          <View className="flex-row items-center bg-white/5 rounded-[20px] px-4 py-3 border border-white/10">
+          <View className="flex-row items-center bg-white/5 rounded-[20px] px-4 py-1 border border-white/10">
             <MaterialIcons name="search" size={20} color="#94a3b8" />
             <TextInput
               className="flex-1 ml-3 text-white text-sm font-medium"
@@ -750,13 +759,15 @@ export default function InventoryScreen() {
       )}
 
       {/* FAB — New Movement */}
-      {canManageInventory && <TouchableOpacity
-        className="absolute bottom-6 right-5 h-14 w-14 bg-sky-500 rounded-full items-center justify-center shadow-lg shadow-sky-500/30 border border-sky-400"
-        activeOpacity={0.8}
-        onPress={() => setShowMovementModal(true)}
-      >
-        <MaterialIcons name="add" size={28} color="#fff" />
-      </TouchableOpacity>}
+      {canManageInventory && (
+        <TouchableOpacity
+          className="absolute bottom-6 right-5 h-14 w-14 bg-sky-500 rounded-full items-center justify-center shadow-lg shadow-sky-500/30 border border-sky-400"
+          activeOpacity={0.8}
+          onPress={() => setShowMovementModal(true)}
+        >
+          <MaterialIcons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       {/* ============================================ */}
       {/* ADJUST STOCK MODAL */}

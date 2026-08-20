@@ -1731,7 +1731,7 @@ export const localApi = createApi({
         limit?: number;
       } = {}) {
         try {
-          await refreshIfOnline(["inventory"]);
+          await refreshIfOnline(["inventoryMovements"]);
           const db = getOfflineDb();
           let query = db
             .select()

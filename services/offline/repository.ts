@@ -583,6 +583,87 @@ export async function upsertInventory(
   });
 }
 
+/** Cache server movement history locally so the inventory timeline works offline. */
+export async function upsertInventoryMovements(
+  remoteMovements: any[],
+  defaultTenantId: string,
+) {
+  if (!remoteMovements.length) return;
+
+  const db = getOfflineDb();
+  const now = new Date().toISOString();
+
+  const localMovementType = (value: unknown) => {
+    const type = String(value ?? "").toUpperCase();
+    if (["PURCHASE", "RETURN_IN", "OPENING_STOCK"].includes(type)) return "IN";
+    if (type === "SALE") return "OUT";
+    if (type === "COUNTING") return "COUNT";
+    return type || "ADJUSTMENT";
+  };
+  const entityId = (value: any) =>
+    value && typeof value === "object"
+      ? value.id ?? value._id ?? value.remoteId
+      : value;
+
+  for (const movement of remoteMovements) {
+    const remoteId = String(movement.id ?? movement._id ?? movement.remoteId ?? "");
+    if (!remoteId) continue;
+
+    const remoteProductId = entityId(
+      movement.productId ?? movement.product_id ?? movement.product,
+    );
+    const remoteVariantId = entityId(
+      movement.variantId ?? movement.variant_id ?? movement.variant,
+    );
+    const remoteStoreId = entityId(
+      movement.storeId ?? movement.store_id ?? movement.store,
+    );
+    if (!remoteProductId || !remoteStoreId) continue;
+
+    const [localProduct] = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(or(eq(products.remoteId, String(remoteProductId)), eq(products.id, String(remoteProductId))))
+      .limit(1);
+    const [localVariant] = remoteVariantId
+      ? await db
+          .select({ id: productVariants.id })
+          .from(productVariants)
+          .where(or(eq(productVariants.remoteId, String(remoteVariantId)), eq(productVariants.id, String(remoteVariantId))))
+          .limit(1)
+      : [];
+    const [existing] = await db
+      .select({ id: inventoryMovements.id })
+      .from(inventoryMovements)
+      .where(or(eq(inventoryMovements.remoteId, remoteId), eq(inventoryMovements.id, remoteId)))
+      .limit(1);
+
+    const values = {
+      remoteId,
+      tenantId: movement.tenantId ?? movement.tenant_id ?? defaultTenantId,
+      storeId: String(remoteStoreId),
+      productId: localProduct?.id ?? String(remoteProductId),
+      variantId: localVariant?.id ?? (remoteVariantId ? String(remoteVariantId) : null),
+      quantity: Math.abs(Number(movement.quantity ?? movement.quantityDelta ?? movement.quantity_delta ?? 0)),
+      type: localMovementType(movement.type ?? movement.direction),
+      referenceId: String(movement.referenceId ?? movement.reference_id ?? remoteId),
+      referenceType: String(movement.referenceType ?? movement.reference_type ?? "INVENTORY_MOVEMENT"),
+      reason: movement.reason ?? null,
+      syncStatus: "synced",
+      syncError: null,
+      createdAt: movement.createdAt ?? movement.created_at ?? now,
+      updatedAt: movement.updatedAt ?? movement.updated_at ?? now,
+      lastSyncedAt: now,
+    };
+
+    if (existing) {
+      await db.update(inventoryMovements).set(values).where(eq(inventoryMovements.id, existing.id));
+    } else {
+      await db.insert(inventoryMovements).values({ id: remoteId, ...values });
+    }
+  }
+}
+
 export async function upsertCategories(
   remoteCategories: Category[],
   defaultTenantId: string,
