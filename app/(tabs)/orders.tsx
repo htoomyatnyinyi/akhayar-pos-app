@@ -23,6 +23,7 @@ import {
   RefreshControl,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -68,6 +69,7 @@ function SyncBadge({ syncStatus }: { syncStatus?: string }) {
 export default function OrdersScreen() {
   const { currentStoreId } = useAppSelector((state) => state.auth);
   const [filterStatus, setFilterStatus] = useState<OrderStatus | "ALL">("ALL");
+  const [search, setSearch] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const {
@@ -78,6 +80,7 @@ export default function OrdersScreen() {
     {
       storeId: currentStoreId || undefined,
       status: filterStatus === "ALL" ? undefined : filterStatus,
+      search: search.trim() || undefined,
     },
     { pollingInterval: 5000 }, // Auto-refresh every 5s to pick up background sync changes
   );
@@ -179,6 +182,30 @@ export default function OrdersScreen() {
           />
         </View>
 
+        {/* Search by order number/ID, customer, phone, email, product, or payment */}
+        <View className="mx-5 mb-4 flex-row items-center rounded-2xl border border-white/10 bg-white/5 px-3">
+          <MaterialIcons name="search" size={20} color="#64748b" />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search order ID, customer, product..."
+            placeholderTextColor="#64748b"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            className="flex-1 px-3 py-3.5 text-sm text-white"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity
+              accessibilityLabel="Clear order search"
+              onPress={() => setSearch("")}
+              className="p-1"
+            >
+              <MaterialIcons name="close" size={18} color="#94a3b8" />
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Status Filters */}
         <ScrollView
           horizontal
@@ -231,9 +258,11 @@ export default function OrdersScreen() {
                 No orders found
               </Text>
               <Text className="text-slate-500 text-sm text-center px-10 mt-2">
-                {filterStatus === "ALL"
-                  ? "Start taking orders from the POS screen."
-                  : `No ${filterStatus} orders yet.`}
+                {search.trim()
+                  ? "Try another order number, customer, or product."
+                  : filterStatus === "ALL"
+                    ? "Start taking orders from the POS screen."
+                    : `No ${filterStatus} orders yet.`}
               </Text>
             </View>
           }

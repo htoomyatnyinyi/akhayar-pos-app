@@ -554,9 +554,15 @@ export default function POSScreen() {
       <Screen padded={false}>
         <View className="px-5 pt-4 pb-2">
           <Header
-            eyebrow="Point of Sale"
+            eyebrow={`${!user ? "Tenant" : user?.tenant.name}-${user?.tenant.code}`}
             title="New Order"
-            subtitle="Ready to take new orders"
+            subtitle={`${!user ? "Store" : user?.stores.map((a: any) => a.code)}-${!user ? "Store" : user?.stores.map((a: any) => a.name).join(", ")} - ${!user ? "Store" : user?.role} : ${!user ? "Store" : user?.name}`}
+            // subtitle={`${!user ? "Store" : user?.stores[0].code}-${user?.stores[0].name} - ${!user ? "Store" : user?.role} : ${!user ? "Store" : user?.name}`}
+            // subtitle={
+            //   user.role === "ADMIN"
+            //     ? `${user.tenant.name}-${user.tenant.code}`
+            //     : `${user.stores[0].code}-${user.stores[0].name} - ${user.role}`
+            // }
           />
           <View className="flex-row items-center bg-white/5 rounded-full px-1 border border-white/10">
             <MaterialIcons name="search" size={22} color="#94a3b8" />

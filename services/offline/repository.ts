@@ -877,52 +877,64 @@ export async function upsertSessions(
   if (!remoteSessions.length) return;
   const now = new Date().toISOString();
 
-  const sessionsToInsert = remoteSessions.map((session) => ({
-    id: session.id,
-    remoteId: session.remoteId,
-    tenantId: session.tenantId || defaultTenantId,
-    storeId: session.storeId,
-    registerId: session.registerId,
-    userId: session.userId,
-    status: session.status || "OPEN",
-    openedAt: session.openedAt || now,
-    closedAt: session.closedAt,
-    openingBalance: session.openingBalance ?? 0,
-    closingBalance: session.closingBalance,
-    expectedBalance: session.expectedBalance,
-    discrepancy: session.discrepancy,
-    cashSales: session.cashSales ?? 0,
-    cardSales: session.cardSales ?? 0,
-    digitalSales: session.digitalSales ?? 0,
-    notes: session.notes,
-    syncStatus: "synced",
-    syncError: null,
-    createdAt: session.openedAt ?? now,
-    updatedAt: session.closedAt ?? session.openedAt ?? now,
-    lastSyncedAt: now,
-  }));
+  const db = getOfflineDb();
+  for (const session of remoteSessions) {
+    const remoteId = String(session.remoteId ?? session.id);
+    const [existing] = await db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(
+        or(eq(sessions.remoteId, remoteId), eq(sessions.id, String(session.id))),
+      )
+      .limit(1);
+    const localId = existing?.id ?? String(session.id);
 
-  await getOfflineDb()
-    .insert(sessions)
-    .values(sessionsToInsert)
-    .onConflictDoUpdate({
-      target: sessions.id,
-      set: {
-        status: sql`excluded.status`,
-        closedAt: sql`excluded.closed_at`,
-        closingBalance: sql`excluded.closing_balance`,
-        expectedBalance: sql`excluded.expected_balance`,
-        discrepancy: sql`excluded.discrepancy`,
-        cashSales: sql`excluded.cash_sales`,
-        cardSales: sql`excluded.card_sales`,
-        digitalSales: sql`excluded.digital_sales`,
-        notes: sql`excluded.notes`,
+    await db
+      .insert(sessions)
+      .values({
+        id: localId,
+        remoteId,
+        tenantId: session.tenantId || defaultTenantId,
+        storeId: session.storeId,
+        registerId: session.registerId,
+        userId: session.userId,
+        status: session.status || "OPEN",
+        openedAt: session.openedAt || now,
+        closedAt: session.closedAt,
+        openingBalance: session.openingBalance ?? 0,
+        closingBalance: session.closingBalance,
+        expectedBalance: session.expectedBalance,
+        discrepancy: session.discrepancy,
+        cashSales: session.cashSales ?? 0,
+        cardSales: session.cardSales ?? 0,
+        digitalSales: session.digitalSales ?? 0,
+        notes: session.notes,
         syncStatus: "synced",
         syncError: null,
-        updatedAt: sql`excluded.updated_at`,
+        createdAt: session.openedAt ?? now,
+        updatedAt: session.closedAt ?? session.openedAt ?? now,
         lastSyncedAt: now,
-      },
-    });
+      })
+      .onConflictDoUpdate({
+        target: sessions.id,
+        set: {
+          remoteId,
+          status: sql`excluded.status`,
+          closedAt: sql`excluded.closed_at`,
+          closingBalance: sql`excluded.closing_balance`,
+          expectedBalance: sql`excluded.expected_balance`,
+          discrepancy: sql`excluded.discrepancy`,
+          cashSales: sql`excluded.cash_sales`,
+          cardSales: sql`excluded.card_sales`,
+          digitalSales: sql`excluded.digital_sales`,
+          notes: sql`excluded.notes`,
+          syncStatus: "synced",
+          syncError: null,
+          updatedAt: sql`excluded.updated_at`,
+          lastSyncedAt: now,
+        },
+      });
+  }
 }
 
 export async function upsertOrders(
@@ -955,6 +967,19 @@ export async function upsertOrders(
         )
         .limit(1);
       const localId = existing?.id ?? order.id;
+      const remoteSessionId = order.sessionId ? String(order.sessionId) : null;
+      const [localSession] = remoteSessionId
+        ? await tx
+            .select({ id: sessions.id })
+            .from(sessions)
+            .where(
+              or(
+                eq(sessions.id, remoteSessionId),
+                eq(sessions.remoteId, remoteSessionId),
+              ),
+            )
+            .limit(1)
+        : [];
 
       await tx
         .insert(orders)
@@ -966,7 +991,7 @@ export async function upsertOrders(
           registerId: order.registerId,
           userId: order.userId ?? "",
           customerId: order.customerId,
-          sessionId: order.sessionId,
+          sessionId: localSession?.id ?? order.sessionId,
           orderNumber,
           status: order.status ?? "COMPLETED",
           paymentStatus: order.paymentStatus ?? "PAID",
@@ -2340,7 +2365,7 @@ export async function updateOfflineProduct(
           .where(eq(productVariants.id, v.id));
       } else {
         // Create new variant locally
-        const newId = v.id || createLocalId();
+        const newId = v.id || createLocalId("var");
         keptIds.add(newId);
         await db.insert(productVariants).values({
           id: newId,

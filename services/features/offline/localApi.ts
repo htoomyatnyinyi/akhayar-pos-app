@@ -539,6 +539,7 @@ export const localApi = createApi({
     updateLocalVariant: builder.mutation({
       async queryFn({ id, ...payload }: { id: string } & Record<string, any>) {
         try {
+          const { createLocalId } = await import("@/services/offline/ids");
           const db = getOfflineDb();
           const now = new Date().toISOString();
 
@@ -1024,6 +1025,11 @@ export const localApi = createApi({
         try {
           const db = getOfflineDb();
           const now = new Date().toISOString();
+          const [currentStaff] = await db
+            .select({ remoteId: staff.remoteId })
+            .from(staff)
+            .where(eq(staff.id, id));
+          const remoteStaffId = currentStaff?.remoteId || id;
 
           await db
             .update(staff)
@@ -1040,7 +1046,7 @@ export const localApi = createApi({
               entity: "staff",
               entityId: id,
               operation: "update",
-              endpoint: `/api/tenant/staff/${id}`,
+              endpoint: `/api/tenant/staff/${remoteStaffId}`,
               method: "PUT",
               payload,
             },
@@ -1062,6 +1068,11 @@ export const localApi = createApi({
       async queryFn(id: string) {
         try {
           const db = getOfflineDb();
+          const [currentStaff] = await db
+            .select({ remoteId: staff.remoteId })
+            .from(staff)
+            .where(eq(staff.id, id));
+          const remoteStaffId = currentStaff?.remoteId || id;
           await db
             .update(staff)
             .set({
@@ -1076,7 +1087,7 @@ export const localApi = createApi({
               entity: "staff",
               entityId: id,
               operation: "delete",
-              endpoint: `/api/tenant/staff/${id}`,
+              endpoint: `/api/tenant/staff/${remoteStaffId}`,
               method: "DELETE",
               payload: {},
             },
@@ -1424,6 +1435,8 @@ export const localApi = createApi({
         status,
         sessionId,
         customerId,
+        search,
+        includeItems,
         page,
         limit,
       }: {
@@ -1431,37 +1444,73 @@ export const localApi = createApi({
         status?: string;
         sessionId?: string;
         customerId?: string;
+        search?: string;
+        includeItems?: boolean;
         page?: number;
         limit?: number;
       } = {}) {
         try {
           await refreshIfOnline(["orders"]);
           const db = getOfflineDb();
+          const conditions = [] as any[];
+
+          if (storeId) conditions.push(eq(orders.storeId, storeId));
+          if (status) conditions.push(eq(orders.status, status));
+          if (sessionId) conditions.push(eq(orders.sessionId, sessionId));
+          if (customerId) conditions.push(eq(orders.customerId, customerId));
+
+          const normalizedSearch = search?.trim().toLowerCase();
+          if (normalizedSearch) {
+            const pattern = `%${normalizedSearch}%`;
+            conditions.push(sql`
+              (
+                lower(coalesce(${orders.id}, '')) LIKE ${pattern}
+                OR lower(coalesce(${orders.remoteId}, '')) LIKE ${pattern}
+                OR lower(coalesce(${orders.orderNumber}, '')) LIKE ${pattern}
+                OR lower(coalesce(${orders.status}, '')) LIKE ${pattern}
+                OR lower(coalesce(${orders.paymentMethod}, '')) LIKE ${pattern}
+                OR EXISTS (
+                  SELECT 1 FROM order_items oi
+                  WHERE oi.order_id = ${orders.id}
+                    AND lower(coalesce(oi.product_name, '')) LIKE ${pattern}
+                )
+                OR EXISTS (
+                  SELECT 1 FROM customers c
+                  WHERE c.id = ${orders.customerId}
+                    AND (
+                      lower(coalesce(c.name, '')) LIKE ${pattern}
+                      OR lower(coalesce(c.phone, '')) LIKE ${pattern}
+                      OR lower(coalesce(c.email, '')) LIKE ${pattern}
+                    )
+                )
+              )
+            `);
+          }
+
           let query = db
             .select()
             .from(orders)
+            .where(conditions.length ? and(...conditions) : undefined)
             .orderBy(desc(orders.createdAt))
             .$dynamic();
-
-          if (storeId) {
-            query = query.where(eq(orders.storeId, storeId));
-          }
-          if (status) {
-            query = query.where(eq(orders.status, status));
-          }
-          if (sessionId) {
-            query = query.where(eq(orders.sessionId, sessionId));
-          }
-          if (customerId) {
-            query = query.where(eq(orders.customerId, customerId));
-          }
 
           if (page && limit) {
             query = query.limit(limit).offset((page - 1) * limit);
           }
 
           const result = await query;
-          return { data: result };
+          if (!includeItems) return { data: result };
+
+          const ordersWithItems = await Promise.all(
+            result.map(async (order: any) => ({
+              ...order,
+              items: await db
+                .select()
+                .from(orderItems)
+                .where(eq(orderItems.orderId, order.id)),
+            })),
+          );
+          return { data: ordersWithItems };
         } catch (error) {
           return { error: { message: (error as Error).message } };
         }

@@ -59,6 +59,7 @@ import {
   products,
   productVariants,
   sessions,
+  staff,
   stores,
   suppliers,
   syncOutbox,
@@ -1399,9 +1400,14 @@ async function processOutboxItem(
           console.log(result, "session open return data");
         } else if (item.operation === "close") {
           console.log("Closing session with ID:", item);
+          const [localSession] = await db
+            .select({ remoteId: sessions.remoteId })
+            .from(sessions)
+            .where(eq(sessions.id, item.entityId));
+          const remoteSessionId = localSession?.remoteId || item.entityId;
           result = await store.dispatch(
             remoteApi.endpoints.closeRemoteSession.initiate({
-              id: item.entityId,
+              id: remoteSessionId,
               ...payload,
             }),
           );
@@ -1774,13 +1780,31 @@ async function processOutboxItem(
             throw new Error("No authentication token available for sync");
           }
 
+          // Staff created offline keep a local primary key and a server remoteId.
+          // Resolve the server ID at send time so queued edits made before the
+          // create sync completed do not call `/staff/<local-id>` and receive 404.
+          let endpoint = item.endpoint;
+          let requestPayload = payload;
+          if (item.entity === "staff" && item.operation !== "create") {
+            const [localStaff] = await db
+              .select({ remoteId: staff.remoteId })
+              .from(staff)
+              .where(eq(staff.id, item.entityId));
+            const remoteStaffId = localStaff?.remoteId || item.entityId;
+            endpoint = `/api/tenant/staff/${remoteStaffId}`;
+
+            // Repair outbox rows produced by earlier app versions, which
+            // incorrectly nested the staff patch under `data`.
+            if (requestPayload?.data) requestPayload = requestPayload.data;
+          }
+
           // Build URL (avoid double /api)
           const baseUrl = POS_API_URL.endsWith("/api")
             ? POS_API_URL.slice(0, -4)
             : POS_API_URL;
-          const url = item.endpoint.startsWith("http")
-            ? item.endpoint
-            : `${baseUrl}${item.endpoint.startsWith("/") ? "" : "/"}${item.endpoint}`;
+          const url = endpoint.startsWith("http")
+            ? endpoint
+            : `${baseUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
           const response = await fetch(url, {
             method: item.method,
@@ -1789,8 +1813,8 @@ async function processOutboxItem(
               Authorization: `Bearer ${token}`,
             },
             body:
-              item.payload && item.method !== "GET"
-                ? JSON.stringify(payload)
+              requestPayload && item.method !== "GET"
+                ? JSON.stringify(requestPayload)
                 : undefined,
           });
 
