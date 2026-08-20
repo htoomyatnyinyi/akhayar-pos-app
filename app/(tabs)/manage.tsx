@@ -2,26 +2,21 @@ import {
   ActionButton,
   Card,
   Header,
-  MetricCard,
   Pill,
   Screen,
   SectionTitle,
-  StatRow,
 } from "@/components/app-ui";
 import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { setStore } from "@/services/features/auth/authSlice";
 import { MaterialIcons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Modal,
   Pressable,
-  Platform,
   ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   RefreshControl,
@@ -78,10 +73,12 @@ import {
   getIcon,
 } from "@/utils/manage/helpers";
 import { buildPayload } from "@/utils/manage/buildPayload";
+import { useSync } from "@/services/offline/syncManager";
 
 export default function ManageScreen() {
   const dispatch = useAppDispatch();
   const { user, currentStoreId } = useAppSelector((state) => state.auth);
+  const { isOnline, isSyncing, queueCount, failedCount, sync } = useSync();
   const isAdmin = user?.role === "ADMIN";
   const [moduleKey, setModuleKey] = useState<ModuleKey>("products");
   const [editor, setEditor] = useState<{
@@ -108,13 +105,12 @@ export default function ManageScreen() {
     data: customers = [],
     refetch: refetchCustomers,
     isFetching: fetchingCustomers,
-  } = useGetLocalCustomersQuery({ storeId: scopedStoreId });
+  } = useGetLocalCustomersQuery({});
   const {
     data: brands = [],
     refetch: refetchBrands,
     isFetching: fetchingBrands,
   } = useGetLocalBrandsQuery({
-    storeId: scopedStoreId,
     isActive: true,
   });
   const {
@@ -222,17 +218,24 @@ export default function ManageScreen() {
 
   const isPrivileged = user?.role === "ADMIN" || user?.role === "MANAGER";
 
-  const storeOptions = useMemo(
-    () =>
-      isAdmin
-        ? stores
-        : stores.filter((store: any) =>
-            user?.stores?.some((assigned: any) => assigned.id === store.id),
-          ),
-    [isAdmin, stores, user?.stores],
-  );
+  const storeOptions = isAdmin
+    ? stores
+    : stores.filter((store: any) =>
+        user?.stores?.some(
+          (assigned: any) =>
+            assigned.id === store.id || assigned.storeId === store.id,
+        ),
+      );
 
   const activeSession = sessions.find((s: any) => s.status === "OPEN");
+
+  const handleSync = async () => {
+    try {
+      await sync({ force: true });
+    } catch (error: any) {
+      Alert.alert("Sync unavailable", error?.message || "Changes will retry automatically.");
+    }
+  };
 
   if (!isPrivileged) {
     return (
@@ -253,18 +256,14 @@ export default function ManageScreen() {
     );
   }
 
-  const productsWithVariants = useMemo(
-    () =>
-      products.map((product: any) => ({
-        ...product,
-        variants: variants.filter(
-          (variant: any) =>
-            variant.productId === product.id ||
-            variant.productId === product.remoteId,
-        ),
-      })),
-    [products, variants],
-  );
+  const productsWithVariants = products.map((product: any) => ({
+    ...product,
+    variants: variants.filter(
+      (variant: any) =>
+        variant.productId === product.id ||
+        variant.productId === product.remoteId,
+    ),
+  }));
 
   const list = getModuleList({
     moduleKey,
@@ -454,21 +453,24 @@ export default function ManageScreen() {
       const sessionOrders = orders.filter(
         (o: any) => o.sessionId === selectedSession.id,
       );
-      const cashSales = sessionOrders
-        .filter((o: any) => o.paymentMethod === "CASH")
-        .reduce((sum: number, o: any) => sum + (o.grandTotal || 0), 0);
-      const cardSales = sessionOrders
-        .filter((o: any) => o.paymentMethod === "CARD")
-        .reduce((sum: number, o: any) => sum + (o.grandTotal || 0), 0);
-      const digitalSales = sessionOrders
-        .filter((o: any) => o.paymentMethod === "DIGITAL")
-        .reduce((sum: number, o: any) => sum + (o.grandTotal || 0), 0);
+      const paymentTotals = sessionOrders
+        .filter(isCountedSale)
+        .reduce(
+          (totals, order) => addPaymentTotals(totals, order),
+          emptyPaymentTotals(),
+        );
+      const cashSales = paymentTotals.CASH;
+      const cardSales = paymentTotals.CARD;
+      const digitalSales = paymentTotals.DIGITAL;
+      const expectedBalance =
+        Number(selectedSession.openingBalance ?? 0) + cashSales;
+      const countedBalance = Number(closingBalance) || 0;
 
       await closeSession({
         id: selectedSession.id,
-        closingBalance: Number(closingBalance) || 0,
-        expectedBalance: Number(closingBalance) || 0,
-        discrepancy: 0,
+        closingBalance: countedBalance,
+        expectedBalance,
+        discrepancy: countedBalance - expectedBalance,
         cashSales,
         cardSales,
         digitalSales,
@@ -545,7 +547,19 @@ export default function ManageScreen() {
             eyebrow="Administration"
             title="Management"
             subtitle="Manage staff, products, stores, categories, customers, suppliers, brands, and session control from one place."
-            right={<Pill label={user?.role ?? "USER"} tone="sky" />}
+            right={
+              <View className="items-end">
+                <Pill
+                  label={isOnline ? (isSyncing ? "SYNCING" : "ONLINE") : "OFFLINE"}
+                  tone={isOnline ? "emerald" : "amber"}
+                />
+                {(queueCount > 0 || failedCount > 0) && (
+                  <Text className="mt-1 text-[10px] text-slate-400">
+                    {queueCount} pending{failedCount ? ` • ${failedCount} failed` : ""}
+                  </Text>
+                )}
+              </View>
+            }
           />
 
           {/* Store Context */}
@@ -650,6 +664,13 @@ export default function ManageScreen() {
           </View>
 
           <View className="mb-4 flex-row gap-3">
+            <ActionButton
+              title={isSyncing ? "Syncing" : "Sync now"}
+              icon="sync"
+              accent="sky"
+              onPress={() => void handleSync()}
+              disabled={!isOnline || isSyncing}
+            />
             {moduleKey !== "sessions" && (
               <ActionButton
                 title="Add New"
@@ -697,7 +718,7 @@ export default function ManageScreen() {
                   const sessionOrders = orders.filter(
                     (o: any) => o.sessionId === session.id,
                   );
-                  const totalSales = sessionOrders.reduce(
+                  const totalSales = sessionOrders.filter(isCountedSale).reduce(
                     (sum: number, o: any) => sum + (o.grandTotal || 0),
                     0,
                   );
@@ -877,4 +898,37 @@ export default function ManageScreen() {
       </SafeAreaView>
     </Screen>
   );
+}
+
+function isCountedSale(order: any) {
+  return !["VOIDED", "CANCELLED"].includes(order.status);
+}
+
+function emptyPaymentTotals() {
+  return { CASH: 0, CARD: 0, DIGITAL: 0 };
+}
+
+function addPaymentTotals(
+  totals: { CASH: number; CARD: number; DIGITAL: number },
+  order: any,
+) {
+  const breakdown = Array.isArray(order.paymentBreakdown)
+    ? order.paymentBreakdown
+    : [];
+  if (breakdown.length) {
+    for (const tender of breakdown) {
+      const method = String(tender.method || "DIGITAL").toUpperCase();
+      const amount = Number(tender.amount ?? 0);
+      if (method === "CASH") totals.CASH += amount;
+      else if (method === "CARD") totals.CARD += amount;
+      else totals.DIGITAL += amount;
+    }
+    return totals;
+  }
+  const method = String(order.paymentMethod || "DIGITAL").toUpperCase();
+  const amount = Number(order.grandTotal ?? 0);
+  if (method === "CASH") totals.CASH += amount;
+  else if (method === "CARD") totals.CARD += amount;
+  else totals.DIGITAL += amount;
+  return totals;
 }

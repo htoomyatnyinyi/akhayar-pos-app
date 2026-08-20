@@ -268,7 +268,7 @@ export async function upsertBrands(
 
   const brandsToInsert = remoteBrands.map((brand) => ({
     id: brand.id,
-    remoteId: brand.remoteId,
+    remoteId: brand.remoteId ?? brand.id,
     tenantId: brand.tenantId || defaultTenantId,
     name: brand.name,
     description: brand.description,
@@ -286,6 +286,7 @@ export async function upsertBrands(
     .onConflictDoUpdate({
       target: brands.id,
       set: {
+        remoteId: sql`excluded.remote_id`,
         name: sql`excluded.name`,
         description: sql`excluded.description`,
         isActive: sql`excluded.is_active`,
@@ -614,7 +615,7 @@ export async function upsertCategories(
       await db
         .update(categories)
         .set({
-          remoteId: category.remoteId ?? existing.id,
+          remoteId: category.remoteId ?? category.id,
           name,
           slug: category.slug,
           description: category.description,
@@ -631,7 +632,7 @@ export async function upsertCategories(
       // Insert new row
       await db.insert(categories).values({
         id: category.id,
-        remoteId: category.remoteId,
+        remoteId: category.remoteId ?? category.id,
         tenantId,
         name,
         slug: category.slug,
@@ -658,7 +659,7 @@ export async function upsertCustomers(
 
   const customersToInsert = remoteCustomers.map((customer) => ({
     id: customer.id,
-    remoteId: customer.remoteId,
+    remoteId: customer.remoteId ?? customer.id,
     tenantId: customer.tenantId || defaultTenantId,
     code: customer.code || `CUS-${Date.now()}`,
     name: customer.name || "Unnamed Customer",
@@ -687,6 +688,7 @@ export async function upsertCustomers(
     .onConflictDoUpdate({
       target: customers.id,
       set: {
+        remoteId: sql`excluded.remote_id`,
         code: sql`excluded.code`,
         name: sql`excluded.name`,
         phone: sql`excluded.phone`,
@@ -723,7 +725,7 @@ export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
 
   const staffToInsert = uniqueStaff.map((s) => ({
     id: s.id,
-    remoteId: s.remoteId,
+    remoteId: s.remoteId ?? s.id,
     tenantId: s.tenantId || defaultTenantId,
     storeId: s.storeId,
     username: s.username,
@@ -745,6 +747,7 @@ export async function upsertStaff(remoteStaff: any[], defaultTenantId: string) {
     .onConflictDoUpdate({
       target: [staff.tenantId, staff.username],
       set: {
+        remoteId: sql`excluded.remote_id`,
         username: sql`excluded.username`,
         email: sql`excluded.email`,
         name: sql`excluded.name`,
@@ -777,7 +780,7 @@ export async function upsertSuppliers(
 
   const suppliersToInsert = uniqueSuppliers.map((supplier) => ({
     id: supplier.id,
-    remoteId: supplier.remoteId,
+    remoteId: supplier.remoteId ?? supplier.id,
     tenantId: supplier.tenantId || defaultTenantId,
     storeId: supplier.storeId,
     code: supplier.code,
@@ -804,6 +807,7 @@ export async function upsertSuppliers(
     .onConflictDoUpdate({
       target: [suppliers.tenantId, suppliers.email],
       set: {
+        remoteId: sql`excluded.remote_id`,
         code: sql`excluded.code`,
         name: sql`excluded.name`,
         contactName: sql`excluded.contact_name`,
@@ -833,7 +837,7 @@ export async function upsertStores(
 
   const storesToInsert = remoteStores.map((store) => ({
     id: store.id,
-    remoteId: store.remoteId,
+    remoteId: store.remoteId ?? store.id,
     tenantId: store.tenantId || defaultTenantId,
     code: store.code || `STORE-${Date.now()}`,
     name: store.name || "Unnamed Store",
@@ -855,6 +859,7 @@ export async function upsertStores(
     .onConflictDoUpdate({
       target: stores.id,
       set: {
+        remoteId: sql`excluded.remote_id`,
         code: sql`excluded.code`,
         name: sql`excluded.name`,
         address: sql`excluded.address`,
@@ -3035,6 +3040,9 @@ export async function markEntitySynced(
     await getOfflineDb()
       .update(customers)
       .set({
+        ...(remote.id || remote.remoteId
+          ? { remoteId: remote.id ?? remote.remoteId }
+          : {}),
         syncStatus: "synced",
         syncError: null,
         updatedAt: now,
@@ -3047,6 +3055,9 @@ export async function markEntitySynced(
     await getOfflineDb()
       .update(categories)
       .set({
+        ...(remote.id || remote.remoteId
+          ? { remoteId: remote.id ?? remote.remoteId }
+          : {}),
         syncStatus: "synced",
         syncError: null,
         updatedAt: now,
@@ -3059,6 +3070,9 @@ export async function markEntitySynced(
     await getOfflineDb()
       .update(stores)
       .set({
+        ...(remote.id || remote.remoteId
+          ? { remoteId: remote.id ?? remote.remoteId }
+          : {}),
         syncStatus: "synced",
         syncError: null,
         updatedAt: now,

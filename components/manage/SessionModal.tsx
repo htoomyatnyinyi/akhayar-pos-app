@@ -59,10 +59,18 @@ export default function SessionModal({
   const sessionOrders = sessionToClose
     ? orders.filter((o: any) => o.sessionId === sessionToClose.id)
     : [];
-  const totalSales = sessionOrders.reduce(
+  const saleOrders = sessionOrders.filter(isCountedSale);
+  const totalSales = saleOrders.reduce(
     (sum: number, o: any) => sum + (o.grandTotal || 0),
     0,
   );
+  const paymentTotals = saleOrders.reduce(
+    (totals, order) => addPaymentTotals(totals, order),
+    emptyPaymentTotals(),
+  );
+  const expectedCash =
+    Number(sessionToClose?.openingBalance ?? 0) + paymentTotals.CASH;
+  const difference = (Number(balance) || 0) - expectedCash;
   const orderCount = sessionOrders.length;
 
   return (
@@ -103,6 +111,18 @@ export default function SessionModal({
                   value={`$${totalSales.toFixed(2)}`}
                 />
                 <StatRow label="Orders" value={orderCount.toString()} />
+                <StatRow
+                  label="Cash Sales"
+                  value={`$${paymentTotals.CASH.toFixed(2)}`}
+                />
+                <StatRow
+                  label="Expected Cash"
+                  value={`$${expectedCash.toFixed(2)}`}
+                />
+                <StatRow
+                  label="Difference"
+                  value={`${difference >= 0 ? "+" : "-"}$${Math.abs(difference).toFixed(2)}`}
+                />
               </Card>
               <Text className="mb-2 text-xs font-bold uppercase tracking-[3px] text-slate-400">
                 Closing Balance ($)
@@ -167,4 +187,37 @@ export default function SessionModal({
       </View>
     </Modal>
   );
+}
+
+function isCountedSale(order: any) {
+  return !["VOIDED", "CANCELLED"].includes(order.status);
+}
+
+function emptyPaymentTotals() {
+  return { CASH: 0, CARD: 0, DIGITAL: 0 };
+}
+
+function addPaymentTotals(
+  totals: { CASH: number; CARD: number; DIGITAL: number },
+  order: any,
+) {
+  const breakdown = Array.isArray(order.paymentBreakdown)
+    ? order.paymentBreakdown
+    : [];
+  if (breakdown.length) {
+    for (const tender of breakdown) {
+      const method = String(tender.method || "DIGITAL").toUpperCase();
+      const amount = Number(tender.amount ?? 0);
+      if (method === "CASH") totals.CASH += amount;
+      else if (method === "CARD") totals.CARD += amount;
+      else totals.DIGITAL += amount;
+    }
+    return totals;
+  }
+  const method = String(order.paymentMethod || "DIGITAL").toUpperCase();
+  const amount = Number(order.grandTotal ?? 0);
+  if (method === "CASH") totals.CASH += amount;
+  else if (method === "CARD") totals.CARD += amount;
+  else totals.DIGITAL += amount;
+  return totals;
 }

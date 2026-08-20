@@ -1178,6 +1178,15 @@ async function resolveRemoteVariantReferences(payload: any) {
   return resolved;
 }
 
+async function resolveEntityRemoteId(entity: string, localId: string) {
+  const db = getOfflineDb();
+  const tables: Record<string, any> = { brands, products, categories, customers, stores, suppliers, staff };
+  const table = tables[entity];
+  if (!table) return localId;
+  const [row] = await db.select({ remoteId: table.remoteId }).from(table).where(eq(table.id, localId)).limit(1);
+  return row?.remoteId || localId;
+}
+
 // ============================================
 // PROCESS OUTBOX ITEM (FIXED)
 // ============================================
@@ -1201,12 +1210,12 @@ async function processOutboxItem(
           if (error) throw new Error(JSON.stringify(error));
           await db
             .update(brands)
-            .set({ remoteId: (data as any)?.id ?? null, syncStatus: "synced" })
+            .set({ remoteId: (data as any)?.brand?.id ?? (data as any)?.id ?? null, syncStatus: "synced" })
             .where(eq(brands.id, item.entityId));
         } else if (item.operation === "update") {
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteBrand.initiate({
-              id: item.entityId,
+              id: await resolveEntityRemoteId("brands", item.entityId),
               ...payload,
             }),
           );
@@ -1217,7 +1226,9 @@ async function processOutboxItem(
             .where(eq(brands.id, item.entityId));
         } else if (item.operation === "delete") {
           const { error } = await store.dispatch(
-            remoteApi.endpoints.deleteRemoteBrand.initiate(item.entityId),
+            remoteApi.endpoints.deleteRemoteBrand.initiate(
+              await resolveEntityRemoteId("brands", item.entityId),
+            ),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db.delete(brands).where(eq(brands.id, item.entityId));
@@ -1451,10 +1462,20 @@ async function processOutboxItem(
             })
             .where(eq(products.id, item.entityId));
         } else if (item.operation === "update") {
+          const remoteProductId = await resolveEntityRemoteId("products", item.entityId);
+          const productPayload = await resolveProductReferences(payload);
+          if (Array.isArray(productPayload.variants)) {
+            productPayload.variants = await Promise.all(productPayload.variants.map(async (variant: any) => {
+              if (!variant.id && !variant.remoteId) return variant;
+              const variantId = variant.remoteId || variant.id;
+              const [localVariant] = await db.select({ remoteId: productVariants.remoteId }).from(productVariants).where(eq(productVariants.id, variantId)).limit(1);
+              return { ...variant, id: localVariant?.remoteId || variant.remoteId || variant.id };
+            }));
+          }
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteProduct.initiate({
-              id: item.entityId,
-              ...payload,
+              id: remoteProductId,
+              ...productPayload,
             }),
           );
           if (error) throw new Error(JSON.stringify(error));
@@ -1463,8 +1484,9 @@ async function processOutboxItem(
             .set({ syncStatus: "synced" })
             .where(eq(products.id, item.entityId));
         } else if (item.operation === "delete") {
+          const remoteProductId = await resolveEntityRemoteId("products", item.entityId);
           const { error } = await store.dispatch(
-            remoteApi.endpoints.deleteRemoteProduct.initiate(item.entityId),
+            remoteApi.endpoints.deleteRemoteProduct.initiate(remoteProductId),
           );
           if (error) throw new Error(JSON.stringify(error));
           await db.delete(products).where(eq(products.id, item.entityId));
@@ -1785,13 +1807,11 @@ async function processOutboxItem(
           // create sync completed do not call `/staff/<local-id>` and receive 404.
           let endpoint = item.endpoint;
           let requestPayload = payload;
+          if (item.operation !== "create") {
+            const remoteId = await resolveEntityRemoteId(item.entity, item.entityId);
+            endpoint = `/api/tenant/${item.entity}/${remoteId}`;
+          }
           if (item.entity === "staff" && item.operation !== "create") {
-            const [localStaff] = await db
-              .select({ remoteId: staff.remoteId })
-              .from(staff)
-              .where(eq(staff.id, item.entityId));
-            const remoteStaffId = localStaff?.remoteId || item.entityId;
-            endpoint = `/api/tenant/staff/${remoteStaffId}`;
 
             // Repair outbox rows produced by earlier app versions, which
             // incorrectly nested the staff patch under `data`.
@@ -1825,6 +1845,7 @@ async function processOutboxItem(
 
           const data = await response.json().catch(() => ({}));
           const remoteEntity =
+            data?.brand ??
             data?.staff ??
             data?.supplier ??
             data?.store ??
