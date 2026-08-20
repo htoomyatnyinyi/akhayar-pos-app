@@ -154,10 +154,9 @@ export default function SessionsScreen() {
   const renderSessionCard = (session: any) => {
     const isActive = session.status === "OPEN";
     const sessionOrders = orders.filter((o: any) => o.sessionId === session.id);
-    const totalSales = sessionOrders.filter(isCountedSale).reduce(
-      (sum: number, o: any) => sum + (o.grandTotal || 0),
-      0,
-    );
+    const totalSales = sessionOrders
+      .filter(isCountedSale)
+      .reduce((sum: number, o: any) => sum + (o.grandTotal || 0), 0);
     const orderCount = sessionOrders.length;
 
     return (
@@ -255,28 +254,30 @@ export default function SessionsScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Summary Metrics */}
-          <View className="flex-row gap-3 mb-5">
+          <View className="flex gap-3 mb-5">
+            <View className="flex flex-row gap-2">
+              <MetricCard
+                // icon="schedule"
+                label="Active"
+                value={activeSession ? "1" : "0"}
+                tone={activeSession ? "emerald" : "amber"}
+              />
+              <MetricCard
+                // icon="history"
+                label="Total Closed"
+                value={closedSessions.length.toString()}
+                tone="sky"
+              />
+            </View>
             <MetricCard
-              icon="schedule"
-              label="Active"
-              value={activeSession ? "1" : "0"}
-              tone={activeSession ? "emerald" : "amber"}
-            />
-            <MetricCard
-              icon="history"
-              label="Total Closed"
-              value={closedSessions.length.toString()}
-              tone="sky"
-            />
-            <MetricCard
-              icon="attach-money"
+              // icon="attach-money"
               label="Today's Sales"
               value={`$${orders
-              .filter(
+                .filter(
                   (o: any) =>
                     isCountedSale(o) &&
                     new Date(o.createdAt).toDateString() ===
-                    new Date().toDateString(),
+                      new Date().toDateString(),
                 )
                 .reduce((sum: number, o: any) => sum + (o.grandTotal || 0), 0)
                 .toFixed(2)}`}
@@ -304,10 +305,10 @@ export default function SessionsScreen() {
                   <Text className="text-emerald-400 font-bold text-lg">
                     $
                     {orders
-                    .filter(
-                      (o: any) =>
-                        o.sessionId === activeSession.id && isCountedSale(o),
-                    )
+                      .filter(
+                        (o: any) =>
+                          o.sessionId === activeSession.id && isCountedSale(o),
+                      )
                       .reduce(
                         (sum: number, o: any) => sum + (o.grandTotal || 0),
                         0,
@@ -507,14 +508,15 @@ async function printSessionReport(session: any, sessionOrders: any[]) {
   );
   const orderRows = sessionOrders
     .map((order) => {
-      const items = Array.isArray(order.items) && order.items.length
-        ? order.items
-            .map(
-              (item: any) =>
-                `<tr><td>${escapeHtml(item.productName || "Item")}</td><td>${item.quantity}</td><td class="right">$${money(item.subTotal ?? item.unitPrice * item.quantity)}</td></tr>`,
-            )
-            .join("")
-        : `<tr><td colspan="3" class="muted">No item details</td></tr>`;
+      const items =
+        Array.isArray(order.items) && order.items.length
+          ? order.items
+              .map(
+                (item: any) =>
+                  `<tr><td>${escapeHtml(item.productName || "Item")}</td><td>${item.quantity}</td><td class="right">$${money(item.subTotal ?? item.unitPrice * item.quantity)}</td></tr>`,
+              )
+              .join("")
+          : `<tr><td colspan="3" class="muted">No item details</td></tr>`;
       return `
         <tr class="order-heading">
           <td colspan="3"><strong>#${escapeHtml(order.orderNumber || order.id.slice(-6))}</strong> · ${escapeHtml(order.paymentMethod || "CASH")} · $${money(order.grandTotal)}</td>
@@ -523,7 +525,10 @@ async function printSessionReport(session: any, sessionOrders: any[]) {
     })
     .join("");
   const paymentRows = Object.entries(paymentTotals)
-    .map(([method, amount]) => `<tr><td>${escapeHtml(method)}</td><td class="right">$${money(amount)}</td></tr>`)
+    .map(
+      ([method, amount]) =>
+        `<tr><td>${escapeHtml(method)}</td><td class="right">$${money(amount)}</td></tr>`,
+    )
     .join("");
 
   try {

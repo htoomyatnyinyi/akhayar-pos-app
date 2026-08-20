@@ -35,9 +35,9 @@ import Svg, {
 
 type ChartType = "bar" | "area" | "line";
 
-// ============================================
+//
 // Enhanced Bar Chart Component
-// ============================================
+//
 
 function EnhancedBarChart({
   data,
@@ -66,7 +66,10 @@ function EnhancedBarChart({
                 }`}
                 numberOfLines={1}
               >
-                ${value >= 1000 ? (value / 1000).toFixed(1) + "k" : value.toFixed(0)}
+                $
+                {value >= 1000
+                  ? (value / 1000).toFixed(1) + "k"
+                  : value.toFixed(0)}
               </Text>
 
               <View
@@ -102,9 +105,9 @@ function EnhancedBarChart({
   );
 }
 
-// ============================================
+//
 // Enhanced Area & Line Chart Component
-// ============================================
+//
 
 function EnhancedSvgChart({
   data,
@@ -145,9 +148,10 @@ function EnhancedSvgChart({
   }
 
   // Construct closed area path for gradient
-  const areaPath = points.length > 0
-    ? `${linePath} L ${points[points.length - 1].x} ${height - paddingBottom} L ${points[0].x} ${height - paddingBottom} Z`
-    : "";
+  const areaPath =
+    points.length > 0
+      ? `${linePath} L ${points[points.length - 1].x} ${height - paddingBottom} L ${points[0].x} ${height - paddingBottom} Z`
+      : "";
 
   return (
     <View className="mt-2">
@@ -250,7 +254,10 @@ function EnhancedSvgChart({
                 isToday ? "text-sky-300" : "text-slate-400"
               }`}
             >
-              ${value >= 1000 ? (value / 1000).toFixed(1) + "k" : value.toFixed(0)}
+              $
+              {value >= 1000
+                ? (value / 1000).toFixed(1) + "k"
+                : value.toFixed(0)}
             </Text>
           );
         })}
@@ -273,9 +280,9 @@ function EnhancedSvgChart({
   );
 }
 
-// ============================================
+//
 // Main Component
-// ============================================
+//
 
 export default function DashboardScreen() {
   const { currentStoreId } = useAppSelector((state) => state.auth);
@@ -287,7 +294,7 @@ export default function DashboardScreen() {
     refetch: refetchOrders,
   } = useGetLocalOrdersQuery(
     { storeId: currentStoreId || undefined },
-    { pollingInterval: 10000 }
+    { pollingInterval: 10000 },
   );
 
   const {
@@ -308,23 +315,54 @@ export default function DashboardScreen() {
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterdayStr = yesterdayDate.toDateString();
 
-    const todayOrders = orders.filter((o: any) => new Date(o.createdAt).toDateString() === todayStr);
-    const yesterdayOrders = orders.filter((o: any) => new Date(o.createdAt).toDateString() === yesterdayStr);
+    const todayOrders = orders.filter(
+      (o: any) => new Date(o.createdAt).toDateString() === todayStr,
+    );
+    const yesterdayOrders = orders.filter(
+      (o: any) => new Date(o.createdAt).toDateString() === yesterdayStr,
+    );
 
-    const todayRevenue = todayOrders.reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
-    const yesterdayRevenue = yesterdayOrders.reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
+    const todayRevenue = todayOrders.reduce(
+      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
+      0,
+    );
+    const yesterdayRevenue = yesterdayOrders.reduce(
+      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
+      0,
+    );
 
     const totalOrders = orders.length;
-    const totalRevenue = orders.reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
+    const totalRevenue = orders.reduce(
+      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
+      0,
+    );
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     // Trend calculations
-    const revenueDeltaNum = yesterdayRevenue > 0 ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : (todayRevenue > 0 ? 100 : 0);
-    const revenueDelta = revenueDeltaNum === 0 ? "0%" : `${revenueDeltaNum > 0 ? "+" : ""}${revenueDeltaNum.toFixed(1)}%`;
+    const revenueDeltaNum =
+      yesterdayRevenue > 0
+        ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
+        : todayRevenue > 0
+          ? 100
+          : 0;
+    const revenueDelta =
+      revenueDeltaNum === 0
+        ? "0%"
+        : `${revenueDeltaNum > 0 ? "+" : ""}${revenueDeltaNum.toFixed(1)}%`;
     const revenueTrendTone = revenueDeltaNum >= 0 ? "emerald" : "rose";
 
-    const ordersDeltaNum = yesterdayOrders.length > 0 ? ((todayOrders.length - yesterdayOrders.length) / yesterdayOrders.length) * 100 : (todayOrders.length > 0 ? 100 : 0);
-    const ordersDelta = ordersDeltaNum === 0 ? "0%" : `${ordersDeltaNum > 0 ? "+" : ""}${ordersDeltaNum.toFixed(1)}%`;
+    const ordersDeltaNum =
+      yesterdayOrders.length > 0
+        ? ((todayOrders.length - yesterdayOrders.length) /
+            yesterdayOrders.length) *
+          100
+        : todayOrders.length > 0
+          ? 100
+          : 0;
+    const ordersDelta =
+      ordersDeltaNum === 0
+        ? "0%"
+        : `${ordersDeltaNum > 0 ? "+" : ""}${ordersDeltaNum.toFixed(1)}%`;
     const ordersTrendTone = ordersDeltaNum >= 0 ? "emerald" : "rose";
 
     // Order status breakdown (Today)
@@ -334,7 +372,7 @@ export default function DashboardScreen() {
         acc[status] = (acc[status] || 0) + 1;
         return acc;
       },
-      {}
+      {},
     );
 
     // Last 7 days revenue for chart
@@ -352,7 +390,10 @@ export default function DashboardScreen() {
     });
 
     // Top products (Today)
-    const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
+    const productSales: Record<
+      string,
+      { name: string; qty: number; revenue: number }
+    > = {};
     for (const order of todayOrders) {
       if (order.items && Array.isArray(order.items)) {
         for (const item of order.items) {
@@ -365,7 +406,8 @@ export default function DashboardScreen() {
             };
           }
           productSales[item.productId].qty += Number(item.quantity || 0);
-          productSales[item.productId].revenue += Number(item.unitPrice || 0) * Number(item.quantity || 0);
+          productSales[item.productId].revenue +=
+            Number(item.unitPrice || 0) * Number(item.quantity || 0);
         }
       }
     }
@@ -373,11 +415,15 @@ export default function DashboardScreen() {
       .sort((a, b) => b.qty - a.qty)
       .slice(0, 4);
 
-    const maxProductQty = topProducts.length > 0 ? Math.max(...topProducts.map(p => p.qty)) : 1;
+    const maxProductQty =
+      topProducts.length > 0 ? Math.max(...topProducts.map((p) => p.qty)) : 1;
 
     // Recent 5 Orders
     const recentOrders = [...orders]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
       .slice(0, 5);
 
     return {
@@ -385,21 +431,26 @@ export default function DashboardScreen() {
       yesterdayOrders: yesterdayOrders.length,
       ordersDelta,
       ordersTrendTone,
-      
+
       todayRevenue,
       yesterdayRevenue,
       revenueDelta,
       revenueTrendTone,
-      
+
       avgOrderValue,
-      
+
       pendingOrders: statusCounts["PENDING"] || 0,
       completedOrders: statusCounts["COMPLETED"] || 0,
-      voidedOrders: (statusCounts["VOIDED"] || 0) + (statusCounts["CANCELLED"] || 0),
-      
+      voidedOrders:
+        (statusCounts["VOIDED"] || 0) + (statusCounts["CANCELLED"] || 0),
+
       dailyRevenue,
-      last7DaysLabels: last7Days.map((d, idx) => idx === 6 ? "Today" : d.toLocaleDateString('en-US', { weekday: 'short' })),
-      
+      last7DaysLabels: last7Days.map((d, idx) =>
+        idx === 6
+          ? "Today"
+          : d.toLocaleDateString("en-US", { weekday: "short" }),
+      ),
+
       topProducts,
       maxProductQty,
       recentOrders,
@@ -433,7 +484,9 @@ export default function DashboardScreen() {
         {isLoading ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator size="large" color="#38bdf8" />
-            <Text className="text-slate-400 mt-4 font-medium">Loading analytics...</Text>
+            <Text className="text-slate-400 mt-4 font-medium">
+              Loading analytics...
+            </Text>
           </View>
         ) : (
           <ScrollView
@@ -449,37 +502,37 @@ export default function DashboardScreen() {
             showsVerticalScrollIndicator={false}
           >
             {/* Quick Actions Row */}
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
+            {/* <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
               className="mb-6"
               contentContainerStyle={{ gap: 12, paddingRight: 20 }}
             >
-              <ActionButton 
-                title="New Sale" 
-                icon="point-of-sale" 
-                accent="sky" 
-                onPress={() => router.push("/pos")} 
+              <ActionButton
+                title="New Sale"
+                icon="point-of-sale"
+                accent="sky"
+                onPress={() => router.push("/pos")}
               />
-              <ActionButton 
-                title="View Orders" 
-                icon="receipt-long" 
-                accent="emerald" 
-                onPress={() => router.push("/orders")} 
+              <ActionButton
+                title="View Orders"
+                icon="receipt-long"
+                accent="emerald"
+                onPress={() => router.push("/orders")}
               />
-              <ActionButton 
-                title="Inventory" 
-                icon="inventory" 
-                accent="amber" 
-                onPress={() => router.push("/inventory")} 
+              <ActionButton
+                title="Inventory"
+                icon="inventory"
+                accent="amber"
+                onPress={() => router.push("/inventory")}
               />
-            </ScrollView>
+            </ScrollView> */}
 
             {/* KPIs Row */}
             <View className="flex-row flex-wrap gap-3 mb-6">
               <View className="w-[48%]">
                 <MetricCard
-                  icon="attach-money"
+                  // icon="attach-money"
                   label="Today's Sales"
                   value={`$${metrics.todayRevenue.toFixed(2)}`}
                   delta={`${metrics.revenueDelta} vs yesterday`}
@@ -488,7 +541,7 @@ export default function DashboardScreen() {
               </View>
               <View className="w-[48%]">
                 <MetricCard
-                  icon="receipt-long"
+                  // icon="receipt-long"
                   label="Today's Orders"
                   value={String(metrics.todayOrders)}
                   delta={`${metrics.ordersDelta} vs yesterday`}
@@ -504,7 +557,9 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   onPress={() => setChartType("area")}
                   className={`px-2.5 py-1 rounded-md flex-row items-center gap-1 ${
-                    chartType === "area" ? "bg-sky-500/20 border border-sky-500/30" : ""
+                    chartType === "area"
+                      ? "bg-sky-500/20 border border-sky-500/30"
+                      : ""
                   }`}
                 >
                   <MaterialIcons
@@ -524,7 +579,9 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   onPress={() => setChartType("bar")}
                   className={`px-2.5 py-1 rounded-md flex-row items-center gap-1 ${
-                    chartType === "bar" ? "bg-sky-500/20 border border-sky-500/30" : ""
+                    chartType === "bar"
+                      ? "bg-sky-500/20 border border-sky-500/30"
+                      : ""
                   }`}
                 >
                   <MaterialIcons
@@ -544,7 +601,9 @@ export default function DashboardScreen() {
                 <TouchableOpacity
                   onPress={() => setChartType("line")}
                   className={`px-2.5 py-1 rounded-md flex-row items-center gap-1 ${
-                    chartType === "line" ? "bg-sky-500/20 border border-sky-500/30" : ""
+                    chartType === "line"
+                      ? "bg-sky-500/20 border border-sky-500/30"
+                      : ""
                   }`}
                 >
                   <MaterialIcons
@@ -594,19 +653,25 @@ export default function DashboardScreen() {
                   <Text className="text-emerald-400 font-black text-2xl">
                     {metrics.completedOrders}
                   </Text>
-                  <Text className="text-slate-500 text-xs mt-1 font-bold uppercase tracking-wider">Completed</Text>
+                  <Text className="text-slate-500 text-xs mt-1 font-bold uppercase tracking-wider">
+                    Completed
+                  </Text>
                 </View>
                 <View className="items-center flex-1 border-r border-slate-800">
                   <Text className="text-amber-400 font-black text-2xl">
                     {metrics.pendingOrders}
                   </Text>
-                  <Text className="text-slate-500 text-xs mt-1 font-bold uppercase tracking-wider">Pending</Text>
+                  <Text className="text-slate-500 text-xs mt-1 font-bold uppercase tracking-wider">
+                    Pending
+                  </Text>
                 </View>
                 <View className="items-center flex-1">
                   <Text className="text-rose-400 font-black text-2xl">
                     {metrics.voidedOrders}
                   </Text>
-                  <Text className="text-slate-500 text-xs mt-1 font-bold uppercase tracking-wider">Voided</Text>
+                  <Text className="text-slate-500 text-xs mt-1 font-bold uppercase tracking-wider">
+                    Voided
+                  </Text>
                 </View>
               </View>
             </Card>
@@ -617,7 +682,9 @@ export default function DashboardScreen() {
               {metrics.topProducts.length === 0 ? (
                 <View className="py-6 items-center">
                   <MaterialIcons name="inventory-2" size={32} color="#334155" />
-                  <Text className="text-slate-500 text-sm mt-3 font-medium">No sales recorded today.</Text>
+                  <Text className="text-slate-500 text-sm mt-3 font-medium">
+                    No sales recorded today.
+                  </Text>
                 </View>
               ) : (
                 metrics.topProducts.map((p, index) => {
@@ -625,12 +692,19 @@ export default function DashboardScreen() {
                   return (
                     <View key={index} className="mb-4 last:mb-0">
                       <View className="flex-row justify-between items-center mb-1.5">
-                        <Text className="text-white font-semibold text-sm" numberOfLines={1}>{p.name}</Text>
-                        <Text className="text-slate-400 text-xs font-bold">{p.qty} units</Text>
+                        <Text
+                          className="text-white font-semibold text-sm"
+                          numberOfLines={1}
+                        >
+                          {p.name}
+                        </Text>
+                        <Text className="text-slate-400 text-xs font-bold">
+                          {p.qty} units
+                        </Text>
                       </View>
                       <View className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
-                        <View 
-                          className="h-full bg-sky-500 rounded-full" 
+                        <View
+                          className="h-full bg-sky-500 rounded-full"
                           style={{ width: `${widthPct}%` }}
                         />
                       </View>
@@ -646,23 +720,28 @@ export default function DashboardScreen() {
               {metrics.recentOrders.length === 0 ? (
                 <View className="py-6 items-center">
                   <MaterialIcons name="receipt" size={32} color="#334155" />
-                  <Text className="text-slate-500 text-sm mt-3 font-medium">No recent transactions.</Text>
+                  <Text className="text-slate-500 text-sm mt-3 font-medium">
+                    No recent transactions.
+                  </Text>
                 </View>
               ) : (
                 <View>
                   {metrics.recentOrders.map((order: any, idx: number) => {
                     const isLast = idx === metrics.recentOrders.length - 1;
                     return (
-                      <View 
-                        key={order.id} 
-                        className={`py-3 flex-row justify-between items-center ${!isLast ? 'border-b border-white/5' : ''}`}
+                      <View
+                        key={order.id}
+                        className={`py-3 flex-row justify-between items-center ${!isLast ? "border-b border-white/5" : ""}`}
                       >
                         <View>
                           <Text className="text-white font-bold">
                             #{order.orderNumber || order.id.slice(-6)}
                           </Text>
                           <Text className="text-slate-400 text-xs mt-0.5">
-                            {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(order.createdAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
                           </Text>
                         </View>
                         <View className="items-end">
@@ -672,24 +751,28 @@ export default function DashboardScreen() {
                           <Pill
                             label={order.status}
                             tone={
-                              order.status === "COMPLETED" ? "emerald" :
-                              order.status === "PENDING" ? "amber" : "rose"
+                              order.status === "COMPLETED"
+                                ? "emerald"
+                                : order.status === "PENDING"
+                                  ? "amber"
+                                  : "rose"
                             }
                           />
                         </View>
                       </View>
                     );
                   })}
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     className="mt-4 py-3 bg-white/5 rounded-xl border border-white/10 items-center"
                     onPress={() => router.push("/orders")}
                   >
-                    <Text className="text-slate-300 font-bold text-xs uppercase tracking-wider">View All Orders</Text>
+                    <Text className="text-slate-300 font-bold text-xs uppercase tracking-wider">
+                      View All Orders
+                    </Text>
                   </TouchableOpacity>
                 </View>
               )}
             </Card>
-
           </ScrollView>
         )}
       </SafeAreaView>

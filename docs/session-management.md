@@ -30,11 +30,11 @@ At close time the app calculates:
 
 Examples:
 
-| Opening | Cash sales | Counted cash | Expected | Difference |
-|---:|---:|---:|---:|---:|
-| 100.00 | 250.00 | 350.00 | 350.00 | 0.00 |
-| 100.00 | 250.00 | 340.00 | 350.00 | -10.00 missing |
-| 100.00 | 250.00 | 360.00 | 350.00 | +10.00 extra |
+| Opening | Cash sales | Counted cash | Expected |     Difference |
+| ------: | ---------: | -----------: | -------: | -------------: |
+|  100.00 |     250.00 |       350.00 |   350.00 |           0.00 |
+|  100.00 |     250.00 |       340.00 |   350.00 | -10.00 missing |
+|  100.00 |     250.00 |       360.00 |   350.00 |   +10.00 extra |
 
 Card and digital sales are recorded separately and do not increase expected drawer cash.
 

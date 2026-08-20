@@ -374,8 +374,7 @@ export default function ManageScreen() {
 
       if (moduleKey === "staff") {
         if (editor.mode === "create") await createStaff(nextValues).unwrap();
-        else
-          await updateStaff({ id: editor.item.id, ...nextValues }).unwrap();
+        else await updateStaff({ id: editor.item.id, ...nextValues }).unwrap();
       } else if (moduleKey === "products") {
         if (editor.mode === "create") await createProduct(nextValues).unwrap();
         else
@@ -2212,8 +2211,8 @@ function EditorModal({
                       />
                     ) : (
                       <Text className="mb-4 text-xs text-amber-300">
-                        Stock is managed separately in Inventory. Initial
-                        stock is only used when creating a product.
+                        Stock is managed separately in Inventory. Initial stock
+                        is only used when creating a product.
                       </Text>
                     )}
                   </>

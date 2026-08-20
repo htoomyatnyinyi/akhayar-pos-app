@@ -80,7 +80,7 @@ export function MetricCard({
   delta,
   tone = "sky",
 }: {
-  icon: keyof typeof MaterialIcons.glyphMap;
+  icon?: keyof typeof MaterialIcons.glyphMap;
   label: string;
   value: string;
   delta?: string;
@@ -131,9 +131,11 @@ export function MetricCard({
             </Text>
           ) : null}
         </View>
-        <View className={`rounded-2xl border ${t.border} ${t.bg} p-3`}>
-          <MaterialIcons name={icon} size={22} color="#fff" />
-        </View>
+        {icon ? (
+          <View className={`rounded-2xl border ${t.border} ${t.bg} p-3`}>
+            <MaterialIcons name={icon} size={22} color="#fff" />
+          </View>
+        ) : null}
       </View>
       <View className={`mt-4 h-1.5 rounded-full ${t.glow}`} />
     </View>
