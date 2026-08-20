@@ -26,7 +26,9 @@ export default function StoreSelector({
     );
   }, [stores, searchText]);
 
-  const selectedStore = stores.find((store) => store.id === value);
+  const selectedStore = stores.find(
+    (store) => store.id === value || (store.remoteId && store.remoteId === value),
+  );
 
   return (
     <View className="mb-4">
@@ -38,11 +40,18 @@ export default function StoreSelector({
         className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4"
       >
         <View className="flex-row items-center justify-between">
-          <Text
-            className={`text-base ${selectedStore ? "text-white" : "text-slate-400"}`}
-          >
-            {selectedStore ? selectedStore.name : "Select a store..."}
-          </Text>
+          <View className="flex-row items-center flex-1">
+            <MaterialIcons
+              name="storefront"
+              size={20}
+              color={selectedStore ? "#38bdf8" : "#64748b"}
+            />
+            <Text
+              className={`ml-2 text-base ${selectedStore ? "text-white font-semibold" : "text-slate-400"}`}
+            >
+              {selectedStore ? `${selectedStore.name}${selectedStore.code ? ` (${selectedStore.code})` : ""}` : "Select a store..."}
+            </Text>
+          </View>
           <MaterialIcons
             name={showDropdown ? "expand-less" : "expand-more"}
             size={24}
@@ -66,24 +75,35 @@ export default function StoreSelector({
             nestedScrollEnabled
           >
             {filteredStores.length > 0 ? (
-              filteredStores.map((store) => (
-                <Pressable
-                  key={store.id}
-                  onPress={() => {
-                    onChange(store.id, store.name);
-                    setShowDropdown(false);
-                    setSearchText("");
-                  }}
-                  className={`rounded-xl px-4 py-3 ${
-                    value === store.id ? "bg-emerald-500/20" : ""
-                  }`}
-                >
-                  <Text className="text-white">{store.name}</Text>
-                  <Text className="text-xs text-slate-400">
-                    {store.code} • {store.address || "No address"}
-                  </Text>
-                </Pressable>
-              ))
+              filteredStores.map((store) => {
+                const isSelected =
+                  value === store.id || (store.remoteId && value === store.remoteId);
+                return (
+                  <Pressable
+                    key={store.id}
+                    onPress={() => {
+                      onChange(store.id, store.name);
+                      setShowDropdown(false);
+                      setSearchText("");
+                    }}
+                    className={`rounded-xl px-4 py-3 mb-1 flex-row items-center justify-between ${
+                      isSelected
+                        ? "bg-sky-500/20 border border-sky-500/30"
+                        : "bg-white/5"
+                    }`}
+                  >
+                    <View className="flex-1">
+                      <Text className="text-white font-semibold">{store.name}</Text>
+                      <Text className="text-xs text-slate-400">
+                        {store.code ? `Code: ${store.code} • ` : ""}{store.address || "No address"}
+                      </Text>
+                    </View>
+                    {isSelected && (
+                      <MaterialIcons name="check" size={18} color="#38bdf8" />
+                    )}
+                  </Pressable>
+                );
+              })
             ) : (
               <Text className="py-4 text-center text-slate-400">
                 No stores found

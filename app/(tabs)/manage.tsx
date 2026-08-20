@@ -92,8 +92,8 @@ export default function ManageScreen() {
   );
   const [refreshing, setRefreshing] = useState(false);
 
-  // Store-scoped filter for non-admin users
-  const scopedStoreId = isAdmin ? undefined : currentStoreId || undefined;
+  // Store-scoped filter (if currentStoreId is null, shows all stores for admins)
+  const scopedStoreId = currentStoreId || undefined;
 
   // Queries with store scoping
   const {
@@ -564,29 +564,64 @@ export default function ManageScreen() {
 
           {/* Store Context */}
           <Card className="mb-4">
-            <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
-              Store context
-            </Text>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-xs font-bold uppercase tracking-[3px] text-slate-400">
+                Store Context
+              </Text>
+              {currentStoreId && (
+                <Text className="text-xs text-sky-400 font-medium">
+                  Active filter applied
+                </Text>
+              )}
+            </View>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               className="mt-3"
               contentContainerStyle={{ gap: 8 }}
             >
+              {isAdmin && (
+                <Pressable
+                  onPress={() => dispatch(setStore(null))}
+                  className={`rounded-full border px-4 py-2.5 flex-row items-center ${
+                    !currentStoreId
+                      ? "border-sky-400/40 bg-sky-500/20"
+                      : "border-white/10 bg-white/5"
+                  }`}
+                >
+                  <MaterialIcons
+                    name="domain"
+                    size={15}
+                    color={!currentStoreId ? "#38bdf8" : "#94a3b8"}
+                  />
+                  <Text
+                    className={`ml-1.5 text-xs font-bold uppercase tracking-[1.5px] ${
+                      !currentStoreId ? "text-sky-200" : "text-slate-300"
+                    }`}
+                  >
+                    All Stores
+                  </Text>
+                </Pressable>
+              )}
               {storeOptions.map((store: any) => {
                 const active = store.id === currentStoreId;
                 return (
                   <Pressable
                     key={store.id}
                     onPress={() => dispatch(setStore(store.id))}
-                    className={`rounded-full border px-4 py-3 ${
+                    className={`rounded-full border px-4 py-2.5 flex-row items-center ${
                       active
-                        ? "border-sky-400/30 bg-sky-500/15"
+                        ? "border-sky-400/40 bg-sky-500/20"
                         : "border-white/10 bg-white/5"
                     }`}
                   >
+                    <MaterialIcons
+                      name="storefront"
+                      size={15}
+                      color={active ? "#38bdf8" : "#94a3b8"}
+                    />
                     <Text
-                      className={`text-xs font-bold uppercase tracking-[2px] ${
+                      className={`ml-1.5 text-xs font-bold uppercase tracking-[1.5px] ${
                         active ? "text-sky-200" : "text-slate-300"
                       }`}
                     >
@@ -595,7 +630,7 @@ export default function ManageScreen() {
                   </Pressable>
                 );
               })}
-              {storeOptions.length === 0 && (
+              {storeOptions.length === 0 && !isAdmin && (
                 <Text className="text-slate-500 text-xs">
                   No stores available
                 </Text>
@@ -816,12 +851,65 @@ export default function ManageScreen() {
                         <Text className="text-base font-semibold text-white">
                           {item.name || item.username || item.code || item.id}
                         </Text>
-                        <Text
-                          className="text-sm text-slate-400"
-                          numberOfLines={1}
-                        >
-                          {getSubtitle(moduleKey, item)}
-                        </Text>
+                        {moduleKey === "staff" ? (
+                          <View className="mt-1.5 flex-row flex-wrap items-center gap-1.5">
+                            {(() => {
+                              const assignedStore = stores.find(
+                                (s: any) =>
+                                  s.id === item.storeId ||
+                                  (s.remoteId && s.remoteId === item.storeId),
+                              );
+                              const storeName =
+                                assignedStore?.name ||
+                                item.storeName ||
+                                "Unassigned Store";
+                              const isAssigned = Boolean(
+                                assignedStore || item.storeName,
+                              );
+                              return (
+                                <View
+                                  className={`flex-row items-center rounded-md px-2 py-0.5 border ${
+                                    isAssigned
+                                      ? "bg-sky-500/15 border-sky-500/30"
+                                      : "bg-amber-500/15 border-amber-500/30"
+                                  }`}
+                                >
+                                  <MaterialIcons
+                                    name="storefront"
+                                    size={12}
+                                    color={isAssigned ? "#38bdf8" : "#fbbf24"}
+                                  />
+                                  <Text
+                                    className={`ml-1 text-[11px] font-semibold ${
+                                      isAssigned
+                                        ? "text-sky-300"
+                                        : "text-amber-300"
+                                    }`}
+                                  >
+                                    {storeName}
+                                  </Text>
+                                </View>
+                              );
+                            })()}
+                            <View className="rounded-md bg-white/10 px-2 py-0.5">
+                              <Text className="text-[11px] font-medium text-slate-300">
+                                {item.role}
+                              </Text>
+                            </View>
+                            {item.email ? (
+                              <Text className="text-xs text-slate-400">
+                                {item.email}
+                              </Text>
+                            ) : null}
+                          </View>
+                        ) : (
+                          <Text
+                            className="text-sm text-slate-400"
+                            numberOfLines={1}
+                          >
+                            {getSubtitle(moduleKey, item, stores)}
+                          </Text>
+                        )}
                         {moduleKey === "products" &&
                           Array.isArray(item.variants) &&
                           item.variants.length > 0 && (

@@ -37,9 +37,16 @@ export function getModuleList(input: any) {
   );
 }
 
-export function getSubtitle(moduleKey: ModuleKey, item: any) {
-  if (moduleKey === "staff")
-    return `${item.role} • ${item.email ?? "no email"}`;
+export function getSubtitle(moduleKey: ModuleKey, item: any, stores?: any[]) {
+  if (moduleKey === "staff") {
+    const store = stores?.find(
+      (s: any) =>
+        s.id === item.storeId ||
+        (s.remoteId && s.remoteId === item.storeId),
+    );
+    const storeName = store?.name || item.storeName || "Unassigned Store";
+    return `${storeName} • ${item.role} • ${item.email ?? "no email"}`;
+  }
   if (moduleKey === "products") {
     const variants = Array.isArray(item.variants) ? item.variants : [];
     return variants.length

@@ -133,7 +133,11 @@ export default function EditorModal({
 
   useEffect(() => {
     if (visible) {
-      setFields(item ? { ...item } : getDefaultFields(moduleKey));
+      const initial = item ? { ...item } : getDefaultFields(moduleKey);
+      if (!initial.storeId && currentStoreId) {
+        initial.storeId = currentStoreId;
+      }
+      setFields(initial);
       setShowCreateCategory(false);
       setShowCreateSupplier(false);
       setShowCreateBrand(false);
@@ -148,7 +152,7 @@ export default function EditorModal({
       });
       setNewBrand({ name: "", description: "" });
     }
-  }, [visible, item, moduleKey]);
+  }, [visible, item, moduleKey, currentStoreId]);
 
   const set = (key: string, value: any) =>
     setFields((current) => ({ ...current, [key]: value }));

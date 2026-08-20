@@ -1025,6 +1025,14 @@ function stripNulls(obj: any): any {
 
 async function resolveProductReferences(payload: any) {
   const resolved = { ...payload };
+  if (resolved.storeId) {
+    const [storeRow] = await getOfflineDb()
+      .select({ id: stores.id, remoteId: stores.remoteId })
+      .from(stores)
+      .where(eq(stores.id, String(resolved.storeId)))
+      .limit(1);
+    if (storeRow?.remoteId) resolved.storeId = storeRow.remoteId;
+  }
   if (resolved.categoryId) {
     const [category] = await getOfflineDb()
       .select()
@@ -1179,12 +1187,75 @@ async function resolveRemoteVariantReferences(payload: any) {
 }
 
 async function resolveEntityRemoteId(entity: string, localId: string) {
+  if (!localId) return localId;
   const db = getOfflineDb();
-  const tables: Record<string, any> = { brands, products, categories, customers, stores, suppliers, staff };
+  const tables: Record<string, any> = {
+    brands,
+    brand: brands,
+    products,
+    product: products,
+    categories,
+    category: categories,
+    customers,
+    customer: customers,
+    stores,
+    store: stores,
+    suppliers,
+    supplier: suppliers,
+    staff,
+    product_variants: productVariants,
+    variants: productVariants,
+    variant: productVariants,
+    sessions,
+    session: sessions,
+  };
   const table = tables[entity];
   if (!table) return localId;
-  const [row] = await db.select({ remoteId: table.remoteId }).from(table).where(eq(table.id, localId)).limit(1);
+  const [row] = await db
+    .select({ remoteId: table.remoteId })
+    .from(table)
+    .where(eq(table.id, localId))
+    .limit(1);
   return row?.remoteId || localId;
+}
+
+async function resolvePayloadForeignKeys(payload: any) {
+  if (!payload || typeof payload !== "object") return payload;
+  const copy = { ...payload };
+
+  if (copy.storeId) {
+    copy.storeId = await resolveEntityRemoteId("stores", String(copy.storeId));
+  }
+  if (copy.sourceStoreId) {
+    copy.sourceStoreId = await resolveEntityRemoteId("stores", String(copy.sourceStoreId));
+  }
+  if (copy.targetStoreId) {
+    copy.targetStoreId = await resolveEntityRemoteId("stores", String(copy.targetStoreId));
+  }
+  if (copy.categoryId) {
+    copy.categoryId = await resolveEntityRemoteId("categories", String(copy.categoryId));
+  }
+  if (copy.brandId) {
+    copy.brandId = await resolveEntityRemoteId("brands", String(copy.brandId));
+  }
+  if (copy.supplierId) {
+    copy.supplierId = await resolveEntityRemoteId("suppliers", String(copy.supplierId));
+  }
+  if (copy.customerId) {
+    copy.customerId = await resolveEntityRemoteId("customers", String(copy.customerId));
+  }
+  if (copy.productId) {
+    copy.productId = await resolveEntityRemoteId("products", String(copy.productId));
+  }
+  if (copy.variantId) {
+    copy.variantId = await resolveEntityRemoteId("product_variants", String(copy.variantId));
+  }
+  if (copy.sessionId) {
+    const resolved = await resolveEntityRemoteId("sessions", String(copy.sessionId));
+    copy.sessionId = resolved && resolved.length === 36 ? resolved : undefined;
+  }
+
+  return copy;
 }
 
 // ============================================
@@ -1811,12 +1882,13 @@ async function processOutboxItem(
             const remoteId = await resolveEntityRemoteId(item.entity, item.entityId);
             endpoint = `/api/tenant/${item.entity}/${remoteId}`;
           }
-          if (item.entity === "staff" && item.operation !== "create") {
 
-            // Repair outbox rows produced by earlier app versions, which
-            // incorrectly nested the staff patch under `data`.
-            if (requestPayload?.data) requestPayload = requestPayload.data;
+          if (requestPayload?.data && item.operation !== "create") {
+            requestPayload = requestPayload.data;
           }
+
+          // Universally resolve foreign keys (storeId, categoryId, brandId, supplierId, customerId, etc.)
+          requestPayload = await resolvePayloadForeignKeys(requestPayload);
 
           // Build URL (avoid double /api)
           const baseUrl = POS_API_URL.endsWith("/api")
