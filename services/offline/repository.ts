@@ -905,62 +905,78 @@ export async function upsertSuppliers(
   if (!remoteSuppliers.length) return;
   const now = new Date().toISOString();
 
-  const seen = new Set<string>();
-  const uniqueSuppliers = remoteSuppliers.filter((s) => {
-    const key = `${s.tenantId || defaultTenantId}:${(s.email || "").toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const seenRemoteIds = new Set<string>();
+  const db = getOfflineDb();
+  for (const supplier of remoteSuppliers) {
+    const remoteId = String(supplier.remoteId ?? supplier.remote_id ?? supplier.id ?? "");
+    if (!remoteId || seenRemoteIds.has(remoteId)) continue;
+    seenRemoteIds.add(remoteId);
 
-  const suppliersToInsert = uniqueSuppliers.map((supplier) => ({
-    id: supplier.id,
-    remoteId: supplier.remoteId ?? supplier.id,
-    tenantId: supplier.tenantId || defaultTenantId,
-    storeId: supplier.storeId,
-    code: supplier.code,
-    name: supplier.name,
-    contactName: supplier.contactName,
-    phone: supplier.phone,
-    email: supplier.email?.trim() || null,
-    address: supplier.address,
-    taxNumber: supplier.taxNumber,
-    paymentTerms: supplier.paymentTerms,
-    creditLimit: supplier.creditLimit,
-    currentBalance: supplier.currentBalance ?? 0,
-    isActive: supplier.isActive ?? true,
-    syncStatus: "synced",
-    syncError: null,
-    createdAt: supplier.createdAt ?? now,
-    updatedAt: supplier.updatedAt ?? now,
-    lastSyncedAt: now,
-  }));
-
-  await getOfflineDb()
-    .insert(suppliers)
-    .values(suppliersToInsert)
-    .onConflictDoUpdate({
-      target: [suppliers.tenantId, suppliers.email],
-      set: {
-        remoteId: sql`excluded.remote_id`,
-        code: sql`excluded.code`,
-        name: sql`excluded.name`,
-        contactName: sql`excluded.contact_name`,
-        phone: sql`excluded.phone`,
-        email: sql`excluded.email`,
-        address: sql`excluded.address`,
-        taxNumber: sql`excluded.tax_number`,
-        paymentTerms: sql`excluded.payment_terms`,
-        creditLimit: sql`excluded.credit_limit`,
-        currentBalance: sql`excluded.current_balance`,
-        storeId: sql`excluded.store_id`,
-        isActive: sql`excluded.is_active`,
-        syncStatus: "synced",
-        syncError: null,
-        updatedAt: sql`excluded.updated_at`,
-        lastSyncedAt: now,
-      },
-    });
+    const tenantId = supplier.tenantId ?? supplier.tenant_id ?? defaultTenantId;
+    const email = supplier.email?.trim() || null;
+    const code = String(supplier.code ?? "").trim() || `SUP-${remoteId.slice(-8)}`;
+    const [byRemoteId] = await db
+      .select({ id: suppliers.id })
+      .from(suppliers)
+      .where(eq(suppliers.remoteId, remoteId))
+      .limit(1);
+    const [byEmail] = !byRemoteId && email
+      ? await db
+          .select({ id: suppliers.id })
+          .from(suppliers)
+          .where(and(eq(suppliers.tenantId, tenantId), eq(suppliers.email, email)))
+          .limit(1)
+      : [];
+    const [byCode] = !byRemoteId && !byEmail
+      ? await db
+          .select({ id: suppliers.id })
+          .from(suppliers)
+          .where(and(eq(suppliers.tenantId, tenantId), eq(suppliers.code, code)))
+          .limit(1)
+      : [];
+    // Prefer the stable tenant identity before remoteId so an older local
+    // row is reused instead of creating a second supplier row.
+    const existing = byEmail ?? byCode ?? byRemoteId;
+    const values = {
+      remoteId,
+      tenantId,
+      storeId: supplier.storeId ?? supplier.store_id ?? null,
+      code,
+      name: supplier.name || "Unnamed Supplier",
+      contactName: supplier.contactName ?? supplier.contact_name ?? null,
+      phone: supplier.phone ?? null,
+      email,
+      address: supplier.address ?? null,
+      taxNumber: supplier.taxNumber ?? supplier.tax_number ?? null,
+      paymentTerms: supplier.paymentTerms ?? supplier.payment_terms ?? null,
+      creditLimit: supplier.creditLimit ?? supplier.credit_limit ?? null,
+      currentBalance: Number(supplier.currentBalance ?? supplier.current_balance ?? 0),
+      isActive: supplier.isActive ?? supplier.is_active ?? true,
+      syncStatus: "synced",
+      syncError: null,
+      updatedAt: supplier.updatedAt ?? supplier.updated_at ?? now,
+      lastSyncedAt: now,
+    };
+    if (existing) {
+      await db.update(suppliers).set(values).where(eq(suppliers.id, existing.id));
+      await db
+        .update(syncOutbox)
+        .set({ status: "synced", lastError: null, updatedAt: now })
+        .where(
+          and(
+            eq(syncOutbox.entity, "suppliers"),
+            eq(syncOutbox.entityId, existing.id),
+            eq(syncOutbox.operation, "create"),
+          ),
+        );
+    } else {
+      await db.insert(suppliers).values({
+        id: String(supplier.id ?? remoteId),
+        createdAt: supplier.createdAt ?? supplier.created_at ?? now,
+        ...values,
+      });
+    }
+  }
 }
 
 export async function upsertStores(

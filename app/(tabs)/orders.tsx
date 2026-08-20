@@ -85,7 +85,7 @@ export default function OrdersScreen() {
       status: filterStatus === "ALL" ? undefined : filterStatus,
       search: search.trim() || undefined,
     },
-    { pollingInterval: 5000 }, // Auto-refresh every 5s to pick up background sync changes
+    { pollingInterval: 15000 }, // Local-first data; background sync invalidates immediately
   );
 
   const [updateStatus, { isLoading: isUpdatingStatus }] =

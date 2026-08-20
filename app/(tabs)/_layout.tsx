@@ -4,11 +4,20 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Platform, View } from "react-native";
 import { hasAnyPermission } from "@/utils/auth/permissions";
+// import { OfflineSyncStatus } from "@/components/offline-sync-status";
 
 export default function TabLayout() {
   const user = useAppSelector((state) => state.auth.user);
-  const showManagement = hasAnyPermission(user, ["MANAGE_STAFF", "MANAGE_INVENTORY"]);
-  const showDashboard = hasAnyPermission(user, ["VIEW_REPORTS", "VIEW_ANALYTICS"]);
+  // const userRole = useAppSelector((state) => state.auth.role);
+
+  const showManagement = hasAnyPermission(user, [
+    "MANAGE_STAFF",
+    "MANAGE_INVENTORY",
+  ]);
+  const showDashboard = hasAnyPermission(user, [
+    "VIEW_REPORTS",
+    "VIEW_ANALYTICS",
+  ]);
 
   return (
     <View className="flex-1 ">
@@ -115,6 +124,7 @@ export default function TabLayout() {
           name="sessions"
           options={{
             title: "Sessions",
+            // tabBarButton: userRole === "admin" ? undefined : () => null,
             tabBarIcon: ({ color, focused }) => (
               <MaterialIcons
                 name="schedule"

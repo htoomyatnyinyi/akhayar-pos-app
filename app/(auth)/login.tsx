@@ -20,6 +20,7 @@ import { useAppDispatch } from "@/hooks/redux-hooks/useAppDispatch";
 import { useAppSelector } from "@/hooks/redux-hooks/useAppSelector";
 import { setLastTenantCode, setUser } from "@/services/features/auth/authSlice";
 import { getAuthErrorMessage } from "@/services/features/auth/authUtils";
+import { Image } from "react-native-svg";
 
 export default function LoginScreen() {
   const dispatch = useAppDispatch();
@@ -91,7 +92,7 @@ export default function LoginScreen() {
             entering={FadeInDown.duration(600).springify()}
             className="mb-10"
           >
-            <View className="mb-4 h-16 w-16 items-center justify-center rounded-[24px] bg-sky-500/15 border border-sky-400/20">
+            <View className="mb-4 h-16 w-16 items-center justify-center rounded-3xl bg-sky-500/15 border border-sky-400/20">
               <MaterialIcons name="point-of-sale" size={32} color="#7dd3fc" />
             </View>
             <Text className="text-4xl font-black text-white">Welcome back</Text>

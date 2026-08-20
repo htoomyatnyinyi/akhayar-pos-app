@@ -299,7 +299,7 @@ export default function DashboardScreen() {
     refetch: refetchOrders,
   } = useGetLocalOrdersQuery(
     { storeId: currentStoreId || undefined, includeItems: true },
-    { pollingInterval: 10000 },
+    { pollingInterval: 30000 },
   );
 
   const {
@@ -354,20 +354,17 @@ export default function DashboardScreen() {
       (o: any) => new Date(o.createdAt).toDateString() === yesterdayStr,
     );
 
-    const todayRevenue = todayOrders.filter(countsAsRevenue).reduce(
-      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
-      0,
-    );
-    const yesterdayRevenue = yesterdayOrders.filter(countsAsRevenue).reduce(
-      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
-      0,
-    );
+    const todayRevenue = todayOrders
+      .filter(countsAsRevenue)
+      .reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
+    const yesterdayRevenue = yesterdayOrders
+      .filter(countsAsRevenue)
+      .reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
 
     const totalOrders = orders.length;
-    const totalRevenue = orders.filter(countsAsRevenue).reduce(
-      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
-      0,
-    );
+    const totalRevenue = orders
+      .filter(countsAsRevenue)
+      .reduce((sum: number, o: any) => sum + Number(o.grandTotal || 0), 0);
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     // Trend calculations
@@ -454,16 +451,16 @@ export default function DashboardScreen() {
     const maxProductQty =
       topProducts.length > 0 ? Math.max(...topProducts.map((p) => p.qty)) : 1;
 
-    const paymentMix = todayOrders.filter(countsAsRevenue).reduce(
-      (acc: Record<string, number>, order: any) => {
+    const paymentMix = todayOrders
+      .filter(countsAsRevenue)
+      .reduce((acc: Record<string, number>, order: any) => {
         const method = String(order.paymentMethod || "OTHER").toUpperCase();
         acc[method] = (acc[method] || 0) + Number(order.grandTotal || 0);
         return acc;
-      },
-      {},
-    );
+      }, {});
     const lowStockItems = inventory.filter(
-      (item: any) => Number(item.quantity || 0) <= Number(item.reorderPoint || 0),
+      (item: any) =>
+        Number(item.quantity || 0) <= Number(item.reorderPoint || 0),
     );
     const outOfStockItems = inventory.filter(
       (item: any) => Number(item.quantity || 0) <= 0,
@@ -471,8 +468,8 @@ export default function DashboardScreen() {
     const activeSession = sessions.find(
       (session: any) => String(session.status).toUpperCase() === "OPEN",
     );
-    const unsyncedCount = [...orders, ...inventory].filter(
-      (item: any) => ["pending", "failed"].includes(String(item.syncStatus)),
+    const unsyncedCount = [...orders, ...inventory].filter((item: any) =>
+      ["pending", "failed"].includes(String(item.syncStatus)),
     ).length;
 
     // Recent 5 Orders
@@ -649,12 +646,18 @@ export default function DashboardScreen() {
               >
                 <View className="flex-row items-center justify-between">
                   <MaterialIcons name="inventory-2" size={20} color="#fbbf24" />
-                  <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={18}
+                    color="#64748b"
+                  />
                 </View>
                 <Text className="text-white text-xl font-black mt-3">
                   {metrics.lowStockCount}
                 </Text>
-                <Text className="text-slate-400 text-xs mt-1">Low stock items</Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  Low stock items
+                </Text>
                 {metrics.outOfStockCount > 0 && (
                   <Text className="text-rose-400 text-[10px] font-bold mt-2">
                     {metrics.outOfStockCount} out of stock
@@ -671,12 +674,18 @@ export default function DashboardScreen() {
                     size={20}
                     color={metrics.activeSession ? "#34d399" : "#f87171"}
                   />
-                  <MaterialIcons name="chevron-right" size={18} color="#64748b" />
+                  <MaterialIcons
+                    name="chevron-right"
+                    size={18}
+                    color="#64748b"
+                  />
                 </View>
                 <Text className="text-white text-xl font-black mt-3">
                   {metrics.activeSession ? "Open" : "Closed"}
                 </Text>
-                <Text className="text-slate-400 text-xs mt-1">Register session</Text>
+                <Text className="text-slate-400 text-xs mt-1">
+                  Register session
+                </Text>
                 <Text
                   className={`text-[10px] font-bold mt-2 ${metrics.activeSession ? "text-emerald-400" : "text-rose-400"}`}
                 >
@@ -697,7 +706,10 @@ export default function DashboardScreen() {
                 Object.entries(metrics.paymentMix)
                   .sort(([, a], [, b]) => b - a)
                   .map(([method, amount]) => (
-                    <View key={method} className="flex-row justify-between py-2 border-b border-white/5 last:border-b-0">
+                    <View
+                      key={method}
+                      className="flex-row justify-between py-2 border-b border-white/5 last:border-b-0"
+                    >
                       <Text className="text-slate-300 text-sm font-semibold">
                         {method.replace(/_/g, " ")}
                       </Text>
@@ -874,7 +886,7 @@ export default function DashboardScreen() {
             </Card>
 
             {/* Recent Orders Snippet */}
-            <SectionTitle title="Recent Transactions" />
+            {/* <SectionTitle title="Recent Transactions" />
             <Card className="mb-6">
               {metrics.recentOrders.length === 0 ? (
                 <View className="py-6 items-center">
@@ -931,7 +943,7 @@ export default function DashboardScreen() {
                   </TouchableOpacity>
                 </View>
               )}
-            </Card>
+            </Card> */}
           </ScrollView>
         )}
       </SafeAreaView>

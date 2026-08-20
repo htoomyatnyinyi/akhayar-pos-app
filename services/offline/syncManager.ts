@@ -20,6 +20,7 @@ import {
 import type { AppDispatch, RootState } from "@/services/store/store";
 import { store } from "@/services/store/store";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useState } from "react";
 import { getOfflineDb, runMigrations } from "./db";
 import { createLocalId } from "./ids";
@@ -296,28 +297,24 @@ export async function syncNow(
         `✅ Pushed ${pushResult.synced} items, ${pushResult.failed} failed`,
       );
 
-    // Pull once more after pushing. The server may assign IDs, update stock,
-    // create variants, or change order status during the push. This makes one
-    // sync cycle converge the local cache instead of waiting for the next run.
-    dispatch(setSyncPhase("Refreshing server data"));
-    const refreshed = [
-      await pullStores(dispatch, tenantId),
-      await pullBrands(dispatch, tenantId),
-      await pullCategories(dispatch, tenantId),
-      await pullCustomers(dispatch, tenantId),
-      await pullStaff(dispatch, tenantId),
-      await pullSuppliers(dispatch, tenantId),
-      await pullProducts(dispatch, tenantId),
-      await pullInventory(dispatch, tenantId),
-      await pullInventoryMovements(dispatch, tenantId),
-      await pullSessions(dispatch, tenantId),
-      await pullOrders(dispatch, tenantId),
-      await pullPriceHistory(dispatch, tenantId),
-    ];
-    syncedItems += refreshed.reduce(
-      (total, result) => total + result.synced,
-      0,
-    );
+    // A second full pull used to happen on every cycle. That doubled the
+    // network/database work even when the outbox was empty. Refresh only the
+    // entities affected by local writes; the next normal cycle handles the
+    // remaining server-side changes.
+    if (pushResult.synced > 0) {
+      dispatch(setSyncPhase("Refreshing changed data"));
+      const refreshed = await Promise.all([
+        pullProducts(dispatch, tenantId),
+        pullInventory(dispatch, tenantId),
+        pullInventoryMovements(dispatch, tenantId),
+        pullSessions(dispatch, tenantId),
+        pullOrders(dispatch, tenantId),
+      ]);
+      syncedItems += refreshed.reduce(
+        (total, result) => total + result.synced,
+        0,
+      );
+    }
     dispatch(setSyncProgress(95));
 
     const remainingCount = await getQueuedCount();
@@ -403,6 +400,53 @@ function extractCollection(value: unknown, preferredKeys: string[]): any[] {
     if (result.length) return result;
   }
   return [];
+}
+
+const syncCursorKey = (tenantId: string, entity: string) =>
+  `offline-sync-cursor:${tenantId}:${entity}`;
+
+async function readSyncCursor(tenantId: string, entity: string) {
+  const value = await AsyncStorage.getItem(syncCursorKey(tenantId, entity));
+  const cursor = Number(value ?? 0);
+  return Number.isFinite(cursor) ? Math.max(0, cursor) : 0;
+}
+
+async function saveSyncCursor(
+  tenantId: string,
+  entity: string,
+  rows: any[],
+) {
+  const timestamps = rows
+    .map((row) =>
+      Number(
+        row.lastModified ??
+          new Date(row.updatedAt ?? row.updated_at ?? row.createdAt ?? row.created_at ?? 0).getTime(),
+      ),
+    )
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (timestamps.length) {
+    await AsyncStorage.setItem(
+      syncCursorKey(tenantId, entity),
+      String(Math.max(...timestamps)),
+    );
+  }
+}
+
+async function readIncrementalRows(
+  entity: string,
+  endpoint: string,
+  tenantId: string,
+  keys: string[],
+) {
+  const cursor = await readSyncCursor(tenantId, entity);
+  const result = await store.dispatch(
+    (remoteApi.endpoints as any)[endpoint].initiate(
+      { since: cursor > 0 ? cursor - 1 : 0 },
+      { forceRefetch: true },
+    ),
+  );
+  if (result.error) return null;
+  return extractCollection(result.data, keys);
 }
 
 async function pullBrands(dispatch: AppDispatch, tenantId: string) {
@@ -506,6 +550,17 @@ async function pullCustomers(dispatch: AppDispatch, tenantId: string) {
       console.warn("⚠️ No auth token found, skipping customer pull");
       return { synced: 0 };
     }
+    const incremental = await readIncrementalRows(
+      "customers",
+      "getSyncCustomers",
+      tenantId,
+      ["customers", "data"],
+    );
+    if (incremental) {
+      if (incremental.length) await upsertCustomers(incremental, tenantId);
+      await saveSyncCursor(tenantId, "customers", incremental);
+      return { synced: incremental.length };
+    }
     const { data, error } = await store.dispatch(
       remoteApi.endpoints.getRemoteCustomers.initiate(undefined, {
         forceRefetch: true,
@@ -607,6 +662,32 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
       console.warn("⚠️ No auth token found, skipping product pull");
       return { synced: 0 };
     }
+    const incremental = await readIncrementalRows(
+      "products",
+      "getSyncProducts",
+      tenantId,
+      ["products", "data"],
+    );
+    if (incremental) {
+      if (incremental.length) {
+        const productIdMap = (await upsertProducts(incremental, tenantId)) ?? {};
+        const variants = incremental.flatMap((product: any) =>
+          Array.isArray(product.variants)
+            ? product.variants.map((variant: any) => ({
+                ...variant,
+                productId:
+                  productIdMap[String(variant.productId ?? product.id)] ??
+                  variant.productId ??
+                  product.id,
+                tenantId: variant.tenantId ?? tenantId,
+              }))
+            : [],
+        );
+        if (variants.length) await upsertProductVariants(variants, tenantId);
+      }
+      await saveSyncCursor(tenantId, "products", incremental);
+      return { synced: incremental.length };
+    }
     const productsData: any[] = [];
     const seen = new Set<string>();
     for (let page = 1; page <= 100; page++) {
@@ -707,6 +788,17 @@ async function pullInventory(dispatch: AppDispatch, tenantId: string) {
       console.warn("⚠️ No auth token found, skipping inventory pull");
       return { synced: 0 };
     }
+    const incremental = await readIncrementalRows(
+      "inventory",
+      "getSyncInventory",
+      tenantId,
+      ["inventory", "data"],
+    );
+    if (incremental) {
+      if (incremental.length) await upsertInventory(incremental, tenantId);
+      await saveSyncCursor(tenantId, "inventory", incremental);
+      return { synced: incremental.length };
+    }
     if (!remoteApi.endpoints.getRemoteInventory) {
       console.warn("⚠️ getRemoteInventory endpoint not available");
       return { synced: 0 };
@@ -757,6 +849,20 @@ async function pullInventoryMovements(dispatch: AppDispatch, tenantId: string) {
   try {
     const state = store.getState();
     if (!state.auth?.user?.token) return { synced: 0 };
+
+    const incremental = await readIncrementalRows(
+      "inventoryMovements",
+      "getSyncMovements",
+      tenantId,
+      ["movements", "data"],
+    );
+    if (incremental) {
+      if (incremental.length) {
+        await upsertInventoryMovements(incremental, tenantId);
+      }
+      await saveSyncCursor(tenantId, "inventoryMovements", incremental);
+      return { synced: incremental.length };
+    }
 
     const movements: any[] = [];
     const seen = new Set<string>();
@@ -830,6 +936,17 @@ async function pullOrders(dispatch: AppDispatch, tenantId: string) {
     if (!token) {
       console.warn("⚠️ No auth token found, skipping order pull");
       return { synced: 0 };
+    }
+    const incremental = await readIncrementalRows(
+      "orders",
+      "getSyncOrders",
+      tenantId,
+      ["orders", "data"],
+    );
+    if (incremental) {
+      if (incremental.length) await upsertOrders(incremental, tenantId);
+      await saveSyncCursor(tenantId, "orders", incremental);
+      return { synced: incremental.length };
     }
     if (!remoteApi.endpoints.getRemoteOrders) {
       console.warn("⚠️ getRemoteOrders endpoint not available");

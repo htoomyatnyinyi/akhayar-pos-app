@@ -75,6 +75,10 @@ async function getStore() {
   return (await import("@/services/store/store")).store;
 }
 
+const REFRESH_TTL_MS = 15_000;
+const lastRefreshAt = new Map<string, number>();
+const refreshInFlight = new Map<string, Promise<void>>();
+
 /** Online-first read: pull fresh data from server when online, then read local cache. */
 export async function refreshIfOnline(entities: SyncEntity[]): Promise<void> {
   if (!(await isOnline())) return;
@@ -84,13 +88,26 @@ export async function refreshIfOnline(entities: SyncEntity[]): Promise<void> {
   if (!tenantId) return;
 
   const dispatch = store.dispatch;
-  for (const entity of entities) {
-    try {
-      await ENTITY_PULL_MAP[entity](dispatch, tenantId);
-    } catch (error) {
-      console.warn(`⚠️ Online-first refresh failed for ${entity}:`, error);
-    }
-  }
+  await Promise.all(
+    [...new Set(entities)].map(async (entity) => {
+      const refreshKey = `${tenantId}:${entity}`;
+      const now = Date.now();
+      if (now - (lastRefreshAt.get(refreshKey) ?? 0) < REFRESH_TTL_MS) return;
+      const active = refreshInFlight.get(refreshKey);
+      if (active) return active;
+
+      const refresh = ENTITY_PULL_MAP[entity](dispatch, tenantId)
+        .catch((error) => {
+          console.warn(`⚠️ Online-first refresh failed for ${entity}:`, error);
+        })
+        .finally(() => {
+          refreshInFlight.delete(refreshKey);
+        });
+      refreshInFlight.set(refreshKey, refresh);
+      await refresh;
+      lastRefreshAt.set(refreshKey, Date.now());
+    }),
+  );
 }
 
 /** Push pending local changes to server when online. */

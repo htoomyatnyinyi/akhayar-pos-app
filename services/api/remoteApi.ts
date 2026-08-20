@@ -215,6 +215,14 @@ export const remoteApi = createApi({
       providesTags: ["Inventory", "Sync"],
     }),
 
+    getSyncMovements: builder.query<unknown, { since?: string; storeId?: string }>({
+      query: ({ since, storeId }) => ({
+        url: "/sync/movements",
+        params: { ...(since ? { since } : {}), ...(storeId ? { storeId } : {}) },
+      }),
+      providesTags: ["InventoryMovements", "Sync"],
+    }),
+
     // ================================================================
     // DASHBOARD ENDPOINTS
     // ================================================================
