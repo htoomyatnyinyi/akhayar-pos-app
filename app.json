@@ -12,7 +12,9 @@
       "bundleIdentifier": "com.htoomyatnyinyi24.oasis",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to thermal printers.",
-        "UIBackgroundModes": ["bluetooth-central"]
+        "UIBackgroundModes": [
+          "bluetooth-central"
+        ]
       }
     },
     "android": {
@@ -30,7 +32,9 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.BLUETOOTH",
+        "android.permission.BLUETOOTH_ADMIN"
       ],
       "predictiveBackGestureEnabled": false,
       "package": "com.htoomyatnyinyi24.oasispos"
@@ -67,7 +71,10 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "2aa55867-d2b0-4ed2-9919-46b387542f0f"
+      }
     },
     "runtimeVersion": {
       "policy": "appVersion"

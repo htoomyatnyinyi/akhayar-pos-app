@@ -573,10 +573,34 @@ export async function upsertInventory(
       const [localVariant] = await db
         .select({ id: productVariants.id })
         .from(productVariants)
-        .where(eq(productVariants.remoteId, String(normalized.variantId)))
+        .where(
+          or(
+            eq(productVariants.id, String(normalized.variantId)),
+            eq(productVariants.remoteId, String(normalized.variantId)),
+          ),
+        )
         .limit(1);
       if (localVariant) normalized.variantId = localVariant.id;
     }
+
+    if (normalized.storeId) {
+      const [localStore] = await db
+        .select({ id: stores.id })
+        .from(stores)
+        .where(
+          or(
+            eq(stores.id, String(normalized.storeId)),
+            eq(stores.remoteId, String(normalized.storeId)),
+          ),
+        )
+        .limit(1);
+      if (localStore) normalized.storeId = localStore.id;
+    }
+
+    // Do not let a malformed server row abort the whole inventory pull.
+    // The local schema requires these keys and the row cannot be displayed
+    // or edited without them anyway.
+    if (!normalized.storeId || !normalized.productId) continue;
 
     const existingByRemoteId = (
       await db
@@ -686,6 +710,16 @@ export async function upsertInventoryMovements(
           .where(or(eq(productVariants.remoteId, String(remoteVariantId)), eq(productVariants.id, String(remoteVariantId))))
           .limit(1)
       : [];
+    const [localStore] = await db
+      .select({ id: stores.id })
+      .from(stores)
+      .where(
+        or(
+          eq(stores.id, String(remoteStoreId)),
+          eq(stores.remoteId, String(remoteStoreId)),
+        ),
+      )
+      .limit(1);
     const [existing] = await db
       .select({ id: inventoryMovements.id })
       .from(inventoryMovements)
@@ -695,7 +729,7 @@ export async function upsertInventoryMovements(
     const values = {
       remoteId,
       tenantId: movement.tenantId ?? movement.tenant_id ?? defaultTenantId,
-      storeId: String(remoteStoreId),
+      storeId: localStore?.id ?? String(remoteStoreId),
       productId: localProduct?.id ?? String(remoteProductId),
       variantId: localVariant?.id ?? (remoteVariantId ? String(remoteVariantId) : null),
       quantity: Math.abs(Number(movement.quantity ?? movement.quantityDelta ?? movement.quantity_delta ?? 0)),

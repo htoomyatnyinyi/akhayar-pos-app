@@ -1652,13 +1652,21 @@ export const localApi = createApi({
         variantId?: string;
       } = {}) {
         try {
-          await refreshIfOnline(["inventory","products"]);
+          // Stores must be refreshed first because inventory rows are stored
+          // with the local store key, while the auth/session may hold the
+          // server store key.
+          await refreshIfOnline(["stores", "inventory", "products"]);
           const db = getOfflineDb();
           let query = db.select().from(inventory).$dynamic();
           const conditions = [];
 
           if (storeId) {
-            conditions.push(eq(inventory.storeId, storeId));
+            const [localStore] = await db
+              .select({ id: stores.id })
+              .from(stores)
+              .where(or(eq(stores.id, storeId), eq(stores.remoteId, storeId)))
+              .limit(1);
+            conditions.push(eq(inventory.storeId, localStore?.id ?? storeId));
           }
           if (productId) {
             conditions.push(eq(inventory.productId, productId));
@@ -1781,7 +1789,14 @@ export const localApi = createApi({
             .$dynamic();
 
           if (storeId) {
-            query = query.where(eq(inventoryMovements.storeId, storeId));
+            const [localStore] = await db
+              .select({ id: stores.id })
+              .from(stores)
+              .where(or(eq(stores.id, storeId), eq(stores.remoteId, storeId)))
+              .limit(1);
+            query = query.where(
+              eq(inventoryMovements.storeId, localStore?.id ?? storeId),
+            );
           }
           if (type) {
             query = query.where(eq(inventoryMovements.type, type));

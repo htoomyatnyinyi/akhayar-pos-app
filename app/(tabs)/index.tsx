@@ -323,7 +323,7 @@ export default function POSScreen() {
         "No Active Session",
         "Please open a session before placing an order.",
         [
-          { text: "Open Session", onPress: () => router.push("/sessions") },
+          { text: "Open Session", onPress: () => router.push("/manage") },
           { text: "Cancel", style: "cancel" },
         ],
       );
@@ -562,9 +562,11 @@ export default function POSScreen() {
       <Screen padded={false}>
         <View className="px-5 pt-4 pb-2">
           <Header
-            eyebrow={`${!user ? "Tenant" : user?.tenant.name}-${user?.tenant.code}`}
+            eyebrow={`${!user ? "Tenant" : user?.tenant?.code + " - " + user?.role}`}
+            // eyebrow`${!user ? "Tenant" : user?.tenant.name}-${user?.tenant.code}`}
             title="New Order"
-            subtitle={`${!user ? "Store" : user?.stores.map((a: any) => a.code)}-${!user ? "Store" : user?.stores.map((a: any) => a.name).join(", ")} - ${!user ? "Store" : user?.role} : ${!user ? "Store" : user?.name}`}
+            subtitle={`${!user ? "Store" : user?.stores[0].code + " - " + user?.stores[0].name}`}
+            // subtitle={`${!user ? "Store" : user?.stores.map((a: any) => a.code)}-${!user ? "Store" : user?.stores.map((a: any) => a.name).join(", ")} - ${!user ? "Store" : user?.role} : ${!user ? "Store" : user?.name}`}
             // subtitle={`${!user ? "Store" : user?.stores[0].code}-${user?.stores[0].name} - ${!user ? "Store" : user?.role} : ${!user ? "Store" : user?.name}`}
             // subtitle={
             //   user.role === "ADMIN"

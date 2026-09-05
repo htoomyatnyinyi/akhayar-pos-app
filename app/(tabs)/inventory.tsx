@@ -143,11 +143,11 @@ export default function InventoryScreen() {
         sellingPrice: variant?.price ?? product?.sellingPrice ?? 0,
         costPrice: variant?.costPrice ?? product?.costPrice ?? 0,
         manufacturingDate:
-          variant?.manufacturingDate ??
+          (variant as any)?.manufacturingDate ??
           product?.manufacturingDate ??
           inv.manufacturingDate,
         expiryDate:
-          variant?.expiryDate ?? product?.expiryDate ?? inv.expiryDate,
+          (variant as any)?.expiryDate ?? product?.expiryDate ?? inv.expiryDate,
         isActive: variant?.isActive ?? product?.isActive ?? inv.isActive,
         categoryId: product?.categoryId,
         brandName: brand?.name || null,
