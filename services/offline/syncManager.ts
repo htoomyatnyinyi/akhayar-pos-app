@@ -188,7 +188,8 @@ export async function syncNow(
     const state = store.getState();
     const tenantId = state.auth?.user?.tenantId;
     if (!tenantId) {
-      if (!silent) console.log("🔒 User not logged in (no tenantId). Skipping sync.");
+      if (!silent)
+        console.log("🔒 User not logged in (no tenantId). Skipping sync.");
       dispatch(setSyncing(false));
       return { skipped: true, message: "User not logged in" };
     }
@@ -411,16 +412,18 @@ async function readSyncCursor(tenantId: string, entity: string) {
   return Number.isFinite(cursor) ? Math.max(0, cursor) : 0;
 }
 
-async function saveSyncCursor(
-  tenantId: string,
-  entity: string,
-  rows: any[],
-) {
+async function saveSyncCursor(tenantId: string, entity: string, rows: any[]) {
   const timestamps = rows
     .map((row) =>
       Number(
         row.lastModified ??
-          new Date(row.updatedAt ?? row.updated_at ?? row.createdAt ?? row.created_at ?? 0).getTime(),
+          new Date(
+            row.updatedAt ??
+              row.updated_at ??
+              row.createdAt ??
+              row.created_at ??
+              0,
+          ).getTime(),
       ),
     )
     .filter((value) => Number.isFinite(value) && value > 0);
@@ -441,7 +444,7 @@ async function readIncrementalRows(
   const cursor = await readSyncCursor(tenantId, entity);
   // A zero cursor means this device has never completed an initial pull.
   // Incremental endpoints commonly return only changed rows for this value
-  // (and may legitimately return an empty array), which used to make stock
+  // (and mshowManagementay legitimately return an empty array), which used to make stock
   // disappear until a later sync happened to return a change. Let callers
   // fall back to their paginated full pull on first use.
   if (cursor <= 0) return null;
@@ -676,7 +679,8 @@ async function pullProducts(dispatch: AppDispatch, tenantId: string) {
     );
     if (incremental) {
       if (incremental.length) {
-        const productIdMap = (await upsertProducts(incremental, tenantId)) ?? {};
+        const productIdMap =
+          (await upsertProducts(incremental, tenantId)) ?? {};
         const variants = incremental.flatMap((product: any) =>
           Array.isArray(product.variants)
             ? product.variants.map((variant: any) => ({
@@ -885,10 +889,17 @@ async function pullInventoryMovements(dispatch: AppDispatch, tenantId: string) {
         console.error("❌ Inventory movements pull failed:", error);
         break;
       }
-      const pageItems = extractCollection(data, ["movements", "items", "results", "data"]);
+      const pageItems = extractCollection(data, [
+        "movements",
+        "items",
+        "results",
+        "data",
+      ]);
       if (!pageItems.length) break;
       for (const movement of pageItems) {
-        const id = String(movement.id ?? movement._id ?? movement.remoteId ?? "");
+        const id = String(
+          movement.id ?? movement._id ?? movement.remoteId ?? "",
+        );
         if (id && !seen.has(id)) {
           seen.add(id);
           movements.push(movement);
@@ -1395,31 +1406,55 @@ async function resolvePayloadForeignKeys(payload: any) {
     copy.storeId = await resolveEntityRemoteId("stores", String(copy.storeId));
   }
   if (copy.sourceStoreId) {
-    copy.sourceStoreId = await resolveEntityRemoteId("stores", String(copy.sourceStoreId));
+    copy.sourceStoreId = await resolveEntityRemoteId(
+      "stores",
+      String(copy.sourceStoreId),
+    );
   }
   if (copy.targetStoreId) {
-    copy.targetStoreId = await resolveEntityRemoteId("stores", String(copy.targetStoreId));
+    copy.targetStoreId = await resolveEntityRemoteId(
+      "stores",
+      String(copy.targetStoreId),
+    );
   }
   if (copy.categoryId) {
-    copy.categoryId = await resolveEntityRemoteId("categories", String(copy.categoryId));
+    copy.categoryId = await resolveEntityRemoteId(
+      "categories",
+      String(copy.categoryId),
+    );
   }
   if (copy.brandId) {
     copy.brandId = await resolveEntityRemoteId("brands", String(copy.brandId));
   }
   if (copy.supplierId) {
-    copy.supplierId = await resolveEntityRemoteId("suppliers", String(copy.supplierId));
+    copy.supplierId = await resolveEntityRemoteId(
+      "suppliers",
+      String(copy.supplierId),
+    );
   }
   if (copy.customerId) {
-    copy.customerId = await resolveEntityRemoteId("customers", String(copy.customerId));
+    copy.customerId = await resolveEntityRemoteId(
+      "customers",
+      String(copy.customerId),
+    );
   }
   if (copy.productId) {
-    copy.productId = await resolveEntityRemoteId("products", String(copy.productId));
+    copy.productId = await resolveEntityRemoteId(
+      "products",
+      String(copy.productId),
+    );
   }
   if (copy.variantId) {
-    copy.variantId = await resolveEntityRemoteId("product_variants", String(copy.variantId));
+    copy.variantId = await resolveEntityRemoteId(
+      "product_variants",
+      String(copy.variantId),
+    );
   }
   if (copy.sessionId) {
-    const resolved = await resolveEntityRemoteId("sessions", String(copy.sessionId));
+    const resolved = await resolveEntityRemoteId(
+      "sessions",
+      String(copy.sessionId),
+    );
     copy.sessionId = resolved && resolved.length === 36 ? resolved : undefined;
   }
 
@@ -1449,7 +1484,10 @@ async function processOutboxItem(
           if (error) throw new Error(JSON.stringify(error));
           await db
             .update(brands)
-            .set({ remoteId: (data as any)?.brand?.id ?? (data as any)?.id ?? null, syncStatus: "synced" })
+            .set({
+              remoteId: (data as any)?.brand?.id ?? (data as any)?.id ?? null,
+              syncStatus: "synced",
+            })
             .where(eq(brands.id, item.entityId));
         } else if (item.operation === "update") {
           const { error } = await store.dispatch(
@@ -1597,7 +1635,7 @@ async function processOutboxItem(
             .from(orders)
             .where(eq(orders.id, item.entityId))
             .limit(1);
-          
+
           const targetId = orderRow?.remoteId || item.entityId;
 
           const { error } = await store.dispatch(
@@ -1708,10 +1746,7 @@ async function processOutboxItem(
           // Some backend deployments return only the product ID from POST.
           // Read the created product once so its atomically-created variants
           // get their remote IDs before queued checkout records are pushed.
-          if (
-            remoteProduct?.id &&
-            !Array.isArray(remoteProduct?.variants)
-          ) {
+          if (remoteProduct?.id && !Array.isArray(remoteProduct?.variants)) {
             try {
               const fetched = await store.dispatch(
                 remoteApi.endpoints.getRemoteProductById.initiate(
@@ -1758,7 +1793,9 @@ async function processOutboxItem(
                 sku: remoteVariant.sku ?? undefined,
                 barcode: remoteVariant.barcode ?? undefined,
                 price: Number(remoteVariant.price ?? 0),
-                costPrice: Number(remoteVariant.costPrice ?? remoteVariant.cost_price ?? 0),
+                costPrice: Number(
+                  remoteVariant.costPrice ?? remoteVariant.cost_price ?? 0,
+                ),
                 syncStatus: "synced",
                 syncError: null,
                 updatedAt: new Date().toISOString(),
@@ -1767,15 +1804,27 @@ async function processOutboxItem(
               .where(eq(productVariants.id, localVariant.id));
           }
         } else if (item.operation === "update") {
-          const remoteProductId = await resolveEntityRemoteId("products", item.entityId);
+          const remoteProductId = await resolveEntityRemoteId(
+            "products",
+            item.entityId,
+          );
           const productPayload = await resolveProductReferences(payload);
           if (Array.isArray(productPayload.variants)) {
-            productPayload.variants = await Promise.all(productPayload.variants.map(async (variant: any) => {
-              if (!variant.id && !variant.remoteId) return variant;
-              const variantId = variant.remoteId || variant.id;
-              const [localVariant] = await db.select({ remoteId: productVariants.remoteId }).from(productVariants).where(eq(productVariants.id, variantId)).limit(1);
-              return { ...variant, id: localVariant?.remoteId || variant.remoteId || variant.id };
-            }));
+            productPayload.variants = await Promise.all(
+              productPayload.variants.map(async (variant: any) => {
+                if (!variant.id && !variant.remoteId) return variant;
+                const variantId = variant.remoteId || variant.id;
+                const [localVariant] = await db
+                  .select({ remoteId: productVariants.remoteId })
+                  .from(productVariants)
+                  .where(eq(productVariants.id, variantId))
+                  .limit(1);
+                return {
+                  ...variant,
+                  id: localVariant?.remoteId || variant.remoteId || variant.id,
+                };
+              }),
+            );
           }
           const { error } = await store.dispatch(
             remoteApi.endpoints.updateRemoteProduct.initiate({
@@ -1789,7 +1838,10 @@ async function processOutboxItem(
             .set({ syncStatus: "synced" })
             .where(eq(products.id, item.entityId));
         } else if (item.operation === "delete") {
-          const remoteProductId = await resolveEntityRemoteId("products", item.entityId);
+          const remoteProductId = await resolveEntityRemoteId(
+            "products",
+            item.entityId,
+          );
           const { error } = await store.dispatch(
             remoteApi.endpoints.deleteRemoteProduct.initiate(remoteProductId),
           );
@@ -2113,7 +2165,10 @@ async function processOutboxItem(
           let endpoint = item.endpoint;
           let requestPayload = payload;
           if (item.operation !== "create") {
-            const remoteId = await resolveEntityRemoteId(item.entity, item.entityId);
+            const remoteId = await resolveEntityRemoteId(
+              item.entity,
+              item.entityId,
+            );
             endpoint = `/api/tenant/${item.entity}/${remoteId}`;
           }
 
